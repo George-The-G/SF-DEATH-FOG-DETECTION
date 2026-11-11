@@ -317,6 +317,28 @@ class TestStreets(unittest.TestCase):
         self.assertEqual(params["$where"], w)
         self.assertEqual(params["$select"], "latitude,longitude")
 
+    def test_each_tree_is_counted_once_and_density_is_realistic(self):
+        total = sum(sum(w["trees"]) for w in self.ways)
+        self.assertLessEqual(total, len(TREES))                                  # no tree counted twice at the crossing
+        segs = streets.score_ways(self.ways, self.st)
+        mariposa = [s["trees100"] for s in segs if s["name"] == "Mariposa St"]
+        self.assertTrue(all(2 <= d <= 8 for d in mariposa), mariposa)            # 15 trees along ~330 m, not hundreds per 100 m
+
+    def test_old_cache_is_recounted_without_redownloading_streets(self):
+        z = self.cfg["zones"]["potrero"]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "s.json")
+            streets.run_streets(self.cfg, FakeHttp(), NOW, path=path, sleep=0)
+            data = streets.load(path)
+            for zd in data["zones"].values():
+                zd.pop("method")                                                  # as if written by older code
+            json.dump(data, open(path, "w"))
+            self.assertFalse(streets.is_current(streets.load(path), "potrero", z, 700))
+            http = FakeHttp()
+            streets.run_streets(self.cfg, http, NOW, path=path, sleep=0)
+            self.assertTrue(streets.is_current(streets.load(path), "potrero", z, 700))
+            self.assertEqual(sum("overpass" in c[0] for c in http.calls), 0)
+
     def test_out_of_time_skips_remaining_zones(self):
         with tempfile.TemporaryDirectory() as d:
             res = streets.run_streets(self.cfg, FakeHttp(), NOW, path=os.path.join(d, "s.json"), sleep=0, max_seconds=-1)

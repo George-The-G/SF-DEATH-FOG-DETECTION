@@ -21,13 +21,15 @@ SF_TREES_URL = "https://data.sf.gov/resource/tkzw-k3nq.json"     # DataSF "Stree
 OVERPASS_URLS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]
 HIGHWAYS = "residential|tertiary|secondary|primary|unclassified|living_street|trunk"
 TREE_RADIUS_M = 15.0
+COUNT_METHOD = 2           # bump when tree counting changes: cached zones are then recounted automatically
+TREE_WINDOW_M = 60.0       # tree density is averaged over +/- this far along the street
 
 DEFAULTS = {
     "radius_m": 700,               # map covers a square about 2 x radius wide around each zone centre
     "w_orient": 0.50,              # east-west streets
     "w_trees": 0.30,               # tree cover
     "w_parking": 0.20,             # parked cars
-    "tree_full_per_100m": 6.0,     # this many trees per 100 m counts as full cover
+    "tree_full_per_100m": 10.0,    # this many trees per 100 m (both sides) counts as full cover; SF averages about 8
     "parking_unknown": 0.5,        # OSM often lacks parking tags: treat unknown as half
     "porous_factor": 0.6,          # multiplier for porous / unpaved surfaces
     "porous_surfaces": ["concrete", "paving_stones", "sett", "cobblestone", "unhewn_cobblestone", "gravel",
@@ -70,23 +72,29 @@ def osm_trees(payload):
 
 
 def count_trees(pts_list, trees_xy, lat0, lon0):
-    """For each way (a list of (lat, lon) points) -> number of trees within TREE_RADIUS_M of each stretch."""
+    """For each way (a list of (lat, lon) points) -> trees per stretch. Every tree is assigned once, to the nearest
+    stretch of street within TREE_RADIUS_M, so a tree is never double counted at corners or across a street."""
     cell = 25.0
-    grid = {}
-    for x, y in trees_xy:
-        grid.setdefault((int(x // cell), int(y // cell)), []).append((x, y))
-    out = []
-    for pts in pts_list:
+    segs, grid = [], {}
+    for wi, pts in enumerate(pts_list):
         xy = [_xy(a, b, lat0, lon0) for a, b in pts]
-        counts = []
-        for (ax, ay), (bx, by) in zip(xy, xy[1:]):
-            n = 0
+        for si, ((ax, ay), (bx, by)) in enumerate(zip(xy, xy[1:])):
+            k = len(segs)
+            segs.append((wi, si, ax, ay, bx, by))
             for cx in range(int((min(ax, bx) - TREE_RADIUS_M) // cell), int((max(ax, bx) + TREE_RADIUS_M) // cell) + 1):
                 for cy in range(int((min(ay, by) - TREE_RADIUS_M) // cell), int((max(ay, by) + TREE_RADIUS_M) // cell) + 1):
-                    n += sum(1 for tx, ty in grid.get((cx, cy), ()) if _seg_dist(tx, ty, ax, ay, bx, by) <= TREE_RADIUS_M)
-            counts.append(n)
-        out.append(counts)
-    return out
+                    grid.setdefault((cx, cy), []).append(k)
+    counts = [[0] * (len(p) - 1) for p in pts_list]
+    for tx, ty in trees_xy:
+        best, best_d = None, TREE_RADIUS_M
+        for k in grid.get((int(tx // cell), int(ty // cell)), ()):
+            wi, si, ax, ay, bx, by = segs[k]
+            d = _seg_dist(tx, ty, ax, ay, bx, by)
+            if d <= best_d:
+                best, best_d = (wi, si), d
+        if best:
+            counts[best[0]][best[1]] += 1
+    return counts
 
 
 def parse_overpass(payload, lat0, lon0, trees=None):
@@ -185,7 +193,7 @@ def load(path):
 
 def is_current(data, name, zcfg, radius_m):
     zd = (data or {}).get("zones", {}).get(name, {})
-    return zd.get("key") == _key(zcfg, radius_m) and zd.get("trees", "none") != "none"
+    return zd.get("key") == _key(zcfg, radius_m) and zd.get("trees", "none") != "none" and zd.get("method") == COUNT_METHOD
 
 
 def run_streets(cfg, http, now, path=None, force=False, sleep=2.0, max_seconds=150):
@@ -199,7 +207,7 @@ def run_streets(cfg, http, now, path=None, force=False, sleep=2.0, max_seconds=1
         if not force and is_current(data, name, z, st["radius_m"]):
             continue
         prev = data["zones"].get(name)
-        if (not force and prev and prev.get("key") == _key(z, st["radius_m"]) and prev.get("trees", "none") == "none"
+        if (not force and prev and prev.get("key") == _key(z, st["radius_m"]) and (prev.get("trees", "none") == "none" or prev.get("method") != COUNT_METHOD)
                 and time.time() - started <= max_seconds):
             # streets are already saved: only the trees are missing, so fetch just those and recount
             trees, source, why = fetch_trees(http, z["lat"], z["lon"], st["radius_m"])
@@ -210,7 +218,7 @@ def run_streets(cfg, http, now, path=None, force=False, sleep=2.0, max_seconds=1
             counts = count_trees([[tuple(p) for p in w["pts"]] for w in prev["ways"]], [_xy(a, b, lat0, lon0) for a, b in trees], lat0, lon0)
             for w, c in zip(prev["ways"], counts):
                 w["trees"] = c
-            prev["trees"], prev["fetched_utc"] = source, iso(now)
+            prev["trees"], prev["method"], prev["fetched_utc"] = source, COUNT_METHOD, iso(now)
             changed = True
             continue
         if time.time() - started > max_seconds:
@@ -224,7 +232,7 @@ def run_streets(cfg, http, now, path=None, force=False, sleep=2.0, max_seconds=1
             notes.append(f"{name}: {e}")
             continue
         data["zones"][name] = {"key": _key(z, st["radius_m"]), "center": [z["lat"], z["lon"]], "radius_m": st["radius_m"],
-                               "trees": source, "fetched_utc": iso(now), "ways": ways}
+                               "trees": source, "method": COUNT_METHOD, "fetched_utc": iso(now), "ways": ways}
         if source == "none":
             notes.append(f"{name}: streets saved but no tree data ({why}); will retry trees next run")
         changed = True
@@ -244,14 +252,23 @@ def score_ways(ways, st, susceptibility=1.0):
     for w in ways:
         porous = st["porous_factor"] if w.get("surface") in st["porous_surfaces"] else 1.0
         park = {"yes": 1.0, "no": 0.0}.get(w.get("parking"), st["parking_unknown"])
+        geo = []
         for (a, b), n in zip(zip(w["pts"], w["pts"][1:]), w["trees"]):
             lat0 = (a[0] + b[0]) / 2
             dx, dy = (b[1] - a[1]) * math.cos(math.radians(lat0)) * 111320.0, (b[0] - a[0]) * 110540.0
-            length = math.hypot(dx, dy)
+            geo.append((a, b, dx, dy, math.hypot(dx, dy), n))
+        mids, acc = [], 0.0
+        for g in geo:
+            mids.append(acc + g[4] / 2)
+            acc += g[4]
+        for i, (a, b, dx, dy, length, n) in enumerate(geo):
             if length < 1:
                 continue
             ew = abs(dx) / length                      # 1 = due east-west, 0 = due north-south
-            per100 = n / length * 100.0
+            # trees per 100 m, smoothed over about 120 m of the same street so short stretches are not noisy
+            near = [j for j in range(len(geo)) if abs(mids[j] - mids[i]) <= TREE_WINDOW_M]
+            span = sum(geo[j][4] for j in near)
+            per100 = sum(geo[j][5] for j in near) / span * 100.0 if span else 0.0
             tree = min(1.0, per100 / st["tree_full_per_100m"])
             risk = (st["w_orient"] * ew + st["w_trees"] * tree + st["w_parking"] * park) / total_w * porous * susceptibility
             out.append({"name": w["name"], "a": a, "b": b, "len": length, "ew": ew, "trees100": per100,

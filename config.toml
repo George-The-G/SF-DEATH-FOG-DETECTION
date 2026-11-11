@@ -126,7 +126,7 @@ radius_m = 700                     # map covers about 1.4 km square around each 
 w_orient = 0.50                    # east-west streets are hit harder than north-south
 w_trees = 0.30                     # trees hold moisture and shade the road
 w_parking = 0.20                   # parked cars
-tree_full_per_100m = 6             # this many street trees per 100 m counts as full cover
+tree_full_per_100m = 10            # this many street trees per 100 m (both sides) counts as full cover; SF averages about 8
 parking_unknown = 0.5              # OpenStreetMap often lacks parking info: count unknown as half
 porous_factor = 0.6                # porous or unpaved surfaces are spared
 
