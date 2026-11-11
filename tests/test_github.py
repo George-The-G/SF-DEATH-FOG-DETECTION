@@ -256,10 +256,10 @@ class TestStreets(unittest.TestCase):
         self.assertLess(risk(tree_full_per_100m=500)["Mariposa St"], base["Mariposa St"])      # trees count for less
         self.assertLess(risk(porous_factor=0.3)["Missouri St"], base["Missouri St"])           # concrete street is spared more
 
-    def test_zone_susceptibility_scales_the_map(self):
+    def test_scoring_can_scale_by_a_factor_but_the_page_map_does_not(self):
         full = streets.score_ways(self.ways, self.st, 1.0)
-        control = streets.score_ways(self.ways, self.st, 0.3)
-        self.assertEqual({streets.band(s["risk"], self.st) for s in control}, {"none"})      # the control zone stays quiet
+        scaled = streets.score_ways(self.ways, self.st, 0.3)
+        self.assertEqual({streets.band(s["risk"], self.st) for s in scaled}, {"none"})
         self.assertIn("hi", {streets.band(s["risk"], self.st) for s in full})
 
     def test_fetch_caches_and_skips_when_current(self):
@@ -387,6 +387,18 @@ class TestStreetMapOnPage(unittest.TestCase):
                        "runs east-west", "South side of the street", "OpenStreetMap", 'id="ms0"', 'id="ms1"', "ms-hi", "msouth"):
             self.assertIn(needle, html)
         self.assertLess(html.index('id="map"'), html.index("Next 12 hours"))      # right under the chart, above the cards
+
+    def test_no_street_is_spared_and_observed_dry_spot_is_marked(self):
+        data = streets.load(self.path)
+        data["zones"]["control"]["center"] = [37.7595, -122.4000]           # same streets as the other zone
+        self.cfg["zones"]["control"]["susceptibility"] = 0.3
+        self.cfg["streets"] = {"marks": [{"lat": 37.7595, "lon": -122.4000, "label": "Observed <dry> spot"}]}
+        html = self.render(data)
+        panels = html.split('class="mpanel"')
+        self.assertIn("ms-hi", panels[2])                                      # zone susceptibility 0.3 does not grey out the map
+        self.assertIn("mmark", html)
+        self.assertIn("Observed &lt;dry&gt; spot", html)
+        self.assertNotIn("Observed <dry>", html)
 
     def test_version_label_and_no_data_message(self):
         html = self.render(data=None)

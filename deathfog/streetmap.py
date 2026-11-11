@@ -14,7 +14,7 @@ def _project(radius_m):
         SIZE / 2 - (lat - lat0) * 110540.0 * k)
 
 
-def map_svg(segs, st, center, radius_m, uid, top):
+def map_svg(segs, st, center, radius_m, uid, top, marks=()):
     lat0, lon0 = center
     proj = _project(radius_m)
     k = (SIZE / 2) / radius_m
@@ -64,6 +64,12 @@ def map_svg(segs, st, center, radius_m, uid, top):
             out.append(f'<text class="ml" x="{mx:.1f}" y="{my - 5:.1f}" text-anchor="middle" '
                        f'transform="rotate({ang:.0f} {mx:.1f} {my:.1f})">{escape(t["name"])}</text>')
     out.append("</g>")
+    for m in marks:                       # named spots, e.g. where skaters have seen the road stay dry
+        x, y = proj(m["lat"], m["lon"], lat0, lon0)
+        if 12 < x < SIZE - 12 and 12 < y < SIZE - 12:
+            anchor, dx = ("end", -10) if x > SIZE * 0.55 else ("start", 10)
+            out.append(f'<circle class="mmark" cx="{x:.1f}" cy="{y:.1f}" r="7"/><text class="ml" x="{x + dx:.1f}" y="{y + 4:.1f}" '
+                       f'text-anchor="{anchor}">{escape(m.get("label", ""))}</text>')
     c = SIZE / 2
     out.append(f'<circle class="mcenter" cx="{c}" cy="{c}" r="5"/>')
     bar = 200 * k

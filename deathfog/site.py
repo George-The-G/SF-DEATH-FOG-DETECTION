@@ -39,7 +39,7 @@ details.card>summary{cursor:pointer;font-size:1.1rem;font-weight:600;list-style-
 .map .mbg{fill:var(--m-bg)}.map line,.map path{stroke-linecap:round;stroke-linejoin:round}.map .ms-none{stroke:var(--m-base);stroke-width:1.5}.map .ms-low{stroke:var(--m-low);stroke-width:2.4}
 .map .ms-mid{stroke:var(--m-mid);stroke-width:3}.map .ms-hi{stroke:var(--m-hi);stroke-width:3.8}.map .msouth{stroke:var(--m-south);stroke-width:1.4;opacity:.9}
 .map .ml{font-size:11px;font-weight:600;fill:var(--ink);stroke:var(--m-bg);stroke-width:3;paint-order:stroke}.map .mt{font-size:11px;fill:var(--mute)}
-.map .mcenter{fill:var(--ink);stroke:var(--m-bg);stroke-width:2}.map .mscale{stroke:var(--ink);stroke-width:2}.map .mnorth{fill:var(--ink)}
+.map .mmark{fill:none;stroke:var(--c-sat);stroke-width:2.5}.map .mcenter{fill:var(--ink);stroke:var(--m-bg);stroke-width:2}.map .mscale{stroke:var(--ink);stroke-width:2}.map .mnorth{fill:var(--ink)}
 .legend i.mk-hi,.legend i.mk-mid,.legend i.mk-low,.legend i.mk-none,.legend i.mk-south{height:.35em;vertical-align:.15em}
 .legend i.mk-hi{background:var(--m-hi)}.legend i.mk-mid{background:var(--m-mid)}.legend i.mk-low{background:var(--m-low)}.legend i.mk-none{background:var(--m-base)}.legend i.mk-south{background:var(--m-south)}
 ol.rank{margin:.3rem 0;padding-left:1.3rem}ol.rank li{margin:.2rem 0}
@@ -267,7 +267,7 @@ def _map_section(cfg, streets_data, by_zone, tz):
         if not zd:
             panels.append(f'<div class="mpanel" id="mp{i}"><p class="mute">No street data for {escape(label)} yet.</p></div>')
             continue
-        segs = streets.score_ways(zd["ways"], st, float(z.get("susceptibility", 1.0)))
+        segs = streets.score_ways(zd["ways"], st)            # no street is treated as spared: the zone factor applies to the score, not the map
         top = streets.top_streets(segs)
         ze = by_zone.get(key, {})
         now_e, ahead = ze.get("now"), ze.get("ahead")
@@ -279,11 +279,11 @@ def _map_section(cfg, streets_data, by_zone, tz):
         status.append("When conditions line up, the red streets are the ones to check first.")
         items = "".join(f"<li><b>{escape(t['name'])}</b>: {escape(', '.join(t['why']))}</li>" for t in top)
         panels.append(f'<div class="mpanel" id="mp{i}"><p class="sub">{escape(" ".join(status))}</p>'
-                      f'{streetmap.map_svg(segs, st, zd["center"], zd["radius_m"], i, top)}{streetmap.legend_html()}'
+                      f'{streetmap.map_svg(segs, st, zd["center"], zd["radius_m"], i, top, cfg.get("streets", {}).get("marks", []))}{streetmap.legend_html()}'
                       + (f'<h3 style="font-size:.95rem;margin:.6rem 0 0">Streets most likely to get it first</h3><ol class="rank">{items}</ol>' if items else "")
                       + "</div>")
     note = ('<p class="mute">A rule-of-thumb ranking, not a measurement: east-west streets, tree cover and parked cars raise the score, '
-            "porous surfaces lower it, and the south side of east-west streets is marked. Colours are scaled by the zone's susceptibility, so the control zone stays quiet. It cannot see building shade or how wet a "
+            "porous surfaces lower it, and the south side of east-west streets is marked. No street is assumed safe; the ring marks a spot where skaters have seen the road stay dry, which is an observation rather than a rule. It cannot see building shade or how wet a "
             'road really is. Streets &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL).</p>')
     return (head + f'<style>{"".join(css)}</style><div class="mapzone">{"".join(radios)}<div class="tabs">{"".join(tabs)}</div>'
             f'{"".join(panels)}</div>{note}</details>')

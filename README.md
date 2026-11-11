@@ -72,7 +72,7 @@ Needs Python 3.11+, nothing to install. Tests: `python3 -m unittest discover -s 
 ## Know the limits
 
 * Free model data is ~3 km at best. It can't see shade, trees or parked cars, so `susceptibility` per zone and your
-  field reports carry that part; the control zone should stay quiet. A cheap sensor on your block beats any free feed.
+  field reports carry that part; the Quintara & Fanning spot is only an observation that it tends to stay dry, so its report log is the check on whether that holds. A cheap sensor on your block beats any free feed.
 * Thresholds are educated guesses. Expect to retune after ~20-30 field reports.
 * Open-Meteo's best-match model over North America is NOAA's RRFS, replacing HRRR (feed retires 2026-11-30).
 * Weather data: Open-Meteo.com (CC BY 4.0), NOAA/NWS, Iowa Environmental Mesonet. Streets: OpenStreetMap contributors (ODbL). Experimental, not safety advice.

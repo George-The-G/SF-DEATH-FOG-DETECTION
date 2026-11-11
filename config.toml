@@ -35,10 +35,10 @@ susceptibility = 1.0
 obs_subs = { nws = ["KSFO"] }
 
 [zones.control_quintara]
-label = "Quintara / Fanning (control, should stay quiet)"
-lat = 37.7435
-lon = -122.4890
-susceptibility = 0.3
+label = "Quintara & Fanning (tends to be dry)"
+lat = 37.74884                     # the actual intersection, from OpenStreetMap
+lon = -122.47178
+susceptibility = 0.6               # skaters have seen this spot stay dry; an observation, not a rule, so only a mild guess
 obs_subs = { nws = ["KSFO"] }
 
 # ---------------------------------------------------------------------------
@@ -129,6 +129,11 @@ w_parking = 0.20                   # parked cars
 tree_full_per_100m = 10            # this many street trees per 100 m (both sides) counts as full cover; SF averages about 8
 parking_unknown = 0.5              # OpenStreetMap often lacks parking info: count unknown as half
 porous_factor = 0.6                # porous or unpaved surfaces are spared
+
+[[streets.marks]]                  # spots shown on the street map
+lat = 37.74884
+lon = -122.47178
+label = "Quintara & Fanning: tends to be dry (observed)"
 
 [site]
 version = "v2"
