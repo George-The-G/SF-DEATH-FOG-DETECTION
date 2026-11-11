@@ -48,12 +48,15 @@ footer{font-size:.8rem;color:var(--mute);margin:18px 0}
 
 
 # GitHub Pages lets browsers keep a page for ~10 minutes and we cannot change that header. So the page checks its own
-# build time: a stale cached copy reloads once with a unique ?t= (which always bypasses the cache), and an open page
-# does the same every 5 minutes. No requests leave the site; without JavaScript a plain meta refresh is used.
+# build time against the tiny status.json (a few KB, fetched past the cache). Only when a newer build exists does it
+# reload (with a unique ?t=); otherwise nothing is downloaded twice. It re-checks every 5 minutes. Nothing leaves the
+# site; without JavaScript a plain meta refresh is used.
 REFRESH_JS = ("(function(){try{var g=Date.parse(document.querySelector('meta[name=generated]').content),"
-              "u=function(){return location.pathname+'?t='+Date.now()};"
-              "if(!/[?&]t=/.test(location.search)&&Date.now()-g>12*6e4){location.replace(u());return}"
-              "setTimeout(function(){location.replace(u())},3e5)}catch(e){}})();")
+              "bust=function(){location.replace(location.pathname+'?t='+Date.now())},"
+              "check=function(){fetch('status.json?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.json()})"
+              ".then(function(j){var m=/[?&]t=(\\d+)/.exec(location.search);"
+              "if(Date.parse(j.generated_utc)>g+1000&&!(m&&Date.now()-m[1]<6e4))bust()}).catch(function(){})};"
+              "if(Date.now()-g>12*6e4)check();setInterval(check,3e5)}catch(e){}})();")
 
 TRIGGERS = [  # stack order (bottom to top), plain-English label, short phrase for the tooltip
     ("saturation", "Air is saturated (temp = dew point)"),

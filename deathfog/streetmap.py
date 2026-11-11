@@ -39,14 +39,14 @@ def map_svg(segs, st, center, radius_m, uid, top, marks=()):
            f'with the streets most likely to get death fog in red">',
            f'<defs><clipPath id="mc{uid}"><rect width="{SIZE}" height="{SIZE}" rx="10"/></clipPath></defs>',
            f'<rect class="mbg" width="{SIZE}" height="{SIZE}" rx="10"/><g clip-path="url(#mc{uid})">']
-    if drawn["none"]:       # the many grey streets are one path with no tooltips: keeps the page small
-        d = "".join(f"M{x1:.0f} {y1:.0f}L{x2:.0f} {y2:.0f}" for x1, y1, x2, y2, _ in drawn["none"])
-        out.append(f'<path class="ms-none" fill="none" d="{d}"/>')
-    for b in ("low", "mid", "hi"):
-        for x1, y1, x2, y2, tip in drawn[b]:
-            out.append(f'<line class="ms-{b}" x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}"><title>{escape(tip)}</title></line>')
-    for x1, y1, x2, y2 in south:
-        out.append(f'<line class="msouth" x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}"/>')
+    # one path per colour band (no per-street tooltips: they do not work on phones, and this keeps the page small)
+    for b in ("none", "low", "mid", "hi"):
+        if drawn[b]:
+            d = "".join(f"M{x1:.0f} {y1:.0f}L{x2:.0f} {y2:.0f}" for x1, y1, x2, y2, _ in drawn[b])
+            out.append(f'<path class="ms-{b}" fill="none" d="{d}"/>')
+    if south:
+        d = "".join(f"M{x1:.0f} {y1:.0f}L{x2:.0f} {y2:.0f}" for x1, y1, x2, y2 in south)
+        out.append(f'<path class="msouth" fill="none" d="{d}"/>')
     # labels for the top streets, placed on their longest stretch inside the frame
     for t in top[:4]:
         best, best_len = None, 0

@@ -199,6 +199,7 @@ class TestSite(unittest.TestCase):
         html = self.render()
         self.assertIn('<meta name="generated" content="2026-11-12T10:00:00Z">', html)
         self.assertIn("?t=", html)
+        self.assertIn("status.json", html)                                  # a stale copy checks the tiny status file first
         self.assertIn('<noscript><meta http-equiv="refresh"', html)
 
     def test_stale_banner(self):
