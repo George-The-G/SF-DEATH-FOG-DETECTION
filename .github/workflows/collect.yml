@@ -48,7 +48,9 @@ jobs:
           fi
 
       - name: Download street data for the map (first run, or when zones change)
-        run: python3 run.py streets --if-missing || true
+        timeout-minutes: 5
+        continue-on-error: true
+        run: python3 run.py streets --if-missing
 
       - name: Collect, score, alert
         run: python3 run.py collect

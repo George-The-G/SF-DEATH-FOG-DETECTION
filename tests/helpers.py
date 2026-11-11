@@ -89,8 +89,11 @@ OVERPASS_PAYLOAD = {"elements": [
          **{"parking:lane:both": "parallel"}),
     _way(2, "Missouri St", [(37.7570, -122.4000), (37.7585, -122.4000), (37.7600, -122.4000), (37.7615, -122.4000)],
          **{"parking:lane:both": "no", "surface": "concrete"}),
-] + [{"type": "node", "id": 100 + k, "lat": 37.75956, "lon": -122.4020 + 0.0002 * k, "tags": {"natural": "tree"}}
-     for k in range(15)]}
+]}
+TREES = [(37.75956, -122.4020 + 0.0002 * k) for k in range(15)]
+SF_TREE_ROWS = [{"latitude": str(a), "longitude": str(b)} for a, b in TREES]       # DataSF street tree list rows
+OSM_TREE_PAYLOAD = {"elements": [{"type": "node", "id": 100 + k, "lat": a, "lon": b, "tags": {"natural": "tree"}}
+                                 for k, (a, b) in enumerate(TREES)]}
 
 
 class FakeHttp:
@@ -107,8 +110,10 @@ class FakeHttp:
             return om_payload(self.zones)
         if "api.weather.gov/stations" in url:
             return NWS_PAYLOAD
+        if "tkzw-k3nq" in url:
+            return SF_TREE_ROWS
         if "overpass" in url:
-            return OVERPASS_PAYLOAD
+            return OSM_TREE_PAYLOAD if "natural" in params["data"] else OVERPASS_PAYLOAD
         if "purpleair" in url:
             return PA_PAYLOAD
         raise AssertionError(url)

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from datetime import timedelta
 
-from helpers import IEM_TEXT, NOW, OVERPASS_PAYLOAD, FakeHttp, make_cfg
+from helpers import IEM_TEXT, NOW, OVERPASS_PAYLOAD, TREES, FakeHttp, make_cfg
 
 from deathfog import baseline, collect, db, engine, reports, site, streets  # noqa: E402
 from deathfog import sources as _s  # noqa: E402,F401
@@ -228,7 +228,7 @@ class TestStreets(unittest.TestCase):
         self.cfg = make_cfg()
         self.cfg["zones"]["potrero"].update(lat=37.7595, lon=-122.4000)
         self.st = streets.settings(self.cfg)
-        self.ways = streets.parse_overpass(OVERPASS_PAYLOAD, 37.7595, -122.4000)
+        self.ways = streets.parse_overpass(OVERPASS_PAYLOAD, 37.7595, -122.4000, TREES)
 
     def test_trees_counted_per_stretch_and_parking_read(self):
         by = {w["name"]: w for w in self.ways}
@@ -275,6 +275,40 @@ class TestStreets(unittest.TestCase):
             self.cfg["zones"]["potrero"]["lat"] = 37.76                              # zone moved: only it is refetched
             streets.run_streets(self.cfg, http, NOW, path=path, sleep=0)
             self.assertEqual(sum("overpass" in c[0] for c in http.calls), 3)
+
+    def test_trees_come_from_the_sf_list_then_osm_then_none(self):
+        from deathfog.http import HttpError
+
+        class NoSf(FakeHttp):
+            def get_json(self, url, params=None, headers=None):
+                if "tkzw-k3nq" in url:
+                    raise HttpError(500, "sf down")
+                return super().get_json(url, params, headers)
+
+        class NoTrees(NoSf):
+            def get_json(self, url, params=None, headers=None):
+                if "overpass" in url and "natural" in params["data"]:
+                    raise HttpError(504, "busy")
+                return super().get_json(url, params, headers)
+        z = self.cfg["zones"]["potrero"]
+        for cls, source, has_trees in ((FakeHttp, "sf_street_tree_list", True), (NoSf, "osm", True), (NoTrees, "none", False)):
+            ways, src = streets.fetch_zone(cls(), z["lat"], z["lon"], 700)
+            self.assertEqual(src, source)
+            self.assertEqual(sum(sum(w["trees"]) for w in ways) > 5, has_trees)
+        with tempfile.TemporaryDirectory() as d:                                  # no trees: saved, reported, and retried next run
+            path = os.path.join(d, "s.json")
+            res = streets.run_streets(self.cfg, NoTrees(), NOW, path=path, sleep=0)
+            self.assertTrue(res["fetched"] and any("no tree data" in n for n in res["notes"]))
+            data = streets.load(path)
+            self.assertFalse(streets.is_current(data, "potrero", z, 700))
+            streets.run_streets(self.cfg, FakeHttp(), NOW, path=path, sleep=0)
+            self.assertTrue(streets.is_current(streets.load(path), "potrero", z, 700))
+
+    def test_out_of_time_skips_remaining_zones(self):
+        with tempfile.TemporaryDirectory() as d:
+            res = streets.run_streets(self.cfg, FakeHttp(), NOW, path=os.path.join(d, "s.json"), sleep=0, max_seconds=-1)
+            self.assertFalse(res["fetched"])
+            self.assertTrue(all("out of time" in n for n in res["notes"]) and len(res["notes"]) == 2)
 
     def test_fetch_failure_is_reported_not_raised_and_mirror_is_tried(self):
         from deathfog.http import HttpError

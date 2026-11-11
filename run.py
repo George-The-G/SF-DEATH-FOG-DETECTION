@@ -112,9 +112,8 @@ def cmd_baseline(args):
 def cmd_streets(args):
     cfg, _, http = setup(args)
     path = streets.streets_path(cfg)
-    if args.if_missing and os.path.exists(path) and all(
-            (streets.load(path) or {}).get("zones", {}).get(n, {}).get("key") == streets._key(z, streets.settings(cfg)["radius_m"])
-            for n, z in cfg["zones"].items()):
+    data = streets.load(path)
+    if args.if_missing and data and all(streets.is_current(data, n, z, streets.settings(cfg)["radius_m"]) for n, z in cfg["zones"].items()):
         print("street data already current; skipping")
         return
     res = streets.run_streets(cfg, http, utcnow(), path=path, force=args.force)
