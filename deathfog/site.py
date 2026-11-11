@@ -36,7 +36,7 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}td,th{text-align:left;
 .why{margin:.2rem 0 0}.why h3{font-size:.95rem;margin:.6rem 0 0}
 details.card>summary{cursor:pointer;font-size:1.1rem;font-weight:600;list-style-position:inside}details.card[open]>summary{margin-bottom:8px}
 .mapzone>input{position:absolute;opacity:0;pointer-events:none}.mpanel{display:none}.map{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:10px}
-.map .mbg{fill:var(--m-bg)}.map line{stroke-linecap:round}.map .ms-none{stroke:var(--m-base);stroke-width:1.5}.map .ms-low{stroke:var(--m-low);stroke-width:2.4}
+.map .mbg{fill:var(--m-bg)}.map line,.map path{stroke-linecap:round;stroke-linejoin:round}.map .ms-none{stroke:var(--m-base);stroke-width:1.5}.map .ms-low{stroke:var(--m-low);stroke-width:2.4}
 .map .ms-mid{stroke:var(--m-mid);stroke-width:3}.map .ms-hi{stroke:var(--m-hi);stroke-width:3.8}.map .msouth{stroke:var(--m-south);stroke-width:1.4;opacity:.9}
 .map .ml{font-size:11px;font-weight:600;fill:var(--ink);stroke:var(--m-bg);stroke-width:3;paint-order:stroke}.map .mt{font-size:11px;fill:var(--mute)}
 .map .mcenter{fill:var(--ink);stroke:var(--m-bg);stroke-width:2}.map .mscale{stroke:var(--ink);stroke-width:2}.map .mnorth{fill:var(--ink)}
