@@ -1,0 +1,124 @@
+# deathfog configuration. Paths are relative to this file. Nothing secret goes in here: on GitHub the
+# NWS contact, ntfy topic, form link and form-CSV link come from repository secrets/variables
+# (see README), which override the matching keys below.
+
+[general]
+data_dir = "data"                  # database + baseline live here (the workflow uses "state")
+timezone = "America/Los_Angeles"
+# NWS wants a User-Agent that identifies you; a project URL is fine.
+user_agent = "(deathfog-sf, https://github.com/George-The-G/SF-DEATH-FOG-DETECTION)"
+plugin_dir = "plugins"             # drop .py files here to add sources or detectors
+retention_days_model = 1           # only the newest model issue is ever scored; keeps the database small
+report_url = ""                    # link to your Google Form; shown on the page and in every alert
+
+# ---------------------------------------------------------------------------
+# Zones. Coordinates are APPROXIMATE placeholders: replace with your real spots.
+# susceptibility scales the weather score for that zone's street geometry:
+#   >1 = east-west blocks, south side, trees/parked cars, shaded; <1 = sunny / porous pavement.
+# Zones within ~3 km share a model grid cell, so susceptibility is what tells them apart until
+# you have your own sensors or enough field reports to tune it.
+# obs_subs: which instruments of each source count for this zone (omit to accept all of them).
+# ---------------------------------------------------------------------------
+[zones.potrero_hill]
+label = "Potrero Hill"
+lat = 37.7595
+lon = -122.4000
+susceptibility = 1.0
+obs_subs = { nws = ["KSFO"] }
+# purpleair_sensors = [12345]
+
+[zones.back_side_9]
+label = "Back Side 9 (Sunset)"
+lat = 37.7530
+lon = -122.4660
+susceptibility = 1.0
+obs_subs = { nws = ["KSFO"] }
+
+[zones.control_quintara]
+label = "Quintara / Fanning (control, should stay quiet)"
+lat = 37.7435
+lon = -122.4890
+susceptibility = 0.3
+obs_subs = { nws = ["KSFO"] }
+
+# ---------------------------------------------------------------------------
+# Sources (adapters: provider data in, normalised Readings out).
+# interval_min is how often THIS source is fetched; run the job every 10 minutes and each source
+# decides for itself whether it is due. daily_budget is a hard stop in the source's own cost units.
+# ---------------------------------------------------------------------------
+[sources.nws]
+enabled = true
+interval_min = 10
+stations = ["KSFO"]                # find nearer ones with: python run.py nws-stations
+daily_budget = 1000
+
+[sources.openmeteo]
+enabled = true
+interval_min = 30                  # model output only changes every hour or so; 10 would waste calls
+daily_budget = 6000                # stay well under the 10,000/day free limit
+# models = ""                      # empty = Open-Meteo's best match (NOAA RRFS over North America)
+
+[sources.purpleair]
+enabled = false                    # needs PURPLEAIR_API_KEY in the environment and sensors on zones
+interval_min = 10
+api_key_env = "PURPLEAIR_API_KEY"
+daily_budget = 20000               # points per day
+temp_offset_c = 0.0                # calibrate: PurpleAir reads warm/dry; compare against KSFO
+rh_offset_pct = 0.0
+
+[sources.goes_fog]
+type = "snapshot"
+enabled = false
+interval_min = 30
+url = ""                           # paste a GOES-West image link from goes.noaa.gov/wfo.php?wfo=mtr
+daily_budget = 100
+
+# [sources.my_logger]              # example plugin source, see plugins/example_local_csv.py
+# type = "local_csv"
+# enabled = true
+# interval_min = 10
+# path = "data/backside9_logger.csv"
+# zone = "back_side_9"
+
+# ---------------------------------------------------------------------------
+# State builder: how stored readings from different sources become the detector's input.
+# ---------------------------------------------------------------------------
+[state]
+model_source = "openmeteo"
+obs_sources = ["purpleair", "nws"] # first one with fresh data wins; the model fills gaps (wind, sun, history)
+obs_max_age_min = 90
+lookahead_hours = 12
+
+# ---------------------------------------------------------------------------
+# Detector (pure scoring of one WeatherState). Everything except `type` is passed to it as params.
+# Starting guesses: tune them with `python run.py verify` once reports come in.
+# ---------------------------------------------------------------------------
+[detector]
+type = "death_fog_v1"
+spread_hit_c = 2.0                 # temp minus dew point
+spread_watch_c = 4.0
+rh_min = 90
+wind_max_mph = 8
+swing_min_c = 8                    # 24h high minus now (warm day -> cool night)
+cool_rate_c_3h = 3
+solar_max_wm2 = 20
+rain_mm = 0.2
+watch = 40
+likely = 60
+strong = 80
+
+[notify]
+type = "stdout"                    # becomes "ntfy" automatically when a ntfy topic secret is set
+alert_min_level = "likely"
+cooldown_hours = 4
+
+[reports]
+# form_csv_url = ""                # "Publish to web" CSV link of the form's response sheet (set via repo variable)
+interval_min = 30
+
+[baseline]
+# model_endpoint = "https://historical-forecast-api.open-meteo.com/v1/forecast"
+
+[site]
+dir = "site"
+stale_min = 60                     # show a warning banner when no source has fetched for this long

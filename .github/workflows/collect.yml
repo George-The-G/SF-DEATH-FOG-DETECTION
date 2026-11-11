@@ -1,0 +1,86 @@
+name: collect
+
+# Runs the whole tool on GitHub: fetch weather, score the zones, send alerts, publish the status page.
+# State (database, baseline) lives on the `data` branch as a single force-pushed commit.
+on:
+  schedule:
+    - cron: "*/10 * * * *"        # GitHub may start runs a few minutes late; that is fine for fog
+  workflow_dispatch:
+    inputs:
+      rebuild_baseline:
+        description: "Rebuild the 30-day baseline from scratch"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write                  # push the `data` branch
+
+concurrency:
+  group: deathfog-collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DEATHFOG_DATA_DIR: state
+      DEATHFOG_SITE_DIR: site
+      # Optional secrets/variables: the page works without any of them.
+      DEATHFOG_USER_AGENT: ${{ secrets.DEATHFOG_USER_AGENT || format('(deathfog-sf, {0}/{1})', github.server_url, github.repository) }}
+      DEATHFOG_NTFY_TOPIC: ${{ secrets.DEATHFOG_NTFY_TOPIC }}
+      DEATHFOG_REPORT_URL: ${{ vars.DEATHFOG_REPORT_URL }}
+      DEATHFOG_FORM_CSV_URL: ${{ vars.DEATHFOG_FORM_CSV_URL }}
+      REMOTE_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore state from the data branch
+        run: bash scripts/state_restore.sh state
+
+      - name: Backfill the 30-day baseline (first run, or when asked)
+        run: |
+          if [ "${{ inputs.rebuild_baseline }}" = "true" ]; then
+            python3 run.py baseline
+          else
+            python3 run.py baseline --if-missing
+          fi
+
+      - name: Collect, score, alert
+        run: python3 run.py collect
+
+      - name: Build the status page
+        run: python3 run.py site
+
+      - name: Summary
+        run: |
+          {
+            echo '### Current scores'
+            echo '```'
+            python3 run.py evaluate | grep -v '^    ' || true
+            echo '```'
+            echo '### 30-day baseline'
+            echo '```'
+            python3 run.py baseline --show || echo "not built yet"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save state to the data branch
+        run: bash scripts/state_save.sh state
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: collect
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
