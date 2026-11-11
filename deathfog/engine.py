@@ -49,6 +49,28 @@ def evaluate_zone(conn, cfg, zname, now, detector=None):
     return out
 
 
+def timeline(conn, cfg, zname, now, back_hours=12, ahead_hours=24, detector=None):
+    """Hour-by-hour scores around `now` for the chart. Each entry splits its score into per-trigger points
+    (`parts`, already scaled by susceptibility and any rain cap) so a chart can show *why* it is high."""
+    detector = detector or build_detector(cfg)
+    susc = float(cfg["zones"][zname].get("susceptibility", 1.0))
+    model_src = cfg.get("state", {}).get("model_source", "openmeteo")
+    series = states.model_series(conn, model_src, zname)
+    out = []
+    for i, r in enumerate(series):
+        if not (now - timedelta(hours=back_hours) <= r["_t"] <= now + timedelta(hours=ahead_hours)):
+            continue
+        raw, reasons = detector.score(states.state_from_model(series, i, model_src))
+        score = min(100.0, raw * susc)
+        hits = [x for x in reasons if x["hit"] and x["points"]]
+        total = sum(x["points"] for x in hits)
+        k = score / total if total else 0.0
+        out.append({"valid_utc": r["valid_utc"], "t": r["_t"], "score": score, "level": detector.level_for(score),
+                    "parts": {x["trigger"]: x["points"] * k for x in hits}, "why": [(x["trigger"], x["detail"]) for x in hits],
+                    "rain": any(x["trigger"] == "rain_veto" and x["hit"] for x in reasons)})
+    return out
+
+
 def evaluate_all(conn, cfg, now):
     detector = build_detector(cfg)
     evals = []

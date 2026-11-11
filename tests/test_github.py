@@ -155,6 +155,28 @@ class TestSite(unittest.TestCase):
             self.assertIn(needle, html)
         self.assertNotIn("Data is stale", html)
 
+    def test_chart_is_first_and_explains_why(self):
+        html = self.render()
+        self.assertLess(html.index("Death fog chance"), html.index("Next 12 hours"))     # graph sits above the zone cards
+        for needle in ('<svg class="chart"', 'id="zs0"', 'id="zs1"', "Calm wind", "No sun", "Why it may happen", ">now<"):
+            self.assertIn(needle, html)
+        self.assertNotIn("<script", html.lower())
+
+    def test_timeline_parts_add_up_to_score(self):
+        for z in self.cfg["zones"]:
+            tl = engine.timeline(self.conn, self.cfg, z, NOW)
+            self.assertGreater(len(tl), 20)
+            self.assertTrue(any(h["t"] < NOW for h in tl) and any(h["t"] > NOW for h in tl))   # past and future both shown
+            for h in tl:
+                self.assertAlmostEqual(sum(h["parts"].values()), h["score"], places=6)
+
+    def test_chart_without_forecast_data_and_hostile_label(self):
+        self.cfg["zones"]["potrero"]["label"] = "<b>x</b>"
+        self.conn.execute("DELETE FROM readings WHERE zone='control'")
+        html = self.render()
+        self.assertIn("No forecast data for Control yet", html)
+        self.assertNotIn("<b>x</b>", html)
+
     def test_stale_banner(self):
         self.assertIn("Data is stale", self.render(now=NOW + timedelta(hours=3)))
 

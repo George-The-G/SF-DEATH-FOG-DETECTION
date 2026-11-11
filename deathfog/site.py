@@ -3,6 +3,7 @@ import json
 import pathlib
 from datetime import timedelta
 from html import escape
+from zoneinfo import ZoneInfo
 
 from . import db, engine, reports
 from .collect import build_sources
@@ -11,8 +12,8 @@ from .util import hour_label, iso, local_hour, local_str, parse_iso
 LEVEL_TEXT = {"none": "Quiet", "watch": "Watch", "likely": "Likely", "strong": "Strong"}
 
 CSS = """
-:root{--bg:#f6f7f9;--card:#fff;--ink:#16202a;--mute:#5b6773;--line:#dde2e8;--none:#d9e4dc;--watch:#f4e3a1;--likely:#f6b26b;--strong:#e06666;--btn:#16202a;--btnink:#fff}
-@media (prefers-color-scheme:dark){:root{--bg:#0f1419;--card:#1a222b;--ink:#e8edf2;--mute:#9aa7b4;--line:#2c3743;--none:#2a3a30;--watch:#6b5d1f;--likely:#8a5a1f;--strong:#8f2d2d;--btn:#e8edf2;--btnink:#0f1419}}
+:root{--bg:#f6f7f9;--card:#fff;--ink:#16202a;--mute:#5b6773;--line:#dde2e8;--none:#d9e4dc;--watch:#f4e3a1;--likely:#f6b26b;--strong:#e06666;--btn:#16202a;--btnink:#fff;--c-sat:#1f5fa8;--c-near:#7fb2e5;--c-calm:#8a6fb0;--c-swing:#d9822b;--c-cool:#2a9d8f;--c-sun:#7b8794}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1419;--card:#1a222b;--ink:#e8edf2;--mute:#9aa7b4;--line:#2c3743;--none:#2a3a30;--watch:#6b5d1f;--likely:#8a5a1f;--strong:#8f2d2d;--btn:#e8edf2;--btnink:#0f1419;--c-sat:#5b9be0;--c-near:#3d6a9a;--c-calm:#a78bd0;--c-swing:#e39a4d;--c-cool:#4fc1b2;--c-sun:#8fa0b3}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 main{max-width:720px;margin:0 auto;padding:16px}h1{font-size:1.4rem;margin:.2rem 0}h2{font-size:1.1rem;margin:0}
 .sub,.mute{color:var(--mute);font-size:.9rem}.banner{background:var(--strong);color:#fff;padding:10px 12px;border-radius:8px;margin:10px 0}
@@ -24,8 +25,129 @@ ul{margin:.4rem 0 .6rem;padding-left:1.1rem}.strip{display:flex;flex-wrap:wrap;g
 .blk{min-width:2.1rem;text-align:center;font-size:.75rem;padding:4px 2px;border-radius:5px}
 a.btn{display:block;text-align:center;background:var(--btn);color:var(--btnink);padding:12px;border-radius:10px;text-decoration:none;font-weight:600;margin:12px 0}
 table{width:100%;border-collapse:collapse;font-size:.9rem}td,th{text-align:left;padding:5px 4px;border-bottom:1px solid var(--line)}
+.hero{padding:14px 12px}.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.hero>input{position:absolute;opacity:0;pointer-events:none}.tabs label{padding:6px 12px;border:1px solid var(--line);border-radius:99px;font-size:.9rem;cursor:pointer}
+.panel{display:none}.chart{width:100%;height:auto;display:block}.chart text{fill:var(--mute);font-size:12px}.chart .nowl{stroke:var(--ink);stroke-width:1.5;stroke-dasharray:4 3}
+.chart .nowt{fill:var(--ink);font-weight:600}.chart .grid{stroke:var(--line);stroke-dasharray:3 3}.chart .past{opacity:.5}.chart rect.bar{stroke:var(--card);stroke-width:.6}
+.chart .b-w{fill:var(--watch)}.chart .b-l{fill:var(--likely)}.chart .b-s{fill:var(--strong)}.chart .band{opacity:.28}
+.t-saturation{fill:var(--c-sat)}.t-saturation_near{fill:var(--c-near)}.t-calm{fill:var(--c-calm)}.t-swing{fill:var(--c-swing)}.t-cooling{fill:var(--c-cool)}.t-no_sun{fill:var(--c-sun)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.8rem;color:var(--mute);margin:6px 0}.legend i{display:inline-block;width:.8em;height:.8em;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.why{margin:.2rem 0 0}.why h3{font-size:.95rem;margin:.6rem 0 0}
 footer{font-size:.8rem;color:var(--mute);margin:18px 0}
 """
+
+
+TRIGGERS = [  # stack order (bottom to top), plain-English label, short phrase for the tooltip
+    ("saturation", "Air is saturated (temp = dew point)"),
+    ("saturation_near", "Air close to saturated"),
+    ("swing", "Big drop from today's high"),
+    ("cooling", "Cooling fast"),
+    ("calm", "Calm wind"),
+    ("no_sun", "No sun"),
+]
+_LABEL = dict(TRIGGERS)
+CW, CH, ML, MR, MT, MB = 480, 262, 30, 50, 24, 34
+
+
+def _local(dt, tz):
+    return dt.astimezone(ZoneInfo(tz))
+
+
+def _chart_svg(tl, now, tz, thresholds):
+    """Stacked hourly bars: height = death-fog score (0-100), colours = which triggers add up to it."""
+    pw, ph = CW - ML - MR, CH - MT - MB
+    y = lambda v: MT + ph * (1 - v / 100.0)
+    step = pw / len(tl)
+    bw = step * 0.78
+    out = [f'<svg class="chart" viewBox="0 0 {CW} {CH}" role="img" aria-label="Death fog score by hour, past 12 hours and next 24 hours">']
+    lo = {"watch": thresholds.get("watch", 40), "likely": thresholds.get("likely", 60), "strong": thresholds.get("strong", 80)}
+    for cls, a, b, name in (("b-w", lo["watch"], lo["likely"], "Watch"), ("b-l", lo["likely"], lo["strong"], "Likely"),
+                            ("b-s", lo["strong"], 100, "Strong")):
+        out.append(f'<rect class="band {cls}" x="{ML}" y="{y(b):.1f}" width="{pw}" height="{y(a) - y(b):.1f}"/>'
+                   f'<text x="{ML + pw + 4}" y="{(y(a) + y(b)) / 2 + 4:.1f}">{name}</text>')
+    for v in (lo["watch"], lo["likely"], lo["strong"]):
+        out.append(f'<line class="grid" x1="{ML}" x2="{ML + pw}" y1="{y(v):.1f}" y2="{y(v):.1f}"/>'
+                   f'<text x="{ML - 4}" y="{y(v) + 4:.1f}" text-anchor="end">{v:g}</text>')
+    out.append(f'<text x="{ML - 4}" y="{y(0) + 4:.1f}" text-anchor="end">0</text>')
+    now_x = None
+    for i, h in enumerate(tl):
+        x0 = ML + i * step + (step - bw) / 2
+        base, tips = 0.0, []
+        bars = []
+        for key, _ in TRIGGERS:
+            v = h["parts"].get(key, 0)
+            if v <= 0:
+                continue
+            bars.append(f'<rect class="bar t-{key}" x="{x0:.1f}" y="{y(base + v):.1f}" width="{bw:.1f}" height="{y(base) - y(base + v):.1f}"/>')
+            tips.append(f"{_LABEL[key]} +{v:.0f}")
+            base += v
+        t = h["t"]
+        lt = _local(t, tz)
+        tip = f'{lt.strftime("%a")} {hour_label(t, tz)}: {LEVEL_TEXT[h["level"]]} ({h["score"]:.0f})' + (" - " + "; ".join(tips) if tips else "")
+        if h["rain"]:
+            tip += " (rain keeps this low: a different problem)"
+        out.append(f'<g class="{"past" if t <= now else ""}"><title>{escape(tip)}</title>'
+                   f'<rect x="{x0 - 1:.1f}" y="{MT}" width="{bw + 2:.1f}" height="{ph}" fill="transparent"/>{"".join(bars)}</g>')
+        if now_x is None and t > now:
+            prev = tl[i - 1]["t"] if i else None
+            frac = ((now - prev).total_seconds() / (t - prev).total_seconds()) if prev else 0
+            now_x = ML + (i - 1 + frac) * step + step / 2 if i else ML
+        if lt.hour % 3 == 0:
+            cx = ML + i * step + step / 2
+            out.append(f'<text x="{cx:.1f}" y="{CH - 18}" text-anchor="middle">{hour_label(t, tz)}</text>')
+            if lt.hour == 0:
+                out.append(f'<line class="grid" x1="{cx:.1f}" x2="{cx:.1f}" y1="{MT}" y2="{MT + ph}"/>'
+                           f'<text x="{cx + 3:.1f}" y="{CH - 4}">{lt.strftime("%a")}</text>')
+    if now_x is not None:
+        out.append(f'<line class="nowl" x1="{now_x:.1f}" x2="{now_x:.1f}" y1="{MT}" y2="{MT + ph}"/>'
+                   f'<text class="nowt" x="{now_x:.1f}" y="{MT - 8}" text-anchor="middle">now</text>')
+    out.append("</svg>")
+    return "".join(out)
+
+
+def _why_html(tl, now, tz):
+    future = [h for h in tl if h["t"] > now - timedelta(minutes=30)] or tl
+    peak = max(future, key=lambda h: h["score"])
+    lp = _local(peak["t"], tz)
+    when = f"{lp.strftime('%a')} {lp.hour % 12 or 12} {'AM' if lp.hour < 12 else 'PM'}"
+    head = (f"Why it may happen around {when}: {LEVEL_TEXT[peak['level']].lower()} ({peak['score']:.0f})"
+            if peak["level"] != "none" else f"Closest it gets ({when}): {peak['score']:.0f}, still quiet")
+    if peak["why"]:
+        items = "<ul>" + "".join(f"<li><b>{escape(_LABEL.get(w[0], w[0]))}:</b> {escape(w[1])}</li>" for w in peak["why"]) + "</ul>"
+    else:
+        items = '<p class="mute">No triggers firing.</p>'
+    rain = '<p class="mute">Rain is expected, which caps the score: wet roads from rain are a different problem.</p>' if peak["rain"] else ""
+    return f'<div class="why"><h3>{escape(head)}</h3>{items}{rain}</div>'
+
+
+def _hero_html(cfg, conn, by_zone, now, tz):
+    """The chart at the top of the page: one tab per zone, switched with plain CSS (no JavaScript)."""
+    zones = list(cfg["zones"].items())
+    thresholds = {k: cfg.get("detector", {}).get(k, d) for k, d in (("watch", 40), ("likely", 60), ("strong", 80))}
+    look_back, look_ahead = cfg.get("site", {}).get("chart_back_hours", 12), cfg.get("site", {}).get("chart_ahead_hours", 24)
+    radios, tabs, panels, css = [], [], [], []
+    for i, (key, z) in enumerate(zones):
+        label = z.get("label", key)
+        radios.append(f'<input type="radio" name="zone" id="zs{i}"{" checked" if i == 0 else ""}>')
+        tabs.append(f'<label for="zs{i}">{escape(label)}</label>')
+        css.append(f"#zs{i}:checked~#zp{i}{{display:block}}#zs{i}:checked~.tabs label[for=zs{i}]{{background:var(--btn);color:var(--btnink);border-color:var(--btn)}}"
+                   f"#zs{i}:focus-visible~.tabs label[for=zs{i}]{{outline:2px solid var(--c-sat);outline-offset:2px}}")
+        tl = engine.timeline(conn, cfg, key, now, look_back, look_ahead)
+        now_e = by_zone.get(key, {}).get("now")
+        if len(tl) < 3:
+            panels.append(f'<div class="panel" id="zp{i}"><p class="mute">No forecast data for {escape(label)} yet.</p></div>')
+            continue
+        cur = now_e or min(tl, key=lambda h: abs((h["t"] - now).total_seconds()))
+        pill = f'<span class="pill lvl-{cur["level"]}">Now: {LEVEL_TEXT[cur["level"]]} · {cur["score"]:.0f}</span>'
+        panels.append(f'<div class="panel" id="zp{i}"><div class="top"><h2>{escape(label)}</h2>{pill}</div>'
+                      f'{_chart_svg(tl, now, tz, thresholds)}{_why_html(tl, now, tz)}</div>')
+    legend = '<div class="legend">' + "".join(f'<span><i class="t-{k}" style="background:var(--c-{c})"></i>{escape(t)}</span>' for (k, t), c in
+                                              zip(TRIGGERS, ("sat", "near", "swing", "cool", "calm", "sun"))) + "</div>"
+    return (f'<section class="card hero"><style>{"".join(css)}</style><h2>Death fog chance</h2>'
+            '<p class="sub">Each bar is one hour. Taller = more likely; colours show what is adding up. '
+            'Faded bars are the past 12 hours, the rest is the forecast.</p>'
+            f'{"".join(radios)}<div class="tabs">{"".join(tabs)}</div>{"".join(panels)}{legend}'
+            '<p class="mute">The score is a rule-of-thumb index from weather data, not a measured probability.</p></section>')
 
 
 def _reasons_html(e):
@@ -99,6 +221,7 @@ def render(cfg, conn, evals, baseline, now):
     by_zone = {}
     for e in evals:
         by_zone.setdefault(e["zone"], {})[e["mode"]] = e
+    hero = _hero_html(cfg, conn, by_zone, now, tz)
     cards = "".join(_zone_card(z.get("label", k), by_zone.get(k, {}).get("now"), by_zone.get(k, {}).get("ahead"), tz)
                     for k, z in cfg["zones"].items())
     form = cfg["general"].get("report_url", "")
@@ -108,7 +231,7 @@ def render(cfg, conn, evals, baseline, now):
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="300"><title>SF Death Fog Watch</title><style>{CSS}</style></head><body><main>
 <h1>SF Death Fog Watch</h1><p class="sub">Slippery-road mist risk for skaters. Weather data last fetched {escape(updated)}. Updates about every 10 minutes.</p>
-{banner}{cards}{cta}{_baseline_html(baseline, tz)}{_verify_html(conn)}
+{banner}{hero}{cards}{cta}{_baseline_html(baseline, tz)}{_verify_html(conn)}
 <footer>Experimental hobby tool, not safety advice: judge the road yourself. Scores come from weather data, not from looking
 at your street. Weather data: <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0), NOAA National Weather Service,
 Iowa Environmental Mesonet.</footer></main></body></html>"""
