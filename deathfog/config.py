@@ -7,6 +7,7 @@ ENV = [("DEATHFOG_USER_AGENT", "general", "user_agent"),
        ("DEATHFOG_REPORT_URL", "general", "report_url"),
        ("DEATHFOG_DATA_DIR", "general", "data_dir"),
        ("DEATHFOG_SITE_DIR", "site", "dir"),
+       ("DEATHFOG_REPO_URL", "site", "repo_url"),
        ("DEATHFOG_FORM_CSV_URL", "reports", "form_csv_url"),
        ("DEATHFOG_NTFY_TOPIC", "notify", "ntfy_topic")]
 

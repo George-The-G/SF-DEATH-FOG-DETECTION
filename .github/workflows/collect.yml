@@ -26,6 +26,7 @@ jobs:
     env:
       DEATHFOG_DATA_DIR: state
       DEATHFOG_SITE_DIR: site
+      DEATHFOG_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
       # Optional secrets/variables: the page works without any of them.
       DEATHFOG_USER_AGENT: ${{ secrets.DEATHFOG_USER_AGENT || format('(deathfog-sf, {0}/{1})', github.server_url, github.repository) }}
       DEATHFOG_NTFY_TOPIC: ${{ secrets.DEATHFOG_NTFY_TOPIC }}

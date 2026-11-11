@@ -6,6 +6,7 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from . import db, engine, reports
+from .detectors import build_detector
 from .collect import build_sources
 from .util import hour_label, iso, local_hour, local_str, parse_iso
 
@@ -147,7 +148,87 @@ def _hero_html(cfg, conn, by_zone, now, tz):
             '<p class="sub">Each bar is one hour. Taller = more likely; colours show what is adding up. '
             'Faded bars are the past 12 hours, the rest is the forecast.</p>'
             f'{"".join(radios)}<div class="tabs">{"".join(tabs)}</div>{"".join(panels)}{legend}'
-            '<p class="mute">The score is a rule-of-thumb index from weather data, not a measured probability.</p></section>')
+            '<p class="mute">The score is a rule-of-thumb index from weather data, not a measured probability. '
+            '<a href="#how">How it is calculated</a> &middot; <a href="#sources">where the data comes from</a></p></section>')
+
+
+SOURCE_INFO = {   # what each built-in source type is, shown on the page (plugins fall back to their type name)
+    "nws": ("NWS station observations", "https://www.weather.gov/documentation/services-web-api",
+            "Real measurements (temperature, dew point, humidity, wind) from {stations}. When fresh, these override the model for the 'right now' score."),
+    "openmeteo": ("Open-Meteo forecast model", "https://open-meteo.com/",
+                  "Hourly model output at each zone's coordinates (best-match model, NOAA's over North America): temperature, dew point, humidity, "
+                  "wind, sunshine, rain. Supplies the forecast, the past 36 hours for the 24-hour swing, and anything the stations lack. CC BY 4.0."),
+    "purpleair": ("PurpleAir street sensors", "https://www.purpleair.com/",
+                  "Community sensors near the zones: temperature and humidity measured on the block."),
+    "goes_fog": ("NOAA GOES-West satellite imagery", "https://www.star.nesdis.noaa.gov/GOES/",
+                 "Fog imagery snapshot, for a visual check only."),
+}
+
+
+def _links(cfg):
+    repo = (cfg.get("site", {}).get("repo_url") or "").rstrip("/")
+    return (lambda path: f"{repo}/{path}") if repo else (lambda path: "")
+
+
+def _a(url, text):
+    return f'<a href="{escape(url, quote=True)}">{escape(text)}</a>' if url else escape(text)
+
+
+def _sources_html(cfg, conn, now, tz, baseline):
+    rows = []
+    for src in build_sources(cfg):
+        title, url, blurb = SOURCE_INFO.get(src.type_name, (src.type_name, "", "Custom source added as a plugin."))
+        blurb = blurb.replace("{stations}", ", ".join(src.cfg.get("stations", [])) or "nearby stations")
+        last = db.last_ok(conn, src.name)
+        every = src.cfg.get("interval_min")
+        meta = ("never fetched yet" if last is None else f"last fetched {local_str(last, tz)}") + (f", every {every} min" if every else "")
+        rows.append(f"<li><b>{_a(url, title)}</b>: {escape(blurb)} <span class=\"mute\">({escape(meta)})</span></li>")
+    order = cfg.get("state", {}).get("obs_sources", [])
+    prio = (f"<p class=\"mute\">Priority: measurements ({escape(', '.join(order))}) win over the model wherever they are fresh; "
+            "the model fills in the rest and provides the forecast.</p>") if order else ""
+    base = ('<li><b>' + _a("https://open-meteo.com/en/docs/historical-forecast-api", "Open-Meteo past forecasts") + "</b> and <b>"
+            + _a("https://mesonet.agron.iastate.edu/request/download.phtml", "Iowa Environmental Mesonet") + "</b>: "
+            "the 30-day replay above uses the model's past hourly runs, and checks them against SFO airport observations.</li>")
+    return ('<section class="card" id="sources"><h2>Data sources</h2><p class="sub">All free, none need an account.</p><ul>'
+            + "".join(rows) + base + "</ul>" + prio +
+            '<p class="mute">Model grids are a few km wide, so they cannot see your street: shade, trees and parked cars are '
+            "handled by each zone's susceptibility setting and by field reports.</p></section>")
+
+
+def _how_html(cfg):
+    link = _links(cfg)
+    det_cfg = cfg.get("detector", {})
+    det = build_detector(cfg)
+    mod = type(det).__module__
+    code_url = link("blob/main/" + mod.replace(".", "/") + ".py") if mod.startswith("deathfog.") else link("tree/main/plugins")
+    th = det.params
+    pts = getattr(det, "points", None)
+    if pts and {"spread_hit_c", "wind_max_mph", "swing_min_c"} <= set(th):
+        rows = [
+            ("Air near saturation", f"temp - dew point gap at most {th['spread_hit_c']:g} C with humidity at least {th['rh_min']:g}% "
+             f"(+{pts['saturation']}); within {th['spread_watch_c']:g} C counts half as much (+{pts['saturation_near']})"),
+            ("Big drop from today's high", f"24-hour high minus now is at least {th['swing_min_c']:g} C (+{pts['swing']})"),
+            ("Cooling fast", f"temperature fell {th['cool_rate_c_3h']:g} C or more in 3 hours (+{pts['cooling']})"),
+            ("Calm wind", f"wind at most {th['wind_max_mph']:g} mph (+{pts['calm']})"),
+            ("No sun", f"sunshine under {th['solar_max_wm2']:g} W/m2 (+{pts['no_sun']})"),
+            ("Rain", f"more than {th['rain_mm']:g} mm in the last 3 hours caps the score at {getattr(det, 'rain_cap', 20)}: wet roads from rain are a different problem"),
+        ]
+        table = ("<table><tr><th>Trigger</th><th>Counts when</th></tr>"
+                 + "".join(f"<tr><td>{escape(a)}</td><td>{escape(b)}</td></tr>" for a, b in rows) + "</table>")
+        susc = ", ".join(f"{escape(z.get('label', k))} x{z.get('susceptibility', 1.0):g}" for k, z in cfg["zones"].items())
+        tail = (f"<p>Points add up to 0-100, then are multiplied by each zone's susceptibility ({susc}). "
+                f"Bands: Watch {th['watch']:g}+, Likely {th['likely']:g}+, Strong {th['strong']:g}+.</p>")
+    else:
+        table, tail = '<p class="mute">This detector is a custom plugin; see its code for the rules.</p>', ""
+    name = escape(str(det_cfg.get("type", "death_fog_v1")))
+    links = " &middot; ".join(x for x in (_a(code_url, f"Detector code ({name})") if code_url else "",
+                                          _a(link("tree/main/deathfog/sources"), "Data-source adapters") if link("x") else "",
+                                          _a(link("blob/main/config.toml"), "All thresholds and zones") if link("x") else "") if x)
+    return ('<section class="card" id="how"><h2>How detection works</h2>'
+            "<p class=\"sub\">Condensation forms on a road when its surface cools to the dew point. Roads lose heat fastest on calm, "
+            "clear nights after a warm day, so the detector looks for those conditions.</p>"
+            f"{table}{tail}" + (f'<p>{links}</p>' if links else "") +
+            '<p class="mute">Thresholds are educated guesses, tuned against field reports as they come in.</p></section>')
 
 
 def _reasons_html(e):
@@ -231,7 +312,7 @@ def render(cfg, conn, evals, baseline, now):
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="300"><title>SF Death Fog Watch</title><style>{CSS}</style></head><body><main>
 <h1>SF Death Fog Watch</h1><p class="sub">Slippery-road mist risk for skaters. Weather data last fetched {escape(updated)}. Updates about every 10 minutes.</p>
-{banner}{hero}{cards}{cta}{_baseline_html(baseline, tz)}{_verify_html(conn)}
+{banner}{hero}{cards}{cta}{_baseline_html(baseline, tz)}{_verify_html(conn)}{_how_html(cfg)}{_sources_html(cfg, conn, now, tz, baseline)}
 <footer>Experimental hobby tool, not safety advice: judge the road yourself. Scores come from weather data, not from looking
 at your street. Weather data: <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0), NOAA National Weather Service,
 Iowa Environmental Mesonet.</footer></main></body></html>"""

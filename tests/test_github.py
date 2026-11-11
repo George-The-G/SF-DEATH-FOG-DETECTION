@@ -177,6 +177,23 @@ class TestSite(unittest.TestCase):
         self.assertIn("No forecast data for Control yet", html)
         self.assertNotIn("<b>x</b>", html)
 
+    def test_sources_and_detection_sections(self):
+        self.cfg["site"] = {"repo_url": "https://github.com/me/fog"}
+        html = self.render()
+        for needle in ("Data sources", "NWS station observations", "Open-Meteo forecast model", "KSFO", "Iowa Environmental Mesonet",
+                       "last fetched", "How detection works", "Air near saturation", "Watch 40+", "x0.3",
+                       'href="https://github.com/me/fog/blob/main/deathfog/detectors/death_fog.py"',
+                       'href="https://github.com/me/fog/blob/main/config.toml"', 'href="#how"'):
+            self.assertIn(needle, html)
+
+    def test_detection_section_follows_config_and_works_without_repo_url(self):
+        self.cfg["detector"] = {"swing_min_c": 5, "likely": 55}
+        html = self.render()
+        self.assertIn("at least 5 C", html)
+        self.assertIn("Likely 55+", html)
+        self.assertNotIn("Detector code", html)       # no repo url configured, so no code links
+        self.assertNotIn('href="/blob', html)
+
     def test_stale_banner(self):
         self.assertIn("Data is stale", self.render(now=NOW + timedelta(hours=3)))
 
