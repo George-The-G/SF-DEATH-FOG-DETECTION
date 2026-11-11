@@ -69,20 +69,14 @@ def osm_trees(payload):
     return [(e["lat"], e["lon"]) for e in payload.get("elements", []) if e.get("type") == "node" and "lat" in e]
 
 
-def parse_overpass(payload, lat0, lon0, trees=None):
-    """Overpass JSON -> list of ways with trees counted per stretch. `trees` is a list of (lat, lon); when omitted,
-    tree nodes inside the payload are used. Trees are not kept, only the counts."""
-    trees = [_xy(a, b, lat0, lon0) for a, b in (osm_trees(payload) if trees is None else trees)]
+def count_trees(pts_list, trees_xy, lat0, lon0):
+    """For each way (a list of (lat, lon) points) -> number of trees within TREE_RADIUS_M of each stretch."""
     cell = 25.0
     grid = {}
-    for x, y in trees:
+    for x, y in trees_xy:
         grid.setdefault((int(x // cell), int(y // cell)), []).append((x, y))
-    ways = []
-    for e in payload.get("elements", []):
-        if e.get("type") != "way" or len(e.get("geometry") or []) < 2:
-            continue
-        tags = e.get("tags", {})
-        pts = [(g["lat"], g["lon"]) for g in e["geometry"]]
+    out = []
+    for pts in pts_list:
         xy = [_xy(a, b, lat0, lon0) for a, b in pts]
         counts = []
         for (ax, ay), (bx, by) in zip(xy, xy[1:]):
@@ -91,8 +85,22 @@ def parse_overpass(payload, lat0, lon0, trees=None):
                 for cy in range(int((min(ay, by) - TREE_RADIUS_M) // cell), int((max(ay, by) + TREE_RADIUS_M) // cell) + 1):
                     n += sum(1 for tx, ty in grid.get((cx, cy), ()) if _seg_dist(tx, ty, ax, ay, bx, by) <= TREE_RADIUS_M)
             counts.append(n)
+        out.append(counts)
+    return out
+
+
+def parse_overpass(payload, lat0, lon0, trees=None):
+    """Overpass JSON -> list of ways with trees counted per stretch. `trees` is a list of (lat, lon); when omitted,
+    tree nodes inside the payload are used. Trees are not kept, only the counts."""
+    trees_xy = [_xy(a, b, lat0, lon0) for a, b in (osm_trees(payload) if trees is None else trees)]
+    raw = [e for e in payload.get("elements", []) if e.get("type") == "way" and len(e.get("geometry") or []) >= 2]
+    pts_list = [[(g["lat"], g["lon"]) for g in e["geometry"]] for e in raw]
+    counts = count_trees(pts_list, trees_xy, lat0, lon0)
+    ways = []
+    for e, pts, c in zip(raw, pts_list, counts):
+        tags = e.get("tags", {})
         ways.append({"name": tags.get("name", ""), "hw": tags.get("highway", ""),
-                     "pts": [[round(a, 5), round(b, 5)] for a, b in pts], "trees": counts,
+                     "pts": [[round(a, 5), round(b, 5)] for a, b in pts], "trees": c,
                      "parking": _parking(tags), "surface": tags.get("surface", "")})
     return ways
 
@@ -189,6 +197,21 @@ def run_streets(cfg, http, now, path=None, force=False, sleep=2.0, max_seconds=1
     notes, changed, started = [], False, time.time()
     for name, z in cfg["zones"].items():
         if not force and is_current(data, name, z, st["radius_m"]):
+            continue
+        prev = data["zones"].get(name)
+        if (not force and prev and prev.get("key") == _key(z, st["radius_m"]) and prev.get("trees", "none") == "none"
+                and time.time() - started <= max_seconds):
+            # streets are already saved: only the trees are missing, so fetch just those and recount
+            trees, source, why = fetch_trees(http, z["lat"], z["lon"], st["radius_m"])
+            if source == "none":
+                notes.append(f"{name}: still no tree data ({why})")
+                continue
+            lat0, lon0 = z["lat"], z["lon"]
+            counts = count_trees([[tuple(p) for p in w["pts"]] for w in prev["ways"]], [_xy(a, b, lat0, lon0) for a, b in trees], lat0, lon0)
+            for w, c in zip(prev["ways"], counts):
+                w["trees"] = c
+            prev["trees"], prev["fetched_utc"] = source, iso(now)
+            changed = True
             continue
         if time.time() - started > max_seconds:
             notes.append(f"{name}: skipped (out of time), will retry next run")

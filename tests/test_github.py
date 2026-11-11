@@ -302,8 +302,11 @@ class TestStreets(unittest.TestCase):
             self.assertTrue(res["fetched"] and any("no tree data" in n for n in res["notes"]))
             data = streets.load(path)
             self.assertFalse(streets.is_current(data, "potrero", z, 700))
-            streets.run_streets(self.cfg, FakeHttp(), NOW, path=path, sleep=0)
+            http = FakeHttp()
+            streets.run_streets(self.cfg, http, NOW, path=path, sleep=0)
             self.assertTrue(streets.is_current(streets.load(path), "potrero", z, 700))
+            self.assertEqual(sum("overpass" in c[0] for c in http.calls), 0)           # only trees were fetched, streets kept
+            self.assertGreater(sum(sum(w["trees"]) for w in streets.load(path)["zones"]["potrero"]["ways"]), 5)
 
     def test_sf_tree_box_query_uses_the_order_the_portal_accepts(self):
         w = streets.sf_tree_where(37.7595, -122.4000, 700)
