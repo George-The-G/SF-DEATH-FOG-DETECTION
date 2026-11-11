@@ -5,9 +5,9 @@ import tempfile
 import unittest
 from datetime import timedelta
 
-from helpers import IEM_TEXT, NOW, FakeHttp, make_cfg
+from helpers import IEM_TEXT, NOW, OVERPASS_PAYLOAD, FakeHttp, make_cfg
 
-from deathfog import baseline, collect, db, engine, reports, site  # noqa: E402
+from deathfog import baseline, collect, db, engine, reports, site, streets  # noqa: E402
 from deathfog import sources as _s  # noqa: E402,F401
 from deathfog.config import apply_env, baseline_path, db_path  # noqa: E402
 from deathfog.detectors import Detector, register_detector  # noqa: E402
@@ -190,7 +190,7 @@ class TestSite(unittest.TestCase):
     def test_detection_section_follows_config_and_works_without_repo_url(self):
         self.cfg["detector"] = {"swing_min_c": 5, "likely": 55}
         html = self.render()
-        self.assertIn("at least 5 C", html)
+        self.assertIn("at least 9°F", html)
         self.assertIn("Likely 55+", html)
         self.assertNotIn("Detector code", html)       # no repo url configured, so no code links
         self.assertNotIn('href="/blob', html)
@@ -221,6 +221,120 @@ class TestSite(unittest.TestCase):
             status = json.load(open(os.path.join(d, "site", "status.json")))
             self.assertTrue(any(z["zone"] == "potrero" and z["level"] == "strong" for z in status["zones"]))
             self.assertTrue(os.path.exists(os.path.join(d, "site", "baseline.json")))
+
+
+class TestStreets(unittest.TestCase):
+    def setUp(self):
+        self.cfg = make_cfg()
+        self.cfg["zones"]["potrero"].update(lat=37.7595, lon=-122.4000)
+        self.st = streets.settings(self.cfg)
+        self.ways = streets.parse_overpass(OVERPASS_PAYLOAD, 37.7595, -122.4000)
+
+    def test_trees_counted_per_stretch_and_parking_read(self):
+        by = {w["name"]: w for w in self.ways}
+        self.assertEqual(len(by["Mariposa St"]["trees"]), 3)
+        self.assertGreater(sum(by["Mariposa St"]["trees"]), 5)
+        self.assertLessEqual(sum(by["Missouri St"]["trees"]), 1)      # only the one tree at the crossing
+        self.assertEqual((by["Mariposa St"]["parking"], by["Missouri St"]["parking"]), ("yes", "no"))
+
+    def test_community_rules_rank_east_west_treed_street_first(self):
+        segs = streets.score_ways(self.ways, self.st)
+        top = streets.top_streets(segs, min_len=50)
+        self.assertEqual([t["name"] for t in top], ["Mariposa St", "Missouri St"])
+        self.assertIn("runs east-west", top[0]["why"])
+        self.assertTrue(any("trees" in w for w in top[0]["why"]) and any("parked" in w for w in top[0]["why"]))
+        self.assertGreater(top[0]["risk"], 0.7)
+        self.assertLess(top[1]["risk"], 0.3)
+
+    def test_each_rule_moves_the_score(self):
+        def risk(**o):
+            segs = streets.score_ways(self.ways, {**self.st, **o})
+            return {n: sum(s["risk"] * s["len"] for s in segs if s["name"] == n) / sum(s["len"] for s in segs if s["name"] == n)
+                    for n in ("Mariposa St", "Missouri St")}
+        base = risk()
+        self.assertGreater(risk(w_orient=0.9)["Mariposa St"] - risk(w_orient=0.9)["Missouri St"], base["Mariposa St"] - base["Missouri St"])
+        self.assertLess(risk(tree_full_per_100m=500)["Mariposa St"], base["Mariposa St"])      # trees count for less
+        self.assertLess(risk(porous_factor=0.3)["Missouri St"], base["Missouri St"])           # concrete street is spared more
+
+    def test_zone_susceptibility_scales_the_map(self):
+        full = streets.score_ways(self.ways, self.st, 1.0)
+        control = streets.score_ways(self.ways, self.st, 0.3)
+        self.assertEqual({streets.band(s["risk"], self.st) for s in control}, {"none"})      # the control zone stays quiet
+        self.assertIn("hi", {streets.band(s["risk"], self.st) for s in full})
+
+    def test_fetch_caches_and_skips_when_current(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "streets.json")
+            http = FakeHttp(self.cfg["zones"])
+            res = streets.run_streets(self.cfg, http, NOW, path=path, sleep=0)
+            self.assertTrue(res["fetched"] and not res["notes"])
+            self.assertEqual(sum("overpass" in c[0] for c in http.calls), 2)       # one call per zone
+            res = streets.run_streets(self.cfg, http, NOW, path=path, sleep=0)
+            self.assertFalse(res["fetched"])
+            self.assertEqual(sum("overpass" in c[0] for c in http.calls), 2)       # nothing re-downloaded
+            self.cfg["zones"]["potrero"]["lat"] = 37.76                              # zone moved: only it is refetched
+            streets.run_streets(self.cfg, http, NOW, path=path, sleep=0)
+            self.assertEqual(sum("overpass" in c[0] for c in http.calls), 3)
+
+    def test_fetch_failure_is_reported_not_raised_and_mirror_is_tried(self):
+        from deathfog.http import HttpError
+
+        class Down(FakeHttp):
+            def get_json(self, url, params=None, headers=None):
+                if "overpass" in url:
+                    raise HttpError(504, "busy")
+                return super().get_json(url, params, headers)
+        with tempfile.TemporaryDirectory() as d:
+            http = Down(self.cfg["zones"])
+            res = streets.run_streets(self.cfg, http, NOW, path=os.path.join(d, "s.json"), sleep=0)
+            self.assertFalse(res["fetched"])
+            self.assertEqual(len(res["notes"]), 2)
+            self.assertEqual(sum("overpass" in c[0] for c in http.calls), 0)       # (Down raises before FakeHttp records)
+            self.assertFalse(os.path.exists(os.path.join(d, "s.json")))
+
+
+class TestStreetMapOnPage(unittest.TestCase):
+    def setUp(self):
+        self.conn, self.cfg = db.connect(":memory:"), make_cfg()
+        self.cfg["zones"]["potrero"].update(lat=37.7595, lon=-122.4000)
+        self.cfg["site"] = {"version": "v2"}
+        collect.collect(self.cfg, self.conn, FakeHttp(self.cfg["zones"]), NOW)
+        self.d = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.d.name, "streets.json")
+        streets.run_streets(self.cfg, FakeHttp(self.cfg["zones"]), NOW, path=self.path, sleep=0)
+
+    def tearDown(self):
+        self.d.cleanup()
+
+    def render(self, data="load"):
+        data = streets.load(self.path) if data == "load" else data
+        return site.render(self.cfg, self.conn, engine.evaluate_all(self.conn, self.cfg, NOW), None, NOW, data)
+
+    def test_map_is_collapsed_and_shows_streets(self):
+        html = self.render()
+        i = html.index('<details class="card" id="map"')
+        self.assertNotIn("open", html[i:html.index(">", i)])                       # collapsed by default
+        for needle in ("Street map: which streets go first", "<svg class=\"map\"", "Mariposa St", "Streets most likely to get it first",
+                       "runs east-west", "South side of the street", "OpenStreetMap", 'id="ms0"', 'id="ms1"', "ms-hi", "msouth"):
+            self.assertIn(needle, html)
+        self.assertLess(html.index('id="map"'), html.index("Next 12 hours"))      # right under the chart, above the cards
+
+    def test_version_label_and_no_data_message(self):
+        html = self.render(data=None)
+        self.assertIn("SF Death Fog Watch <span", html)
+        self.assertIn(">v2<", html)
+        self.assertIn("Street data has not been downloaded yet", html)
+        self.assertNotIn("<svg class=\"map\"", html)
+
+    def test_street_names_are_escaped(self):
+        data = streets.load(self.path)
+        data["zones"]["potrero"]["ways"][0]["name"] = "<img src=x onerror=1>"
+        html = self.render(data)
+        self.assertNotIn("<img src=x", html)
+
+    def test_write_site_reads_streets_file(self):
+        out = site.write_site(self.cfg, self.conn, NOW, os.path.join(self.d.name, "site"), None, self.path)
+        self.assertIn("Mariposa St", out.read_text(encoding="utf-8"))
 
 
 class TestSeparation(unittest.TestCase):

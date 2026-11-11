@@ -5,6 +5,7 @@ air on calm, clear nights, so we look for air already near saturation (small tem
 gap), still, recently much warmer, and with little sun to dry things out. Every threshold is a
 starting guess in config.toml [detector]; tune them against field reports with `verify`.
 """
+from ..util import c_to_f, dc_to_f
 from .base import Detector, register_detector
 
 
@@ -36,12 +37,12 @@ class DeathFogV1(Detector):
         else:
             spread = t - td
             if spread <= th["spread_hit_c"] and (rh is None or rh >= th["rh_min"]):
-                pts += add("saturation", True, f"temp-dewpoint gap {spread:.1f}C, RH {rh if rh is not None else '?'}%",
+                pts += add("saturation", True, f"temp-dewpoint gap {dc_to_f(spread):.1f}°F, RH {rh if rh is not None else '?'}%",
                            self.points["saturation"])
             elif spread <= th["spread_watch_c"]:
-                pts += add("saturation_near", True, f"gap {spread:.1f}C (close)", self.points["saturation_near"])
+                pts += add("saturation_near", True, f"gap {dc_to_f(spread):.1f}°F (close)", self.points["saturation_near"])
             else:
-                add("saturation", False, f"gap {spread:.1f}C")
+                add("saturation", False, f"gap {dc_to_f(spread):.1f}°F")
 
         if s.wind_mph is None:
             reasons.append({"trigger": "calm", "hit": False, "detail": "unknown wind", "points": 0})
@@ -53,18 +54,18 @@ class DeathFogV1(Detector):
         else:
             swing = s.high_24h_c - t
             pts += add("swing", swing >= th["swing_min_c"],
-                       f"24h high {s.high_24h_c:.1f}C -> now {t:.1f}C ({swing:.1f}C swing)", self.points["swing"])
+                       f"24h high {c_to_f(s.high_24h_c):.0f}°F -> now {c_to_f(t):.0f}°F ({dc_to_f(swing):.0f}°F swing)", self.points["swing"])
 
         if s.temp_3h_ago_c is not None and t is not None:
             drop = s.temp_3h_ago_c - t
-            pts += add("cooling", drop >= th["cool_rate_c_3h"], f"{drop:.1f}C drop over 3h", self.points["cooling"])
+            pts += add("cooling", drop >= th["cool_rate_c_3h"], f"{dc_to_f(drop):.0f}°F drop over 3h", self.points["cooling"])
 
         if s.solar_wm2 is not None:
             pts += add("no_sun", s.solar_wm2 < th["solar_max_wm2"], f"solar {s.solar_wm2:.0f} W/m2", self.points["no_sun"])
 
         if s.precip_3h_mm is not None and s.precip_3h_mm > th["rain_mm"]:
             reasons.append({"trigger": "rain_veto", "hit": True,
-                            "detail": f"{s.precip_3h_mm:.1f} mm rain in last 3h (different problem)", "points": 0})
+                            "detail": f"{s.precip_3h_mm / 25.4:.2f} in of rain in last 3h (different problem)", "points": 0})
             pts = min(pts, self.rain_cap)
 
         return min(pts, 100.0), reasons

@@ -34,6 +34,15 @@ publishes a status page, can push phone alerts, and checks itself against field 
 If the page ever shows a "data is stale" banner, open the Actions tab: GitHub disables scheduled workflows
 after 60 days without repository activity, and there is an **Enable workflow** button.
 
+## Street map and versions
+
+* The page has a collapsed **Street map** section: streets around each zone from OpenStreetMap (free, no account),
+  coloured by the community's rules of thumb (east-west blocks, trees, parked cars, porous surfaces; the south side of
+  east-west streets is marked). Weights live in `[streets]` in `config.toml`; the street data is downloaded once and cached on the
+  `data` branch (`python3 run.py streets --force` refreshes it), so tuning never re-downloads.
+* The page shows its version (`[site] version`). **v1** is kept as a branch: to roll back, Actions > collect > Run workflow >
+  *Use workflow from: v1*, or ask to reset `main` to `v1`. Temperatures on the page and in alerts are in Fahrenheit.
+
 ## How the code is layered
 
 ```
@@ -66,4 +75,4 @@ Needs Python 3.11+, nothing to install. Tests: `python3 -m unittest discover -s 
   field reports carry that part; the control zone should stay quiet. A cheap sensor on your block beats any free feed.
 * Thresholds are educated guesses. Expect to retune after ~20-30 field reports.
 * Open-Meteo's best-match model over North America is NOAA's RRFS, replacing HRRR (feed retires 2026-11-30).
-* Weather data: Open-Meteo.com (CC BY 4.0), NOAA/NWS, Iowa Environmental Mesonet. Experimental, not safety advice.
+* Weather data: Open-Meteo.com (CC BY 4.0), NOAA/NWS, Iowa Environmental Mesonet. Streets: OpenStreetMap contributors (ODbL). Experimental, not safety advice.

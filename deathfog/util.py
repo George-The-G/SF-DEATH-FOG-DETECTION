@@ -90,3 +90,13 @@ def local_hour(dt, tzname):
 def hour_label(dt, tzname):
     h = local_hour(dt, tzname)
     return f"{h % 12 or 12}{'a' if h < 12 else 'p'}"
+
+
+def c_to_f(c):
+    """Absolute temperature, Celsius -> Fahrenheit (the page and alerts show Fahrenheit)."""
+    return c * 9 / 5 + 32
+
+
+def dc_to_f(dc):
+    """A temperature *difference* in Celsius degrees -> Fahrenheit degrees (no +32)."""
+    return dc * 9 / 5

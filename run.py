@@ -7,7 +7,7 @@ import sys
 import time
 from datetime import date, timedelta
 
-from deathfog import alerts, baseline, budget, collect, db, engine, registry, reports, site
+from deathfog import alerts, baseline, budget, collect, db, engine, registry, reports, site, streets
 from deathfog import detectors as _detectors  # noqa: F401  (registers built-in detectors)
 from deathfog import sources as _sources  # noqa: F401  (registers built-in sources)
 from deathfog.config import baseline_path, db_path, load_config
@@ -109,10 +109,24 @@ def cmd_baseline(args):
             sys.exit(1)
 
 
+def cmd_streets(args):
+    cfg, _, http = setup(args)
+    path = streets.streets_path(cfg)
+    if args.if_missing and os.path.exists(path) and all(
+            (streets.load(path) or {}).get("zones", {}).get(n, {}).get("key") == streets._key(z, streets.settings(cfg)["radius_m"])
+            for n, z in cfg["zones"].items()):
+        print("street data already current; skipping")
+        return
+    res = streets.run_streets(cfg, http, utcnow(), path=path, force=args.force)
+    print(f"streets: {res['zones']} zones cached" + ("" if res["fetched"] else " (nothing new fetched)"))
+    for n in res["notes"]:
+        print("  could not fetch:", n)
+
+
 def cmd_site(args):
     cfg, conn, _ = setup(args)
     out = args.out or cfg["site"].get("dir", "site")
-    print("wrote", site.write_site(cfg, conn, utcnow(), out, baseline_path(cfg)))
+    print("wrote", site.write_site(cfg, conn, utcnow(), out, baseline_path(cfg), streets.streets_path(cfg)))
 
 
 def cmd_report(args):
@@ -182,6 +196,11 @@ def main():
     p.add_argument("--if-missing", action="store_true", help="only build if no baseline exists yet")
     p.add_argument("--show", action="store_true", help="print the saved baseline instead of rebuilding it")
     p.set_defaults(fn=cmd_baseline)
+
+    p = sub.add_parser("streets", help="download OpenStreetMap streets and trees around each zone (cached; used by the map)")
+    p.add_argument("--if-missing", action="store_true", help="skip when every zone already has current data")
+    p.add_argument("--force", action="store_true", help="re-download even if cached")
+    p.set_defaults(fn=cmd_streets)
 
     p = sub.add_parser("site", help="write the static status page (index.html + status.json)")
     p.add_argument("--out", help="output folder (default: [site] dir)")

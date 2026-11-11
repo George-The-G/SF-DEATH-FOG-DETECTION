@@ -5,17 +5,17 @@ from datetime import timedelta
 from html import escape
 from zoneinfo import ZoneInfo
 
-from . import db, engine, reports
+from . import db, engine, reports, streets, streetmap
 from .detectors import build_detector
 from .collect import build_sources
-from .util import hour_label, iso, local_hour, local_str, parse_iso
+from .util import dc_to_f, hour_label, iso, local_hour, local_str, parse_iso
 
 LEVEL_TEXT = {"none": "Quiet", "watch": "Watch", "likely": "Likely", "strong": "Strong"}
 
 CSS = """
-:root{--bg:#f6f7f9;--card:#fff;--ink:#16202a;--mute:#5b6773;--line:#dde2e8;--none:#d9e4dc;--watch:#f4e3a1;--likely:#f6b26b;--strong:#e06666;--btn:#16202a;--btnink:#fff;--c-sat:#1f5fa8;--c-near:#7fb2e5;--c-calm:#8a6fb0;--c-swing:#d9822b;--c-cool:#2a9d8f;--c-sun:#7b8794}
-@media (prefers-color-scheme:dark){:root{--bg:#0f1419;--card:#1a222b;--ink:#e8edf2;--mute:#9aa7b4;--line:#2c3743;--none:#2a3a30;--watch:#6b5d1f;--likely:#8a5a1f;--strong:#8f2d2d;--btn:#e8edf2;--btnink:#0f1419;--c-sat:#5b9be0;--c-near:#3d6a9a;--c-calm:#a78bd0;--c-swing:#e39a4d;--c-cool:#4fc1b2;--c-sun:#8fa0b3}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+:root{--bg:#f6f7f9;--card:#fff;--ink:#16202a;--mute:#5b6773;--line:#dde2e8;--none:#d9e4dc;--watch:#f4e3a1;--likely:#f6b26b;--strong:#e06666;--btn:#16202a;--btnink:#fff;--c-sat:#1f5fa8;--c-near:#7fb2e5;--c-calm:#8a6fb0;--c-swing:#d9822b;--c-cool:#2a9d8f;--c-sun:#7b8794;--m-bg:#eef1f4;--m-base:#b4bdc7;--m-low:#e3b93c;--m-mid:#e8832a;--m-hi:#d2322d;--m-south:#7a1713}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1419;--card:#1a222b;--ink:#e8edf2;--mute:#9aa7b4;--line:#2c3743;--none:#2a3a30;--watch:#6b5d1f;--likely:#8a5a1f;--strong:#8f2d2d;--btn:#e8edf2;--btnink:#0f1419;--c-sat:#5b9be0;--c-near:#3d6a9a;--c-calm:#a78bd0;--c-swing:#e39a4d;--c-cool:#4fc1b2;--c-sun:#8fa0b3;--m-bg:#141b22;--m-base:#4a5865;--m-low:#d9b43f;--m-mid:#ee8f3a;--m-hi:#f0524d;--m-south:#ffb3ae}}
+a:not(.btn){color:var(--c-sat)}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 main{max-width:720px;margin:0 auto;padding:16px}h1{font-size:1.4rem;margin:.2rem 0}h2{font-size:1.1rem;margin:0}
 .sub,.mute{color:var(--mute);font-size:.9rem}.banner{background:var(--strong);color:#fff;padding:10px 12px;border-radius:8px;margin:10px 0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
@@ -34,6 +34,15 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}td,th{text-align:left;
 .t-saturation{fill:var(--c-sat)}.t-saturation_near{fill:var(--c-near)}.t-calm{fill:var(--c-calm)}.t-swing{fill:var(--c-swing)}.t-cooling{fill:var(--c-cool)}.t-no_sun{fill:var(--c-sun)}
 .legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.8rem;color:var(--mute);margin:6px 0}.legend i{display:inline-block;width:.8em;height:.8em;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .why{margin:.2rem 0 0}.why h3{font-size:.95rem;margin:.6rem 0 0}
+details.card>summary{cursor:pointer;font-size:1.1rem;font-weight:600;list-style-position:inside}details.card[open]>summary{margin-bottom:8px}
+.mapzone>input{position:absolute;opacity:0;pointer-events:none}.mpanel{display:none}.map{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:10px}
+.map .mbg{fill:var(--m-bg)}.map line{stroke-linecap:round}.map .ms-none{stroke:var(--m-base);stroke-width:1.5}.map .ms-low{stroke:var(--m-low);stroke-width:2.4}
+.map .ms-mid{stroke:var(--m-mid);stroke-width:3}.map .ms-hi{stroke:var(--m-hi);stroke-width:3.8}.map .msouth{stroke:var(--m-south);stroke-width:1.4;opacity:.9}
+.map .ml{font-size:11px;font-weight:600;fill:var(--ink);stroke:var(--m-bg);stroke-width:3;paint-order:stroke}.map .mt{font-size:11px;fill:var(--mute)}
+.map .mcenter{fill:var(--ink);stroke:var(--m-bg);stroke-width:2}.map .mscale{stroke:var(--ink);stroke-width:2}.map .mnorth{fill:var(--ink)}
+.legend i.mk-hi,.legend i.mk-mid,.legend i.mk-low,.legend i.mk-none,.legend i.mk-south{height:.35em;vertical-align:.15em}
+.legend i.mk-hi{background:var(--m-hi)}.legend i.mk-mid{background:var(--m-mid)}.legend i.mk-low{background:var(--m-low)}.legend i.mk-none{background:var(--m-base)}.legend i.mk-south{background:var(--m-south)}
+ol.rank{margin:.3rem 0;padding-left:1.3rem}ol.rank li{margin:.2rem 0}
 footer{font-size:.8rem;color:var(--mute);margin:18px 0}
 """
 
@@ -213,13 +222,13 @@ def _how_html(cfg):
     pts = getattr(det, "points", None)
     if pts and {"spread_hit_c", "wind_max_mph", "swing_min_c"} <= set(th):
         rows = [
-            ("Air near saturation", f"temp - dew point gap at most {th['spread_hit_c']:g} C with humidity at least {th['rh_min']:g}% "
-             f"(+{pts['saturation']}); within {th['spread_watch_c']:g} C counts half as much (+{pts['saturation_near']})"),
-            ("Big drop from today's high", f"24-hour high minus now is at least {th['swing_min_c']:g} C (+{pts['swing']})"),
-            ("Cooling fast", f"temperature fell {th['cool_rate_c_3h']:g} C or more in 3 hours (+{pts['cooling']})"),
+            ("Air near saturation", f"temp - dew point gap at most {dc_to_f(th['spread_hit_c']):.1f}°F with humidity at least {th['rh_min']:g}% "
+             f"(+{pts['saturation']}); within {dc_to_f(th['spread_watch_c']):.1f}°F counts half as much (+{pts['saturation_near']})"),
+            ("Big drop from today's high", f"24-hour high minus now is at least {dc_to_f(th['swing_min_c']):.0f}°F (+{pts['swing']})"),
+            ("Cooling fast", f"temperature fell {dc_to_f(th['cool_rate_c_3h']):.0f}°F or more in 3 hours (+{pts['cooling']})"),
             ("Calm wind", f"wind at most {th['wind_max_mph']:g} mph (+{pts['calm']})"),
             ("No sun", f"sunshine under {th['solar_max_wm2']:g} W/m2 (+{pts['no_sun']})"),
-            ("Rain", f"more than {th['rain_mm']:g} mm in the last 3 hours caps the score at {getattr(det, 'rain_cap', 20)}: wet roads from rain are a different problem"),
+            ("Rain", f"more than {th['rain_mm'] / 25.4:.2f} in of rain in the last 3 hours caps the score at {getattr(det, 'rain_cap', 20)}: wet roads from rain are a different problem"),
         ]
         table = ("<table><tr><th>Trigger</th><th>Counts when</th></tr>"
                  + "".join(f"<tr><td>{escape(a)}</td><td>{escape(b)}</td></tr>" for a, b in rows) + "</table>")
@@ -237,6 +246,47 @@ def _how_html(cfg):
             "clear nights after a warm day, so the detector looks for those conditions.</p>"
             f"{table}{tail}" + (f'<p>{links}</p>' if links else "") +
             '<p class="mute">Thresholds are educated guesses, tuned against field reports as they come in.</p></section>')
+
+
+def _map_section(cfg, streets_data, by_zone, tz):
+    """Collapsed-by-default street map. One tab per zone, switched with CSS only."""
+    st = streets.settings(cfg)
+    zones = list(cfg["zones"].items())
+    head = '<details class="card" id="map"><summary>Street map: which streets go first</summary>'
+    if not streets_data or not streets_data.get("zones"):
+        return head + ('<p class="mute">Street data has not been downloaded yet. It is fetched from OpenStreetMap on the next '
+                       "scheduled run.</p></details>")
+    radios, tabs, panels, css = [], [], [], []
+    for i, (key, z) in enumerate(zones):
+        label = z.get("label", key)
+        radios.append(f'<input type="radio" name="mapzone" id="ms{i}"{" checked" if i == 0 else ""}>')
+        tabs.append(f'<label for="ms{i}">{escape(label)}</label>')
+        css.append(f"#ms{i}:checked~#mp{i}{{display:block}}#ms{i}:checked~.tabs label[for=ms{i}]{{background:var(--btn);color:var(--btnink);border-color:var(--btn)}}"
+                   f"#ms{i}:focus-visible~.tabs label[for=ms{i}]{{outline:2px solid var(--c-sat);outline-offset:2px}}")
+        zd = streets_data["zones"].get(key)
+        if not zd:
+            panels.append(f'<div class="mpanel" id="mp{i}"><p class="mute">No street data for {escape(label)} yet.</p></div>')
+            continue
+        segs = streets.score_ways(zd["ways"], st, float(z.get("susceptibility", 1.0)))
+        top = streets.top_streets(segs)
+        ze = by_zone.get(key, {})
+        now_e, ahead = ze.get("now"), ze.get("ahead")
+        status = []
+        if now_e:
+            status.append(f"Right now: {LEVEL_TEXT[now_e['level']].lower()} ({now_e['score']:.0f}).")
+        if ahead and ahead["level"] != "none":
+            status.append(f"Next 12 hours: {LEVEL_TEXT[ahead['level']].lower()} around {local_str(parse_iso(ahead['valid_utc']), tz)}.")
+        status.append("When conditions line up, the red streets are the ones to check first.")
+        items = "".join(f"<li><b>{escape(t['name'])}</b>: {escape(', '.join(t['why']))}</li>" for t in top)
+        panels.append(f'<div class="mpanel" id="mp{i}"><p class="sub">{escape(" ".join(status))}</p>'
+                      f'{streetmap.map_svg(segs, st, zd["center"], zd["radius_m"], i, top)}{streetmap.legend_html()}'
+                      + (f'<h3 style="font-size:.95rem;margin:.6rem 0 0">Streets most likely to get it first</h3><ol class="rank">{items}</ol>' if items else "")
+                      + "</div>")
+    note = ('<p class="mute">A rule-of-thumb ranking, not a measurement: east-west streets, tree cover and parked cars raise the score, '
+            "porous surfaces lower it, and the south side of east-west streets is marked. Colours are scaled by the zone's susceptibility, so the control zone stays quiet. It cannot see building shade or how wet a "
+            'road really is. Streets &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL).</p>')
+    return (head + f'<style>{"".join(css)}</style><div class="mapzone">{"".join(radios)}<div class="tabs">{"".join(tabs)}</div>'
+            f'{"".join(panels)}</div>{note}</details>')
 
 
 def _reasons_html(e):
@@ -298,7 +348,7 @@ def _verify_html(conn):
     return f'<section class="card"><h2>How accurate is it?</h2><p>{escape(txt)}</p></section>'
 
 
-def render(cfg, conn, evals, baseline, now):
+def render(cfg, conn, evals, baseline, now, streets_data=None):
     tz = cfg["general"].get("timezone", "America/Los_Angeles")
     stale_min = cfg.get("site", {}).get("stale_min", 60)
     last = [t for t in (db.last_ok(conn, s.name) for s in build_sources(cfg)) if t]
@@ -311,6 +361,7 @@ def render(cfg, conn, evals, baseline, now):
     for e in evals:
         by_zone.setdefault(e["zone"], {})[e["mode"]] = e
     hero = _hero_html(cfg, conn, by_zone, now, tz)
+    street_map = _map_section(cfg, streets_data, by_zone, tz)
     cards = "".join(_zone_card(z.get("label", k), by_zone.get(k, {}).get("now"), by_zone.get(k, {}).get("ahead"), tz)
                     for k, z in cfg["zones"].items())
     form = cfg["general"].get("report_url", "")
@@ -320,14 +371,14 @@ def render(cfg, conn, evals, baseline, now):
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="generated" content="{iso(now)}"><noscript><meta http-equiv="refresh" content="300"></noscript>
 <script>{REFRESH_JS}</script><title>SF Death Fog Watch</title><style>{CSS}</style></head><body><main>
-<h1>SF Death Fog Watch</h1><p class="sub">Slippery-road mist risk for skaters. Weather data last fetched {escape(updated)}. Updates about every 10 minutes.</p>
-{banner}{hero}{cards}{cta}{_baseline_html(baseline, tz)}{_verify_html(conn)}{_how_html(cfg)}{_sources_html(cfg, conn, now, tz, baseline)}
+<h1>SF Death Fog Watch <span class="mute">{escape(cfg.get("site", {}).get("version", ""))}</span></h1><p class="sub">Slippery-road mist risk for skaters. Weather data last fetched {escape(updated)}. Updates about every 10 minutes.</p>
+{banner}{hero}{street_map}{cards}{cta}{_baseline_html(baseline, tz)}{_verify_html(conn)}{_how_html(cfg)}{_sources_html(cfg, conn, now, tz, baseline)}
 <footer>Experimental hobby tool, not safety advice: judge the road yourself. Scores come from weather data, not from looking
 at your street. Weather data: <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0), NOAA National Weather Service,
-Iowa Environmental Mesonet.</footer></main></body></html>"""
+Iowa Environmental Mesonet. Street map: OpenStreetMap contributors.</footer></main></body></html>"""
 
 
-def write_site(cfg, conn, now, out_dir, baseline_path=None):
+def write_site(cfg, conn, now, out_dir, baseline_path=None, streets_path=None):
     out = pathlib.Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     baseline = None
@@ -335,8 +386,9 @@ def write_site(cfg, conn, now, out_dir, baseline_path=None):
         baseline = json.loads(pathlib.Path(baseline_path).read_text())
         (out / "baseline.json").write_text(json.dumps(baseline, indent=1))
     evals = engine.evaluate_all(conn, cfg, now)
-    (out / "index.html").write_text(render(cfg, conn, evals, baseline, now), encoding="utf-8")
-    status = {"generated_utc": iso(now), "zones": [
+    streets_data = streets.load(streets_path) if streets_path else None
+    (out / "index.html").write_text(render(cfg, conn, evals, baseline, now, streets_data), encoding="utf-8")
+    status = {"version": cfg.get("site", {}).get("version", ""), "generated_utc": iso(now), "zones": [
         {"zone": e["zone"], "mode": e["mode"], "level": e["level"], "score": round(e["score"], 1), "valid_utc": e["valid_utc"],
          "reasons": [r["detail"] for r in e["reasons"] if r["hit"] and r["points"]]} for e in evals]}
     (out / "status.json").write_text(json.dumps(status, indent=1))

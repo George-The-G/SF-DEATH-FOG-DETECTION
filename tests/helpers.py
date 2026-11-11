@@ -78,6 +78,21 @@ IEM_TEXT = ("#DEBUG: Format Description: ...\n#DEBUG: more\nstation\tvalid\ttmpf
             "SFO\t2026-11-10 10:56\t48.2\t47.3\t96.0\t5.00\tM\tM\n")
 
 
+def _way(i, name, pts, **tags):
+    return {"type": "way", "id": i, "tags": {"highway": "residential", "name": name, **tags},
+            "geometry": [{"lat": a, "lon": b} for a, b in pts]}
+
+
+# Mariposa: an east-west block with trees and parked cars; Missouri: a north-south block with neither.
+OVERPASS_PAYLOAD = {"elements": [
+    _way(1, "Mariposa St", [(37.7595, -122.4020), (37.7595, -122.4010), (37.7595, -122.4000), (37.7595, -122.3990)],
+         **{"parking:lane:both": "parallel"}),
+    _way(2, "Missouri St", [(37.7570, -122.4000), (37.7585, -122.4000), (37.7600, -122.4000), (37.7615, -122.4000)],
+         **{"parking:lane:both": "no", "surface": "concrete"}),
+] + [{"type": "node", "id": 100 + k, "lat": 37.75956, "lon": -122.4020 + 0.0002 * k, "tags": {"natural": "tree"}}
+     for k in range(15)]}
+
+
 class FakeHttp:
     def __init__(self, zones=None, hist_days=31):
         self.calls, self.zones, self.hist_days = [], zones or {}, hist_days
@@ -92,6 +107,8 @@ class FakeHttp:
             return om_payload(self.zones)
         if "api.weather.gov/stations" in url:
             return NWS_PAYLOAD
+        if "overpass" in url:
+            return OVERPASS_PAYLOAD
         if "purpleair" in url:
             return PA_PAYLOAD
         raise AssertionError(url)

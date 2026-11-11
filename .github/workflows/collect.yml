@@ -47,6 +47,9 @@ jobs:
             python3 run.py baseline --if-missing
           fi
 
+      - name: Download street data for the map (first run, or when zones change)
+        run: python3 run.py streets --if-missing || true
+
       - name: Collect, score, alert
         run: python3 run.py collect
 

@@ -120,6 +120,17 @@ interval_min = 30
 [baseline]
 # model_endpoint = "https://historical-forecast-api.open-meteo.com/v1/forecast"
 
+[streets]
+# Street map rules, from what skaters report. Tune freely: the OSM data is cached, only these numbers change.
+radius_m = 700                     # map covers about 1.4 km square around each zone centre
+w_orient = 0.50                    # east-west streets are hit harder than north-south
+w_trees = 0.30                     # trees hold moisture and shade the road
+w_parking = 0.20                   # parked cars
+tree_full_per_100m = 6             # this many street trees per 100 m counts as full cover
+parking_unknown = 0.5              # OpenStreetMap often lacks parking info: count unknown as half
+porous_factor = 0.6                # porous or unpaved surfaces are spared
+
 [site]
+version = "v2"
 dir = "site"
 stale_min = 60                     # show a warning banner when no source has fetched for this long

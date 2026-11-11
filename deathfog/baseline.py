@@ -16,7 +16,7 @@ from .detectors import build_detector
 from .detectors.base import LEVELS
 from .model import Reading
 from .sources.openmeteo import VARS, location_params, readings_from_payload
-from .util import (dew_point_c, hour_label, in_to_mm, iso, knots_to_mph, local_hour, local_str, mean,
+from .util import (dc_to_f, dew_point_c, hour_label, in_to_mm, iso, knots_to_mph, local_hour, local_str, mean,
                    parse_iso)
 
 HIST_ENDPOINT = "https://historical-forecast-api.open-meteo.com/v1/forecast"
@@ -185,7 +185,8 @@ def format_baseline(s):
             lines.append(f"    {e['start_local']:<14}{e['hours']:>3} h   peak {e['peak_score']:>3}   {', '.join(e['why'])}")
         lines.append("")
     for name, c in s["model_vs_airport"].items():
-        lines.append(f"Model vs {c['station']} airport at {name}: {c['n']} hours compared, temperature bias {c['temp_bias_c']}C "
-                     f"(typical error {c['temp_mae_c']}C), dew point bias {c['dewpoint_bias_c']}C (typical error {c['dewpoint_mae_c']}C)")
+        lines.append(f"Model vs {c['station']} airport at {name}: {c['n']} hours compared, temperature bias {dc_to_f(c['temp_bias_c']):.1f}°F "
+                     f"(typical error {dc_to_f(c['temp_mae_c']):.1f}°F), dew point bias {dc_to_f(c['dewpoint_bias_c']):.1f}°F "
+                     f"(typical error {dc_to_f(c['dewpoint_mae_c']):.1f}°F)")
     lines += s["notes"]
     return "\n".join(lines)
