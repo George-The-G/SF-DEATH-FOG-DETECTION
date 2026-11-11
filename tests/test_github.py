@@ -292,9 +292,10 @@ class TestStreets(unittest.TestCase):
                 return super().get_json(url, params, headers)
         z = self.cfg["zones"]["potrero"]
         for cls, source, has_trees in ((FakeHttp, "sf_street_tree_list", True), (NoSf, "osm", True), (NoTrees, "none", False)):
-            ways, src = streets.fetch_zone(cls(), z["lat"], z["lon"], 700)
+            ways, src, why = streets.fetch_zone(cls(), z["lat"], z["lon"], 700)
             self.assertEqual(src, source)
             self.assertEqual(sum(sum(w["trees"]) for w in ways) > 5, has_trees)
+            self.assertEqual(bool(why), source != "sf_street_tree_list")
         with tempfile.TemporaryDirectory() as d:                                  # no trees: saved, reported, and retried next run
             path = os.path.join(d, "s.json")
             res = streets.run_streets(self.cfg, NoTrees(), NOW, path=path, sleep=0)
@@ -303,6 +304,15 @@ class TestStreets(unittest.TestCase):
             self.assertFalse(streets.is_current(data, "potrero", z, 700))
             streets.run_streets(self.cfg, FakeHttp(), NOW, path=path, sleep=0)
             self.assertTrue(streets.is_current(streets.load(path), "potrero", z, 700))
+
+    def test_sf_tree_box_query_uses_the_order_the_portal_accepts(self):
+        w = streets.sf_tree_where(37.7595, -122.4000, 700)
+        self.assertEqual(w, "latitude between '37.7528' and '37.7662' and longitude between '-122.4083' and '-122.3917'")
+        http = FakeHttp()
+        streets.fetch_trees(http, 37.7595, -122.4000, 700)
+        url, params = [c for c in http.calls if "tkzw-k3nq" in c[0]][0]
+        self.assertEqual(params["$where"], w)
+        self.assertEqual(params["$select"], "latitude,longitude")
 
     def test_out_of_time_skips_remaining_zones(self):
         with tempfile.TemporaryDirectory() as d:

@@ -97,12 +97,21 @@ def parse_overpass(payload, lat0, lon0, trees=None):
     return ways
 
 
+def _box(lat, lon, radius_m, pad_m=0):
+    """South, west, north, east of a square around a point (degrees)."""
+    r = radius_m + pad_m
+    dlat, dlon = r / 110540.0, r / (111320.0 * math.cos(math.radians(lat)))
+    return lat - dlat, lon - dlon, lat + dlat, lon + dlon
+
+
 def query(lat, lon, radius_m):
-    return f'[out:json][timeout:40];way["highway"~"^({HIGHWAYS})$"](around:{radius_m},{lat},{lon});out geom;'
+    s, w, n, e = _box(lat, lon, radius_m)
+    return f'[out:json][timeout:40];way["highway"~"^({HIGHWAYS})$"]({s:.5f},{w:.5f},{n:.5f},{e:.5f});out geom;'
 
 
 def tree_query(lat, lon, radius_m):
-    return f'[out:json][timeout:40];node["natural"="tree"](around:{radius_m + int(TREE_RADIUS_M)},{lat},{lon});out;'
+    s, w, n, e = _box(lat, lon, radius_m, TREE_RADIUS_M)
+    return f'[out:json][timeout:40];node["natural"="tree"]({s:.5f},{w:.5f},{n:.5f},{e:.5f});out;'
 
 
 def _overpass(http, q, urls=None):
@@ -118,29 +127,40 @@ def _overpass(http, q, urls=None):
     raise last or HttpError(0, "no Overpass server configured")
 
 
+def sf_tree_where(lat, lon, radius_m):
+    """DataSF stores latitude/longitude as text, so a coarse box is filtered with text comparison (it sorts lat/lon the way
+    we need; longitude must be given most-negative first). Exact distances are checked locally afterwards."""
+    s, w, n, e = _box(lat, lon, radius_m, TREE_RADIUS_M + 15)
+    return (f"latitude between '{math.floor(s * 1e4) / 1e4:.4f}' and '{math.ceil(n * 1e4) / 1e4:.4f}' "
+            f"and longitude between '{math.floor(w * 1e4) / 1e4:.4f}' and '{math.ceil(e * 1e4) / 1e4:.4f}'")
+
+
 def fetch_trees(http, lat, lon, radius_m):
     """Street trees near a point: San Francisco's official tree list first, OpenStreetMap trees as a fallback.
-    Returns (list of (lat, lon), source name); source is 'none' when both are unavailable."""
+    Returns (list of (lat, lon), source name, why); source is 'none' when both are unavailable."""
+    why = []
     try:
         rows = http.get_json(SF_TREES_URL, {"$select": "latitude,longitude", "$limit": 50000,
-                                            "$where": f"within_circle(point, {lat}, {lon}, {radius_m + int(TREE_RADIUS_M)})"})
-        return [(float(r["latitude"]), float(r["longitude"])) for r in rows if r.get("latitude") and r.get("longitude")], "sf_street_tree_list"
-    except (HttpError, ValueError, KeyError, TypeError, OSError):
-        pass
+                                            "$where": sf_tree_where(lat, lon, radius_m)})
+        return [(float(r["latitude"]), float(r["longitude"])) for r in rows if r.get("latitude") and r.get("longitude")], \
+            "sf_street_tree_list", ""
+    except (HttpError, ValueError, KeyError, TypeError, OSError) as e:
+        why.append(f"SF tree list: {e}")
     try:
-        return osm_trees(_overpass(http, tree_query(lat, lon, radius_m))), "osm"
-    except (HttpError, ValueError, OSError):
-        return [], "none"
+        return osm_trees(_overpass(http, tree_query(lat, lon, radius_m))), "osm", "; ".join(why)
+    except (HttpError, ValueError, OSError) as e:
+        why.append(f"OSM trees: {e}")
+    return [], "none", "; ".join(why)
 
 
 def fetch_zone(http, lat, lon, radius_m, urls=None):
-    """-> (ways with tree counts, tree source). Raises when no streets could be downloaded."""
+    """-> (ways with tree counts, tree source, why trees failed). Raises when no streets could be downloaded."""
     payload = _overpass(http, query(lat, lon, radius_m), urls)
-    trees, source = fetch_trees(http, lat, lon, radius_m)
+    trees, source, why = fetch_trees(http, lat, lon, radius_m)
     ways = parse_overpass(payload, lat, lon, trees)
     if not ways:
         raise HttpError(0, "Overpass returned no streets")
-    return ways, source
+    return ways, source, why
 
 
 def _key(zcfg, radius_m):
@@ -176,14 +196,14 @@ def run_streets(cfg, http, now, path=None, force=False, sleep=2.0, max_seconds=1
         if changed and sleep:
             time.sleep(sleep)               # be polite to the free public servers
         try:
-            ways, source = fetch_zone(http, z["lat"], z["lon"], st["radius_m"])
+            ways, source, why = fetch_zone(http, z["lat"], z["lon"], st["radius_m"])
         except Exception as e:
             notes.append(f"{name}: {e}")
             continue
         data["zones"][name] = {"key": _key(z, st["radius_m"]), "center": [z["lat"], z["lon"]], "radius_m": st["radius_m"],
                                "trees": source, "fetched_utc": iso(now), "ways": ways}
         if source == "none":
-            notes.append(f"{name}: streets saved but no tree data; will retry trees next run")
+            notes.append(f"{name}: streets saved but no tree data ({why}); will retry trees next run")
         changed = True
     if changed:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
