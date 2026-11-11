@@ -1,4 +1,4 @@
-"""Static status page (no JavaScript, no external requests) + status.json, published to GitHub Pages."""
+"""Static status page (no external requests; one tiny inline script keeps it from showing a cached old copy) + status.json, published to GitHub Pages."""
 import json
 import pathlib
 from datetime import timedelta
@@ -37,6 +37,14 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}td,th{text-align:left;
 footer{font-size:.8rem;color:var(--mute);margin:18px 0}
 """
 
+
+# GitHub Pages lets browsers keep a page for ~10 minutes and we cannot change that header. So the page checks its own
+# build time: a stale cached copy reloads once with a unique ?t= (which always bypasses the cache), and an open page
+# does the same every 5 minutes. No requests leave the site; without JavaScript a plain meta refresh is used.
+REFRESH_JS = ("(function(){try{var g=Date.parse(document.querySelector('meta[name=generated]').content),"
+              "u=function(){return location.pathname+'?t='+Date.now()};"
+              "if(!/[?&]t=/.test(location.search)&&Date.now()-g>12*6e4){location.replace(u());return}"
+              "setTimeout(function(){location.replace(u())},3e5)}catch(e){}})();")
 
 TRIGGERS = [  # stack order (bottom to top), plain-English label, short phrase for the tooltip
     ("saturation", "Air is saturated (temp = dew point)"),
@@ -310,7 +318,8 @@ def render(cfg, conn, evals, baseline, now):
            '<p class="mute">The field-report form link has not been set up yet.</p>')
     updated = "never" if newest is None else local_str(newest, tz)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="300"><title>SF Death Fog Watch</title><style>{CSS}</style></head><body><main>
+<meta name="generated" content="{iso(now)}"><noscript><meta http-equiv="refresh" content="300"></noscript>
+<script>{REFRESH_JS}</script><title>SF Death Fog Watch</title><style>{CSS}</style></head><body><main>
 <h1>SF Death Fog Watch</h1><p class="sub">Slippery-road mist risk for skaters. Weather data last fetched {escape(updated)}. Updates about every 10 minutes.</p>
 {banner}{hero}{cards}{cta}{_baseline_html(baseline, tz)}{_verify_html(conn)}{_how_html(cfg)}{_sources_html(cfg, conn, now, tz, baseline)}
 <footer>Experimental hobby tool, not safety advice: judge the road yourself. Scores come from weather data, not from looking

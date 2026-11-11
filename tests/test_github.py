@@ -160,7 +160,8 @@ class TestSite(unittest.TestCase):
         self.assertLess(html.index("Death fog chance"), html.index("Next 12 hours"))     # graph sits above the zone cards
         for needle in ('<svg class="chart"', 'id="zs0"', 'id="zs1"', "Calm wind", "No sun", "Why it may happen", ">now<"):
             self.assertIn(needle, html)
-        self.assertNotIn("<script", html.lower())
+        self.assertEqual(html.lower().count("<script"), 1)                 # only the self-refresh snippet
+        self.assertNotIn("src=", html.lower())                              # nothing loaded from elsewhere
 
     def test_timeline_parts_add_up_to_score(self):
         for z in self.cfg["zones"]:
@@ -193,6 +194,12 @@ class TestSite(unittest.TestCase):
         self.assertIn("Likely 55+", html)
         self.assertNotIn("Detector code", html)       # no repo url configured, so no code links
         self.assertNotIn('href="/blob', html)
+
+    def test_page_refreshes_itself_past_the_cache(self):
+        html = self.render()
+        self.assertIn('<meta name="generated" content="2026-11-12T10:00:00Z">', html)
+        self.assertIn("?t=", html)
+        self.assertIn('<noscript><meta http-equiv="refresh"', html)
 
     def test_stale_banner(self):
         self.assertIn("Data is stale", self.render(now=NOW + timedelta(hours=3)))
