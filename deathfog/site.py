@@ -264,8 +264,11 @@ def _map_section(cfg, streets_data, by_zone, tz):
         css.append(f"#ms{i}:checked~#mp{i}{{display:block}}#ms{i}:checked~.tabs label[for=ms{i}]{{background:var(--btn);color:var(--btnink);border-color:var(--btn)}}"
                    f"#ms{i}:focus-visible~.tabs label[for=ms{i}]{{outline:2px solid var(--c-sat);outline-offset:2px}}")
         zd = streets_data["zones"].get(key)
+        if zd and zd.get("key") != streets._key(z, st["radius_m"]):
+            zd = None                                    # the zone was moved: do not draw the old place under the new name
         if not zd:
-            panels.append(f'<div class="mpanel" id="mp{i}"><p class="mute">No street data for {escape(label)} yet.</p></div>')
+            panels.append(f'<div class="mpanel" id="mp{i}"><p class="mute">Street data for {escape(label)} is being downloaded and '
+                          "will appear after the next scheduled update.</p></div>")
             continue
         segs = streets.score_ways(zd["ways"], st)            # no street is treated as spared: the zone factor applies to the score, not the map
         top = streets.top_streets(segs)

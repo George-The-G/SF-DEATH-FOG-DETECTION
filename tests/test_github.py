@@ -400,6 +400,12 @@ class TestStreetMapOnPage(unittest.TestCase):
         self.assertIn("Observed &lt;dry&gt; spot", html)
         self.assertNotIn("Observed <dry>", html)
 
+    def test_moved_zone_does_not_show_old_streets(self):
+        self.cfg["zones"]["control"]["lat"] += 0.01
+        html = self.render()
+        self.assertIn("is being downloaded", html)
+        self.assertEqual(html.count('<svg class="map"'), 1)                    # only the unmoved zone has a map
+
     def test_version_label_and_no_data_message(self):
         html = self.render(data=None)
         self.assertIn("SF Death Fog Watch <span", html)
