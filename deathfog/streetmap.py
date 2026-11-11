@@ -67,7 +67,8 @@ def map_svg(segs, st, center, radius_m, uid, top, marks=()):
     for m in marks:                       # named spots, e.g. where skaters have seen the road stay dry
         x, y = proj(m["lat"], m["lon"], lat0, lon0)
         if 12 < x < SIZE - 12 and 12 < y < SIZE - 12:
-            anchor, dx = ("end", -10) if x > SIZE * 0.55 else ("start", 10)
+            width = 6.4 * len(m.get("label", ""))                         # rough text width in px
+            anchor, dx = ("end", -10) if x + 10 + width > SIZE - 8 else ("start", 10)
             out.append(f'<circle class="mmark" cx="{x:.1f}" cy="{y:.1f}" r="7"/><text class="ml" x="{x + dx:.1f}" y="{y + 4:.1f}" '
                        f'text-anchor="{anchor}">{escape(m.get("label", ""))}</text>')
     c = SIZE / 2
