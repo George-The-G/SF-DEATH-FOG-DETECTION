@@ -141,17 +141,17 @@ def lagged(series, idx_float):
 
 
 def step(W, svf, porous, f, local_fog, lit, dt_h, wind_ratio=1.0, use_sun=True, fog_gain=1.0):
-    """One time step. W [N]; svf, porous [N]; f = dict of scalar forcing (temp, dew, wind, cloud_low, precip, sw);
+    """One time step. W [N]; svf, porous [N]; f = dict of forcing (temp, dew, wind, cloud_low, precip, sw), each a scalar or an [N] array;
     local_fog [N] = lagged inflow * exposure; lit bool [N] (direct sun). Returns (W_new, parts)."""
     wind = f["wind"] * wind_ratio
     dT = DT_MAX * svf * (1 - f["cloud_low"] / 100.0) * np.clip(1 - wind / WIND_CALM, 0, 1)
     ts = f["temp"] - dT
     dew = K_DEW * np.maximum(0.0, f["dew"] - ts) * porous
     fog = K_FOG * local_fog * (0.5 + wind / 5.0) * fog_gain * porous
-    rain = K_RAIN * (1 - np.exp(-max(f["precip"], 0.0) / RAIN_SAT)) * porous * np.ones_like(W)
+    rain = K_RAIN * (1 - np.exp(-np.maximum(f["precip"], 0.0) / RAIN_SAT)) * porous * np.ones_like(W)
     rh = magnus_rh(f["temp"], f["dew"])
     evap = (K_EVAP_BASE + K_EVAP_WIND * wind) * np.maximum(0.0, 1 - rh)
-    sw = max(f["sw"], 0.0) / 1000.0
+    sw = np.maximum(f["sw"], 0.0) / 1000.0
     sun = K_DIFF * sw + (K_SUN * sw * lit if use_sun else 0.0)
     out = np.clip(W + (dew + fog + rain - evap - sun) * dt_h, 0.0, 100.0)
     return out.astype(np.float32), dict(dew=dew * dt_h, fog=fog * dt_h, rain=rain * dt_h, evap=evap * dt_h)
@@ -164,19 +164,35 @@ def sun_position(times_utc, lat=37.76, lon=-122.40):
     return sp["azimuth"].to_numpy(), sp["apparent_elevation"].to_numpy()
 
 
-def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0, refined=None, fog_mode=None, fog_top=None, use_dirs=None):
-    """Run one night. pts: dict(x, svf, porous, tracer, wind_ratio, horizon [N,72] or None, band-selected tracer; for the
-    'profile' mode also y, z). ser: weather.night_series dict. Overrides: tracer / svf arrays (ablations); fog_mode
-    ('band0' | 'profile', default FOG_HEIGHT_MODE); fog_top forces the fog top in profile mode. Returns (W [n,N] float32, diag)."""
+DEFAULT_DIRS = (180.0, 202.5, 225.0, 247.5, 270.0, 292.5, 315.0, 337.5, 360.0)   # the validated direction library
+
+
+def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0, refined=None, fog_mode=None, fog_top=None, use_dirs=None,
+             tracer_dirs=None, dirs_deg=None, forcing_fn=None, lag_block_h=None, out_every=1, keep_lit=True):
+    """Run one window. pts: dict(x, svf, porous, tracer, wind_ratio, horizon [N,72] or None, band-selected tracer; for the
+    'profile' mode also y, z). ser: weather.series / night_series dict (scalar series: coast forcing, fog source, fog top).
+    Overrides: tracer / svf arrays (ablations); fog_mode ('band0' | 'profile', default FOG_HEIGHT_MODE); fog_top forces the fog
+    top in profile mode; use_dirs: True/False forces the direction library on/off (default DIR_LIBRARY).
+    Live-path options (defaults reproduce the replay exactly):
+      tracer_dirs  [D, N] precomputed per-direction tracer table (live_static.npz 'tracer'), dirs_deg its directions (default
+                   pts['dirs'] or the 9 library directions): no library files are read, the direction blend is used.
+      forcing_fn   callable (i, f) -> f: replaces the scalar forcing dict of step i by one whose values may be [N] arrays
+                   (spatial forcing interpolated from a lattice); the coast source s(t) stays the scalar series.
+      lag_block_h  hours; the front lag uses the mean flow direction and wind of each block of that length (default: one value
+                   for the whole window).
+      out_every    keep W only every k-th step (frames 0, k, 2k, ...): memory for long windows.
+      keep_lit     keep the per-step direct-sun mask in diag['lit'] (replay validation needs it; live does not).
+    Returns (W [n_out, N] float32, diag)."""
     n = len(ser["temperature_2m"])
     N = len(pts["x"])
     mode = FOG_HEIGHT_MODE if fog_mode is None else fog_mode
     prof = mode == "profile"
     tr = pts["tracer"] if tracer is None else tracer
     top = fog_gain = None
+    table = tracer_dirs is not None and use_dirs is not False
     if prof:
         from . import fogtop
-        if tracer is None:
+        if tracer is None and tracer_dirs is None:
             tr = fogtop.points_tracer(pts, DATA_DIR)
         top, top_info = fogtop.estimate_fog_top(ser)
         if fog_top is not None:  # controlled experiments: force the fog top (scalar or [n], m ASL)
@@ -187,31 +203,55 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     refined = USE_REFINED if refined is None else refined
     wr = pts.get("wind_ratio", 1.0) * (pts["rel_wind"] if refined and "rel_wind" in pts else 1.0)  # local wind / 10 m wind
     s = fog_inflow(ser["temperature_2m"], ser["dew_point_2m"], ser["cloud_cover_low"], ser["wind_dir"])
-    wmean = float(np.mean(ser["wind_speed_10m"]))
-    mdir = mean_flow_dir(s, ser["wind_dir"])
+    wdir = np.asarray(ser["wind_dir"], float)
+    wspd = np.asarray(ser["wind_speed_10m"], float)
+    wmean = float(np.mean(wspd))
+    mdir = mean_flow_dir(s, wdir)
     dirs = Wt = E = None
-    if prof and tracer is None and (DIR_LIBRARY if use_dirs is None else use_dirs):  # validated non-270 fields: per-direction tracer, blended per time step
+    if table:  # precomputed per-direction tracer table
+        dd = np.asarray(pts["dirs"] if dirs_deg is None and "dirs" in pts else (DEFAULT_DIRS if dirs_deg is None else dirs_deg), float)
+        assert len(dd) == len(tracer_dirs), "tracer_dirs rows must match dirs_deg"
+        from . import dirlib
+        dirs = dd
+        E = fog_exposure(np.asarray(tracer_dirs)).astype(np.float32)
+        Wt = dirlib.weights(wdir, dirs)
+        if tracer is None:
+            tr = np.asarray(tracer_dirs)[int(np.argmin(np.abs(dd - 270.0)))]
+    elif prof and tracer is None and (DIR_LIBRARY if use_dirs is None else use_dirs):  # validated non-270 fields, blended per time step
         from . import dirlib
         dd = dirlib.available(Path(DATA_DIR or Path.home() / "deathfog-data") / "library")
         if len(dd) > 1:
             dirs = np.array(dd)
             E = np.stack([fog_exposure(fogtop.points_tracer(pts, DATA_DIR, d)) for d in dd]).astype(np.float32)
-            Wt = dirlib.weights(ser["wind_dir"], dirs)
-    if dirs is not None:
-        lag_steps = lag_seconds_dir(pts["x"], pts["y"], mdir, wmean * wr) / (step_min * 60.0)
-    else:
-        lag_steps = lag_seconds(pts["x"], wmean * wr) / (step_min * 60.0)
+            Wt = dirlib.weights(wdir, dirs)
+
+    def lag_for(mdir_, wmean_):
+        if dirs is not None:
+            return lag_seconds_dir(pts["x"], pts["y"], mdir_, wmean_ * wr) / (step_min * 60.0)
+        return lag_seconds(pts["x"], wmean_ * wr) / (step_min * 60.0)
+
+    blk = max(1, int(round(lag_block_h * 60.0 / step_min))) if lag_block_h else None
+    lag_steps = None if blk else lag_for(mdir, wmean)
     expo = fog_exposure(tr)
     az, el = sun_position(ser["t_utc"])
     dt_h = step_min / 60.0
     W = np.full(N, float(W0), np.float32)
-    out = np.zeros((n, N), np.float32)
-    lit_all = np.zeros((n, N), bool)
+    frames = (n + out_every - 1) // out_every
+    out = np.zeros((frames, N), np.float32)
+    lit_all = np.zeros((n, N), bool) if keep_lit else None
     dep = dict(fog=np.zeros(N), dew=np.zeros(N), rain=np.zeros(N), evap=np.zeros(N))
     hor = pts.get("horizon")
+    block_dirs = []
     for i in range(n):
+        if blk and i % blk == 0:  # time-varying lag: mean flow of this block
+            sl = slice(i, min(n, i + blk))
+            mb = mean_flow_dir(s[sl], wdir[sl])
+            lag_steps = lag_for(mb, float(np.mean(wspd[sl])))
+            block_dirs.append(mb)
         f = dict(temp=ser["temperature_2m"][i], dew=ser["dew_point_2m"][i], wind=ser["wind_speed_10m"][i],
                  cloud_low=ser["cloud_cover_low"][i], precip=ser["precipitation"][i], sw=ser["shortwave_radiation"][i])
+        if forcing_fn is not None:
+            f = forcing_fn(i, f)
         local = lagged(s, i - lag_steps) * (expo if E is None else Wt[i] @ E)
         if prof:  # street counts as inside the fog only while the (lagged) fog top is above it
             local = local * fogtop.fog_top_ramp(lagged(top, i - lag_steps), pts["z"])
@@ -220,11 +260,12 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
             from .sun import sunlit
             lit = sunlit(hor, az[i], el[i])
         W, parts = step(W, sv, porous, f, local, lit, dt_h, wr, use_sun, 1.0 if fog_gain is None else fog_gain)
-        out[i] = W
-        lit_all[i] = lit
+        if i % out_every == 0:
+            out[i // out_every] = W
+        if keep_lit:
+            lit_all[i] = lit
         for k in dep:
             dep[k] += parts[k]
     diag = dict(dirs_used=(None if dirs is None else dirs.tolist()), mean_flow_dir=mdir, sun_az=az, sun_el=el, s=s, lit=lit_all, lag_steps=lag_steps, fog_mode=mode, fog_top=top, tracer=np.asarray(tr, np.float32),
-                **{k + "_total": v for k, v in dep.items()})
+                out_every=out_every, block_dirs=block_dirs, **{k + "_total": v for k, v in dep.items()})
     return out, diag
-

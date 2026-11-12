@@ -114,10 +114,16 @@ def pick_nights(data, fog_nights=7, dry_nights=2, until=None, info=None):
     return fog + dry
 
 def night_series(data, start_utc, step_min=10):
-    """Interpolate one night to `step_min` steps. Wind direction is interpolated as a vector."""
+    """Interpolate one night (16 h from start_utc) to `step_min` steps. Wind direction is interpolated as a vector."""
+    return series(data, start_utc, start_utc + timedelta(hours=16), step_min)
+
+
+def series(data, start_utc, end_utc, step_min=10):
+    """Interpolate any window [start_utc, end_utc] (inclusive, aware datetimes) of the hourly table to `step_min` steps
+    (n = (end - start) / step + 1). Values outside the table are held at the edge value. Wind direction is interpolated as a vector."""
     t, c = table(data)
     base = np.array([(x - start_utc).total_seconds() / 3600 for x in t])
-    n = int(16 * 60 / step_min) + 1
+    n = int((end_utc - start_utc).total_seconds() / 60.0 / step_min + 1e-9) + 1
     tt = np.arange(n) * step_min / 60.0
     out = {"t_utc": [(start_utc + timedelta(minutes=step_min * i)) for i in range(n)]}
     for k in ("temperature_2m", "dew_point_2m", "wind_speed_10m", "cloud_cover", "cloud_cover_low", "precipitation", "shortwave_radiation"):
