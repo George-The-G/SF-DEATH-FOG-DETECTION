@@ -9,7 +9,7 @@ import shutil
 import sys
 from pathlib import Path
 
-new, out, rc, msg = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
+new, out, rc, msg = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3]), (sys.argv[4] if len(sys.argv) > 4 else " \)
 out.mkdir(parents=True, exist_ok=True)
 now = dt.datetime.now(dt.timezone.utc).isoformat()
 
