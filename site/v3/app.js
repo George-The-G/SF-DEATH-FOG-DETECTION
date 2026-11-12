@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createFog } from './fog.js';
 import { createRibbons } from './ribbons.js';
 import { createSkater } from './skater.js';
+import { ICON_SKATE_PLAY, ICON_FOG_PLAY, ICON_FOG_PAUSE } from './icons.js';
 
 /* ------------------------------------------------------------------ config */
 const SRC_Q = new URLSearchParams(location.search).get('src');
@@ -11,6 +12,8 @@ const SRC_DIRS = SRC_Q === 'mock' ? ['replay_mock/'] : SRC_Q === 'synth' ? ['rep
 const RAMP = [[0, '#3a8696'], [18, '#6fb09f'], [24, '#f4e04d'], [50, '#f2c230'], [65, '#ee8a2c'], [80, '#d9531e'], [90, '#b3202f'], [100, '#7a0f3b']];
 const CATS = ['dry', 'damp', 'slick', 'wet', 'icy-fog'];
 const $ = (id) => document.getElementById(id);
+$('flyhdr').querySelector('.ic').innerHTML = ICON_SKATE_PLAY;
+$('play').querySelector('.ic').innerHTML = ICON_FOG_PLAY;
 const ICON_PAUSE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 5v14M15 5v14"/></svg>';
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const EX = 1.5; // vertical exaggeration (terrain, buildings, streets, fog all share it)
@@ -644,7 +647,7 @@ function tzName(iso) { return /-07:00$/.test(iso) ? 'PDT' : /-08:00$/.test(iso) 
 function compass(d) { return d == null ? '' : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(d / 45) % 8]; }
 
 /* ------------------------------------------------------------------ controls */
-function setPlaying(p) { playing = p; $('play').classList.toggle('playing', p); $('play').setAttribute('aria-label', p ? 'Pause' : 'Play'); lastTs = 0; }
+function setPlaying(p) { playing = p; $('play').classList.toggle('playing', p); $('play').querySelector('.ic').innerHTML = p ? ICON_FOG_PAUSE : ICON_FOG_PLAY; $('play').setAttribute('aria-label', p ? 'Pause' : 'Play'); lastTs = 0; }
 $('play').onclick = () => { if (night && tNow >= night.n_frames - 1.001) tNow = 0; setPlaying(!playing); };
 $('slider').addEventListener('input', (e) => { tNow = parseFloat(e.target.value); applyTime(true); });
 $('speed').addEventListener('click', (e) => {
