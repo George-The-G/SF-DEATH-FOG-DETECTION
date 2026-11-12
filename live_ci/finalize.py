@@ -27,6 +27,10 @@ if rc == 0 and ns.get("ok") and (new / "index.json").exists():
     for f in sorted(new.iterdir()):
         if f.name != "status.json":
             shutil.copyfile(f, out / f.name)
+    keep = {f.name for f in new.glob("state_*.npz")}
+    for f in out.glob("state_*.npz"):   # carried state: only the files of the new run stay (it keeps the two newest)
+        if f.name not in keep:
+            f.unlink()
     ns["scheduled"] = True
     ns["run_url"] = "{}/{}/actions/runs/{}".format(os.environ.get("GITHUB_SERVER_URL", "https://github.com"), os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_RUN_ID", ""))
     (out / "status.json").write_text(json.dumps(ns, indent=1))

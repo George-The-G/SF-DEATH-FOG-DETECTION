@@ -1,6 +1,9 @@
 """python -m microclimate.live <command>
 
-  build   [--out DIR] [--static PATH] [--ribbons PATH] [--cache DIR]   one live run (default out: site/v3/live)
+  build   [--out DIR] [--static PATH] [--ribbons PATH] [--cache DIR] [--physics a,b|none] [--carry-state] [--archive DIR]   one live run (default out: site/v3/live;
+          physics default: config.PHYSICS)
+  compare --physics a,b|none [--static PATH] [--out DIR]               same inputs, config.PHYSICS versus the given switches; writes
+                                                                       compare_<time>.md/.json (default out: reports/physics_compare)
   ribbons [--stride N] [--static PATH] [--out DIR]                     offline: city ribbons + column maps (out default: the static file's folder)
   check   [--since 30d] [--out DIR]                                    compare the model with METAR / GOES / CO-OPS (section 7)
   cloudscore [--file cloud_score.json] [--since 14d] [--archive DIR]   print the satellite cloud score summary (guide 04)
@@ -17,7 +20,18 @@ def main(argv):
     cmd = argv[0] if argv else "help"
     if cmd == "build":
         from . import build
-        sys.exit(build.run(opt(argv, "--out", "site/v3/live"), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache")))
+        ph = opt(argv, "--physics")
+        if ph is not None:
+            from . import compare
+            ph = compare.parse_physics(ph)
+        sys.exit(build.run(opt(argv, "--out", "site/v3/live"), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"), physics=ph, carry_state=True if "--carry-state" in argv else None,
+                           archive_dir=opt(argv, "--archive")))
+    elif cmd == "compare":
+        from . import compare
+        if "--physics" not in argv:
+            sys.exit("compare needs --physics a,b (or --physics none)")
+        sys.exit(compare.run(compare.parse_physics(opt(argv, "--physics")), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"),
+                             opt(argv, "--out", "reports/physics_compare")))
     elif cmd == "ribbons":
         from . import config, ribbons
         static = Path(opt(argv, "--static", config.STATIC_DEFAULT))

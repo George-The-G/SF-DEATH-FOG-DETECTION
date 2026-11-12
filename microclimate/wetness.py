@@ -70,6 +70,19 @@ INV_DT = 0.0                  # degC: T increase between consecutive pressure le
 ELEV_WIND_GAIN = 0.10         # profile mode: fog-deposition wind factor grows by this fraction per 100 m street elevation above 30 m
 ELEV_WIND_REF_M = 30.0
 
+# ---- physics switches (guide 01): named model changes, all OFF unless a caller passes them to simulate(physics=...) ----
+KNOWN_PHYSICS = ("cloud_base", "lag_uniform", "vpd_evap", "total_cloud", "drizzle", "insitu_fog", "sun_clear", "film", "pavement", "grease")
+
+
+def check_physics(physics):
+    """-> frozenset of switch names; unknown names raise ValueError."""
+    P = frozenset(physics or ())
+    bad = sorted(P - set(KNOWN_PHYSICS))
+    if bad:
+        raise ValueError(f"unknown physics switch(es) {bad}; known: {list(KNOWN_PHYSICS)}")
+    return P
+
+
 CONSTANTS = {k: v for k, v in dict(globals()).items() if k.isupper() and isinstance(v, (int, float)) and k != "DIR_LIBRARY"}  # DIR_LIBRARY is a run switch, not a model constant (keeps the shipped index.json unchanged)
 
 
@@ -140,9 +153,10 @@ def lagged(series, idx_float):
     return np.interp(idx_float, np.arange(n), series, left=series[0])
 
 
-def step(W, svf, porous, f, local_fog, lit, dt_h, wind_ratio=1.0, use_sun=True, fog_gain=1.0):
+def step(W, svf, porous, f, local_fog, lit, dt_h, wind_ratio=1.0, use_sun=True, fog_gain=1.0, physics=frozenset()):
     """One time step. W [N]; svf, porous [N]; f = dict of forcing (temp, dew, wind, cloud_low, precip, sw), each a scalar or an [N] array;
-    local_fog [N] = lagged inflow * exposure; lit bool [N] (direct sun). Returns (W_new, parts)."""
+    local_fog [N] = lagged inflow * exposure; lit bool [N] (direct sun). physics: set of switch names (none changes anything yet).
+    Returns (W_new, parts)."""
     wind = f["wind"] * wind_ratio
     dT = DT_MAX * svf * (1 - f["cloud_low"] / 100.0) * np.clip(1 - wind / WIND_CALM, 0, 1)
     ts = f["temp"] - dT
@@ -168,7 +182,8 @@ DEFAULT_DIRS = (180.0, 202.5, 225.0, 247.5, 270.0, 292.5, 315.0, 337.5, 360.0)  
 
 
 def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0, refined=None, fog_mode=None, fog_top=None, use_dirs=None,
-             tracer_dirs=None, dirs_deg=None, forcing_fn=None, lag_block_h=None, out_every=1, keep_lit=True, s_series=None):
+             tracer_dirs=None, dirs_deg=None, forcing_fn=None, lag_block_h=None, out_every=1, keep_lit=True, s_series=None, physics=None,
+             state0=None, save_at=None):
     """Run one window. pts: dict(x, svf, porous, tracer, wind_ratio, horizon [N,72] or None, band-selected tracer; for the
     'profile' mode also y, z). ser: weather.series / night_series dict (scalar series: coast forcing, fog source, fog top).
     Overrides: tracer / svf arrays (ablations); fog_mode ('band0' | 'profile', default FOG_HEIGHT_MODE); fog_top forces the fog
@@ -183,7 +198,12 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
       out_every    keep W only every k-th step (frames 0, k, 2k, ...): memory for long windows.
       s_series     [n] fog source s(t) used instead of fog_inflow(ser) (live: coast series corrected by GOES / KHAF observations).
       keep_lit     keep the per-step direct-sun mask in diag['lit'] (replay validation needs it; live does not).
+      physics      iterable of switch names from KNOWN_PHYSICS (default none = today's model); unknown names raise ValueError.
+      state0       dict of arrays (key 'W' [N]) that replaces W0 as the starting state (carried state, guide 02).
+      save_at      step index i: the state at the START of step i (before its forcing is applied) is returned in diag['state_at'] (dict of
+                   arrays); None or i >= n = not saved.
     Returns (W [n_out, N] float32, diag)."""
+    P = check_physics(physics)
     n = len(ser["temperature_2m"])
     N = len(pts["x"])
     mode = FOG_HEIGHT_MODE if fog_mode is None else fog_mode
@@ -238,7 +258,12 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     expo = fog_exposure(tr)
     az, el = sun_position(ser["t_utc"])
     dt_h = step_min / 60.0
-    W = np.full(N, float(W0), np.float32)
+    if state0 is not None:
+        W = np.asarray(state0["W"], np.float32).copy()
+        assert W.shape == (N,), "state0['W'] must have one value per street point"
+    else:
+        W = np.full(N, float(W0), np.float32)
+    state_at = None
     frames = (n + out_every - 1) // out_every
     out = np.zeros((frames, N), np.float32)
     lit_all = np.zeros((n, N), bool) if keep_lit else None
@@ -262,7 +287,9 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
         if hor is not None and el[i] > 0:
             from .sun import sunlit
             lit = sunlit(hor, az[i], el[i])
-        W, parts = step(W, sv, porous, f, local, lit, dt_h, wr, use_sun, 1.0 if fog_gain is None else fog_gain)
+        if save_at is not None and i == save_at:  # state at the START of step i = initial state of a run that begins at that time
+            state_at = dict(W=W.copy())
+        W, parts = step(W, sv, porous, f, local, lit, dt_h, wr, use_sun, 1.0 if fog_gain is None else fog_gain, P)
         if i % out_every == 0:
             out[i // out_every] = W
         if keep_lit:
@@ -270,5 +297,5 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
         for k in dep:
             dep[k] += parts[k]
     diag = dict(dirs_used=(None if dirs is None else dirs.tolist()), mean_flow_dir=mdir, sun_az=az, sun_el=el, s=s, lit=lit_all, lag_steps=lag_steps, fog_mode=mode, fog_top=top, tracer=np.asarray(tr, np.float32),
-                out_every=out_every, block_dirs=block_dirs, **{k + "_total": v for k, v in dep.items()})
+                out_every=out_every, block_dirs=block_dirs, physics=sorted(P), state_at=state_at, **{k + "_total": v for k, v in dep.items()})
     return out, diag

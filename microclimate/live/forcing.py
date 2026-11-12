@@ -152,7 +152,7 @@ def interp_at(arr, idx, w):
 
 
 # ------------------------------------------------------------------ main builder
-def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=print):
+def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=print, physics=()):
     """rrfs: fetch.rrfs() dict. t0: window start (aware UTC). n: number of model steps. now: current UTC. x, y: street point coordinates (UTM 10N).
     obs: dict(coops=, metar=, nws={id: rows}, sounding=) with missing sources absent / None. sector_fn(hours, dirs) -> list of GOES upwind low-cloud fractions
     (None = no GOES). Returns dict(ser, s_series, fog_top, forcing_fn, info, lattice series ...)."""
@@ -172,7 +172,8 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
     SW = np.maximum(to_grid(np.nan_to_num(V["shortwave_radiation"], nan=0.0), th, g), 0.0)
     u_h, v_h = wind_to_uv(V["wind_speed_10m"], V["wind_direction_10m"])
     U, Vv = to_grid(u_h, th, g), to_grid(v_h, th, g)
-    info = dict(model=rrfs["model"], rrfs_last_valid=None if rrfs["last_valid"] is None else rrfs["last_valid"].isoformat(), flags=[])
+    info = dict(model=rrfs["model"], rrfs_last_valid=None if rrfs["last_valid"] is None else rrfs["last_valid"].isoformat(), flags=[],
+                physics=sorted(wetness.check_physics(physics)))
 
     # --- model at the observation sites (hourly, unnudged) for the corrections
     def model_at(lat, lon, arrg):
@@ -338,7 +339,7 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
     info["obs_until"] = None if obs_until is None else obs_until.isoformat()
     info["coast_lattice_points"] = int(west.sum())
     return dict(ser=ser, s_series=s_series, fog_top=top, forcing_fn=forcing_fn, info=info, s_model=s_model, obs_until=obs_until,
-                dir_hourly=dir_h, goes_frac=goes_frac, khaf=khaf, t_hours=t_h, idx=idx, w=w4, lattice=lat_t)
+                dir_hourly=dir_h, lattice_cl=CL, goes_frac=goes_frac, khaf=khaf, t_hours=t_h, idx=idx, w=w4, lattice=lat_t)
 
 
 def sites(obs, kind):

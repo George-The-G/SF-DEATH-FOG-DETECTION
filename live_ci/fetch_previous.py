@@ -34,3 +34,12 @@ for n in names:
     shutil.copyfile(tmp / n, out / n)
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"fetched {len(names)} files of the previous live output")
+# Carried model state (state_*.npz, listed in index.json "state_files"): best effort, a missing file only means a cold start, never a failure.
+for n in idx.get("state_files", []) or []:
+    try:
+        if not (n.startswith("state_") and n.endswith(".npz") and "/" not in n and "\\" not in n):
+            continue
+        (out / n).write_bytes(get(n))
+        print("fetched state file", n)
+    except Exception as e:  # noqa: BLE001
+        print("state file", n, "not fetched:", e)
