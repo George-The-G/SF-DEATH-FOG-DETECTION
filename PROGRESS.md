@@ -61,3 +61,5 @@ Commands: python -m microclimate replay (writes site/v3/replay/), python -m micr
 - site/v3/index.html + app.js + style.css (three.js 0.160.0 via jsdelivr importmap). Preview: python -m http.server 8000 --directory site/v3 then open http://localhost:8000/ (?src=mock forces mock data). Tries replay/ then replay_mock/.
 - Replay contract as in the brief; fog.png tile row 0 = SOUTH unless fog_grid.row0=='north'; streets.u8 size must equal n_frames*14116. Packed street points: data/points.bin + points.json (tools/make_points.py reads ~/deathfog-data/grids/zone/potrero_points.csv). Mock: tools/make_mock_replay.py -> replay_mock/.
 - Note: site/ is in .gitignore, so site/v3 files are added with git add -f.
+
+- Viewer update (v3-dev): buildings now ship as data/buildings.bin (all ~169k footprints: instanced boxes + polygons; buildings.glb is no longer loaded). Fog is site/v3/fog.js: 6 stacked terrain-following noise-drifting sheets, sqrt visual stretch of the fog.png value (PX_REF 16), near-camera fade, street points drawn after the fog, Fog density slider. Checked merged build on 2026-10-01 at 04:00 (phone + desktop, both toggles, no console errors).
