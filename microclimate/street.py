@@ -92,7 +92,11 @@ def build(cfg, grids_dir, lib_dir, refined_dir=None, out_path=None):
     refine = np.full(n, np.nan)
     rf = Path(refined_dir or grids_dir.parent / "refined") / "patch_corr_2700.npz"
     if rf.exists():
-        corr = np.load(rf)["corr_bldg"]
+        corr = np.load(rf)["corr_bldg"].copy()
+        rf25 = rf.with_name("patch_corr_2700_dx2p5.npz")  # 2.5 m nested run (Potrero only) preferred where finite
+        if rf25.exists():
+            c25 = np.load(rf25)["corr_bldg"]
+            corr = np.where(np.isfinite(c25), c25, corr)
         refine = corr[ci, cj].astype(float)
 
     out_path = Path(out_path or grids_dir / "zone" / "street_features.csv")

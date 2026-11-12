@@ -39,6 +39,7 @@
    "streets": "2026-11-10/streets.u8",
    "fog": "2026-11-10/fog.png",
    "fog_grid": {
+    "row0": "north",
     "w": 214,
     "h": 203,
     "cols": 8,
@@ -46,8 +47,7 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80,
-    "row0": "north"
+    "cell_m": 80
    },
    "weather": "2026-11-10/weather.json",
    "approx_direction": true,
@@ -60,8 +60,8 @@
     "mean_inflow": 0.14,
     "tier": 0
    },
-   "w_dawn_mean": 23.2,
-   "w_dawn_p95": 43.1
+   "w_dawn_mean": 23.3,
+   "w_dawn_p95": 44.5
   },
   {
    "id": "2026-10-08",
@@ -73,6 +73,7 @@
    "streets": "2026-10-08/streets.u8",
    "fog": "2026-10-08/fog.png",
    "fog_grid": {
+    "row0": "north",
     "w": 214,
     "h": 203,
     "cols": 8,
@@ -80,8 +81,7 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80,
-    "row0": "north"
+    "cell_m": 80
    },
    "weather": "2026-10-08/weather.json",
    "approx_direction": false,
@@ -94,8 +94,8 @@
     "mean_inflow": 0.39,
     "tier": 0
    },
-   "w_dawn_mean": 28.9,
-   "w_dawn_p95": 76.3
+   "w_dawn_mean": 29.3,
+   "w_dawn_p95": 76.4
   },
   {
    "id": "2026-10-01",
@@ -107,6 +107,7 @@
    "streets": "2026-10-01/streets.u8",
    "fog": "2026-10-01/fog.png",
    "fog_grid": {
+    "row0": "north",
     "w": 214,
     "h": 203,
     "cols": 8,
@@ -114,8 +115,7 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80,
-    "row0": "north"
+    "cell_m": 80
    },
    "weather": "2026-10-01/weather.json",
    "approx_direction": false,
@@ -128,7 +128,7 @@
     "mean_inflow": 0.36,
     "tier": 0
    },
-   "w_dawn_mean": 81.3,
+   "w_dawn_mean": 81.2,
    "w_dawn_p95": 100.0
   },
   {
@@ -141,6 +141,7 @@
    "streets": "2026-09-30/streets.u8",
    "fog": "2026-09-30/fog.png",
    "fog_grid": {
+    "row0": "north",
     "w": 214,
     "h": 203,
     "cols": 8,
@@ -148,8 +149,7 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80,
-    "row0": "north"
+    "cell_m": 80
    },
    "weather": "2026-09-30/weather.json",
    "approx_direction": false,
@@ -162,8 +162,8 @@
     "mean_inflow": 0.29,
     "tier": 0
    },
-   "w_dawn_mean": 61.0,
-   "w_dawn_p95": 94.0
+   "w_dawn_mean": 61.2,
+   "w_dawn_p95": 94.7
   },
   {
    "id": "2026-09-24",
@@ -175,6 +175,7 @@
    "streets": "2026-09-24/streets.u8",
    "fog": "2026-09-24/fog.png",
    "fog_grid": {
+    "row0": "north",
     "w": 214,
     "h": 203,
     "cols": 8,
@@ -182,8 +183,7 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80,
-    "row0": "north"
+    "cell_m": 80
    },
    "weather": "2026-09-24/weather.json",
    "approx_direction": false,
@@ -196,8 +196,8 @@
     "mean_inflow": 0.21,
     "tier": 0
    },
-   "w_dawn_mean": 20.0,
-   "w_dawn_p95": 34.9
+   "w_dawn_mean": 20.1,
+   "w_dawn_p95": 35.1
   },
   {
    "id": "2026-09-22",
@@ -209,6 +209,7 @@
    "streets": "2026-09-22/streets.u8",
    "fog": "2026-09-22/fog.png",
    "fog_grid": {
+    "row0": "north",
     "w": 214,
     "h": 203,
     "cols": 8,
@@ -216,8 +217,7 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80,
-    "row0": "north"
+    "cell_m": 80
    },
    "weather": "2026-09-22/weather.json",
    "approx_direction": true,
@@ -231,7 +231,7 @@
     "tier": 0
    },
    "w_dawn_mean": 18.7,
-   "w_dawn_p95": 47.9
+   "w_dawn_p95": 47.8
   },
   {
    "id": "2026-09-20",
@@ -243,6 +243,7 @@
    "streets": "2026-09-20/streets.u8",
    "fog": "2026-09-20/fog.png",
    "fog_grid": {
+    "row0": "north",
     "w": 214,
     "h": 203,
     "cols": 8,
@@ -250,8 +251,7 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80,
-    "row0": "north"
+    "cell_m": 80
    },
    "weather": "2026-09-20/weather.json",
    "approx_direction": true,
@@ -265,7 +265,7 @@
     "tier": 0
    },
    "w_dawn_mean": 29.1,
-   "w_dawn_p95": 86.3
+   "w_dawn_p95": 86.2
   },
   {
    "id": "2026-10-16",
@@ -277,6 +277,7 @@
    "streets": "2026-10-16/streets.u8",
    "fog": "2026-10-16/fog.png",
    "fog_grid": {
+    "row0": "north",
     "w": 214,
     "h": 203,
     "cols": 8,
@@ -284,8 +285,7 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80,
-    "row0": "north"
+    "cell_m": 80
    },
    "weather": "2026-10-16/weather.json",
    "approx_direction": true,
@@ -311,6 +311,7 @@
    "streets": "2026-10-03/streets.u8",
    "fog": "2026-10-03/fog.png",
    "fog_grid": {
+    "row0": "north",
     "w": 214,
     "h": 203,
     "cols": 8,
@@ -318,8 +319,7 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80,
-    "row0": "north"
+    "cell_m": 80
    },
    "weather": "2026-10-03/weather.json",
    "approx_direction": false,
