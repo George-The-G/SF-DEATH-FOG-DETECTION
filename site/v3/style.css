@@ -28,7 +28,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   color: var(--warn); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
 .chip { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255, 255, 255, .06); white-space: nowrap; }
 .chip.accent { border-color: var(--accent); color: var(--accent); }
-#rbtn { padding: 0 12px; min-width: 0; flex: 1 1 auto; order: 1; justify-content: flex-start; }
+#rbtn { padding: 0 12px; min-width: 0; flex: 1 1 0; order: 1; justify-content: flex-start; }
 #flyhdr { order: 3; flex: none; font-size: 15px; color: var(--accent); border-color: var(--accent); border-radius: 50%; background: rgba(94, 242, 255, .12); }
 #menubtn { order: 4; }
 #rbtn #rlabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }

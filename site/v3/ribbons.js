@@ -42,8 +42,11 @@ const frag = (glslRamp) => `
     float ea = abs(vAcross), a;
     if (vCls < .5) { c = min(c * 1.07, vec3(1.)); a = 1.; }
     else { c *= .94; a = .8 * vFade * uSideFade * uSideVis; }
-    c = mix(c, uRouteCol, smoothstep(.6, .8, ea) * .88 * vSel);
-    a *= 1. - .35 * smoothstep(.8, 1., ea);
+    if (vCls < .5) { // route strips: thick wetness-gradient line with a thin two-tone border (inner light or route colour, outer dark) that reads on every ramp colour
+      vec3 inner = mix(vec3(.93, .95, 1.), uRouteCol, vSel); // solid identity interior; the wetness ramp stays on the edge band
+      c = mix(inner, c, smoothstep(.6, .64, ea));
+      c = mix(c, vec3(.03, .06, .11), smoothstep(.93, .96, ea));
+    } else a *= 1. - .35 * smoothstep(.8, 1., ea); // side strips: wetness gradient only, no route colour
     if (a < .02) discard;
     gl_FragColor = vec4(c, a);
   }`;
@@ -87,7 +90,7 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
     const h = terrainH ? (x, z) => terrainH.at(x, z) : () => -1e9;
     for (let k = 0; k < S; k++) {
       const x = pos[k * 3], z = pos[k * 3 + 2], nx = nrm[k * 2], nz = nrm[k * 2 + 1];
-      const wf = cls[k] ? 0.75 : 1, hx = nx * half * wf, hz = nz * half * wf;
+      const wf = cls[k] ? 0.7 : 1, hx = nx * half * wf, hz = nz * half * wf;
       let y = Math.max(pos[k * 3 + 1] * EX, h(x, z), h(x + hx, z + hz), h(x - hx, z - hz)) + 1.0 + (cls[k] ? 0 : 0.3);
       lifted[k * 3] = x; lifted[k * 3 + 1] = y; lifted[k * 3 + 2] = z;
       for (let sg = 0; sg < 2; sg++) {
