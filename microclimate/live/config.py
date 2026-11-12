@@ -62,6 +62,21 @@ SOUNDING_VALID_H = 6.0               # a sounding overrides the RRFS fog top for
 INV_RISE_C = 1.0                     # inversion: temperature rises by at least this within INV_DEPTH_M above its base
 INV_DEPTH_M = 300.0
 
+# ---- satellite cloud score (guide 04; all first guesses) ----
+CLOUD_SCORE_FILE = "cloud_score.json"
+SAT_FILE = "sat{d}.png"              # observed low-cloud tiles, same layout as fog{d}.png
+CLOUD_YES = 0.5                      # a fraction at or above this counts as cloud / fog present
+CLOUD_HIGH_MAX = 0.30                # box-hour not scorable when more than this share of the valid pixels is cloud that is not low (high cloud hides the fog)
+CLOUD_VALID_MIN = 0.50               # ... or when fewer than this share of the pixels has a cloud mask
+CLOUD_KEEP_DAYS = 14                 # rolling history kept in cloud_score.json (local PT dates)
+CLOUD_MAX_BYTES = 100_000            # size limit of cloud_score.json
+CLOUD_LEADS_H = (1, 3, 6, 12, 24)    # lead times scored from the run archive
+CLOUD_LEAD_TOL_H = 0.75              # an archive frame counts for a lead time when its lead is within this many hours
+UPWIND_BOX = (-122.80, 37.68, -122.62, 37.84)   # ocean box lon0, lat0, lon1, lat1: about 10-25 km west of Ocean Beach
+BAY_BOX = (-122.37, 37.74, -122.31, 37.78)      # central bay between San Francisco and Oakland
+ARCHIVE_DIR = os.environ.get("DEATHFOG_ARCHIVE_DIR") or None   # folder holding run_<yyyymmddThhmm>.npz (guide 02 part B); None = no archive yet
+CLOUDSCORE_PREV_ENV = "DEATHFOG_CLOUDSCORE_PREV"               # path of the previous rolling cloud_score.json (set by live_ci/refresh.sh)
+
 # ---- paths ----
 STATIC_DEFAULT = os.path.join(os.path.expanduser("~"), "deathfog-data", "live", "live_static.npz")
 

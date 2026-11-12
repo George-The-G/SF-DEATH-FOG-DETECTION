@@ -3,6 +3,7 @@
   build   [--out DIR] [--static PATH] [--ribbons PATH] [--cache DIR]   one live run (default out: site/v3/live)
   ribbons [--stride N] [--static PATH] [--out DIR]                     offline: city ribbons + column maps (out default: the static file's folder)
   check   [--since 30d] [--out DIR]                                    compare the model with METAR / GOES / CO-OPS (section 7)
+  cloudscore [--file cloud_score.json] [--since 14d] [--archive DIR]   print the satellite cloud score summary (guide 04)
 """
 import sys
 from pathlib import Path
@@ -25,6 +26,9 @@ def main(argv):
     elif cmd == "check":
         from . import check
         sys.exit(check.run(argv[1:]))
+    elif cmd == "cloudscore":
+        from . import cloud_score
+        sys.exit(cloud_score.run_cli(argv[1:]))
     else:
         print(__doc__)
 

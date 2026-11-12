@@ -17,7 +17,7 @@ import numpy as np
 
 from .. import wetness
 from . import config as C
-from . import fetch, forcing, goes, outputs
+from . import cloud_score, fetch, forcing, goes, outputs
 
 PT = ZoneInfo("America/Los_Angeles")
 
@@ -120,17 +120,21 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print):
     sim_s = time.time() - t_sim
     log(f"simulate {sim_s:.1f} s, frames {W.shape}")
     # ---- outputs
+    cs_hook = cloud_score.Hook()
     try:
-        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log)
+        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log, tiles_cb=cs_hook.tiles_cb)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"writing outputs failed: {e!r}")
+    # satellite cloud score (guide 04): reads only, never fatal; any problem is logged into the status notes
+    cs_notes = []
+    cs_info = cloud_score.run_safe(out, cs_hook, rr, F, S, diag, goes_hours, t0, now, cs_notes, log=log)
     status = dict(ok=True, model_version=C.MODEL_VERSION, generated_iso=now.isoformat(), run_seconds=round(time.time() - t_run, 1), simulate_seconds=round(sim_s, 1),
                   window=dict(start_18pt_iso=start.isoformat(), t0_iso=t0.isoformat(), end_iso=end.isoformat(), step_min=C.STEP_MIN, out_step_min=C.OUT_STEP_MIN),
                   observed_until_iso=F["info"]["obs_until"], forecast_from_iso=F["info"]["obs_until"], rrfs_model=rr["model"],
-                  sources_used=sorted(st.sources), sources_failed=st.failed, data_as_of=st.sources, notes=st.notes[:20] + F["info"]["flags"],
+                  sources_used=sorted(st.sources), sources_failed=st.failed, data_as_of=st.sources, notes=st.notes[:20] + cs_notes + F["info"]["flags"],
                   forcing=F["info"], mode=("rrfs_only" if not any(obs[k] is not None for k in ("coops", "metar")) else "observations_nudged"),
-                  points=int(len(S["x"])), outputs=meta)
+                  points=int(len(S["x"])), outputs=meta, cloud_score=cs_info)
     (out / "status.json").write_text(json.dumps(status, indent=1, default=str))
     log(f"done in {status['run_seconds']} s; sources used {status['sources_used']}, failed {list(st.failed)}")
     return 0

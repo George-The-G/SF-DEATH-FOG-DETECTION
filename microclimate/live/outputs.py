@@ -101,7 +101,7 @@ def sheet(tiles):
     return Image.fromarray(img, "L"), rows
 
 
-def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=print):
+def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=print, tiles_cb=None):
     import datetime as dt
     out = Path(out)
     if Rb is None:
@@ -117,6 +117,8 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
     ranges = [[int(p[0]), int(p[-1]) + 1] for p in parts]
     t_hours = [t0 + dt.timedelta(hours=k) for k in range(nF)]
     tiles = fog_frames(S, diag, F, goes_hours, t_hours, spf)
+    if tiles_cb is not None:
+        tiles_cb(tiles, t_hours)        # read-only hand-over for the cloud score (cloud_score.Hook)
     files = {}
     frame_files, fog_files, fog_rows = [], [], []
     for d, (a, b) in enumerate(ranges):
