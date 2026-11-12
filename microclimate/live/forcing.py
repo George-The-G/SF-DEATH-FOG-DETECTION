@@ -18,6 +18,20 @@ def hours_rel(times, t0):
     return np.array([(t - t0).total_seconds() / 3600.0 for t in times])
 
 
+def last_finite_index(a):
+    """Index of the last finite value of a 1-D series, or None. (Unlike fade_series' last-known hour, which comes from rolling-median
+    smoothed series and so runs ROLL_H - 1 hours past the last real observation.)"""
+    k = np.nonzero(np.isfinite(np.asarray(a, float)))[0]
+    return None if len(k) == 0 else int(k[-1])
+
+
+def cap_obs_until(obs_until, t_h, now_h):
+    """The observed/forecast boundary can never lie after the build time: cap at the last whole model hour <= now."""
+    if obs_until is None:
+        return None
+    return min(obs_until, t_h[min(len(t_h) - 1, max(0, int(math.floor(now_h))))])
+
+
 def fill_series(a):
     """Linear fill of NaNs in a 1-D series, edges held; all-NaN stays NaN."""
     a = np.asarray(a, float)
@@ -186,8 +200,9 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
                 dl_r[k] = np.clip(circ_mean_deg(seg), -C.WIND_DIR_CLIP_DEG, C.WIND_DIR_CLIP_DEG)
         r_series, hl = fade_series(rat_r, g, C.WIND_E_FOLD_H, "ratio", 1.0)
         d_series, _ = fade_series(dl_r, g, C.WIND_E_FOLD_H, "add", 0.0)
-        if hl is not None:
-            obs_until = t_h[int(hl)]
+        k_raw = last_finite_index(so)   # the real last observed hour (hl runs ROLL_H - 1 hours later: rolling medians carry forward)
+        if k_raw is not None:
+            obs_until = t_h[k_raw]
         info["wind_nudge"] = dict(last_hour=None if hl is None else t_h[int(hl)].isoformat(),
                                   ratio_last=None if hl is None else float(rat_r[int(hl)]), dir_offset_last=None if hl is None else float(dl_r[int(hl)]))
     else:
@@ -319,6 +334,7 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
     def forcing_fn(i, f):
         gat = lambda A: (A[idx, i] * w4).sum(axis=1).astype(np.float32)  # noqa: E731
         return dict(temp=gat(Ts), dew=gat(Tds), wind=np.hypot(gat(Us), gat(Vs)), cloud_low=gat(CLs), precip=gat(PRs), sw=gat(SWs))
+    obs_until = cap_obs_until(obs_until, t_h, now_h)
     info["obs_until"] = None if obs_until is None else obs_until.isoformat()
     info["coast_lattice_points"] = int(west.sum())
     return dict(ser=ser, s_series=s_series, fog_top=top, forcing_fn=forcing_fn, info=info, s_model=s_model, obs_until=obs_until,

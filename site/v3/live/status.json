@@ -1,9 +1,9 @@
 {
  "ok": true,
  "model_version": "live-1",
- "generated_iso": "2026-11-12T18:52:38.628014+00:00",
- "run_seconds": 45.2,
- "simulate_seconds": 29.4,
+ "generated_iso": "2026-11-12T20:53:20.577244+00:00",
+ "run_seconds": 51.1,
+ "simulate_seconds": 30.6,
  "window": {
   "start_18pt_iso": "2026-11-12T02:00:00+00:00",
   "t0_iso": "2026-11-11T20:00:00+00:00",
@@ -11,8 +11,8 @@
   "step_min": 10,
   "out_step_min": 60
  },
- "observed_until_iso": "2026-11-12T21:00:00+00:00",
- "forecast_from_iso": "2026-11-12T21:00:00+00:00",
+ "observed_until_iso": "2026-11-12T20:00:00+00:00",
+ "forecast_from_iso": "2026-11-12T20:00:00+00:00",
  "rrfs_model": "ncep_rrfs_conus",
  "sources_used": [
   "coops",
@@ -26,18 +26,18 @@
  "data_as_of": {
   "rrfs": {
    "model": "ncep_rrfs_conus",
-   "last_valid": "2026-11-15T18:00:00+00:00",
+   "last_valid": "2026-11-16T00:00:00+00:00",
    "note": null
   },
   "coops": {
-   "newest": "2026-11-12T18:42:00+00:00",
-   "n": 238
+   "newest": "2026-11-12T20:42:00+00:00",
+   "n": 258
   },
   "metar": {
    "newest": {
-    "KHAF": "2026-11-12T18:35:00+00:00",
-    "KSFO": "2026-11-12T17:56:00+00:00",
-    "KOAK": "2026-11-12T17:53:00+00:00"
+    "KHAF": "2026-11-12T20:35:00+00:00",
+    "KSFO": "2026-11-12T19:56:00+00:00",
+    "KOAK": "2026-11-12T19:53:00+00:00"
    }
   },
   "sounding": {
@@ -46,13 +46,13 @@
   },
   "nws": {
    "newest": {
-    "SFOC1": "2026-11-12T16:43:00+00:00"
+    "SFOC1": "2026-11-12T19:43:00+00:00"
    }
   },
   "goes": {
-   "hours": 23,
-   "of": 23,
-   "newest": "2026-11-12T18:02:36.205165+00:00",
+   "hours": 25,
+   "of": 25,
+   "newest": "2026-11-12T20:02:36.220690+00:00",
    "products": [
     "ABI-L2-ACMC",
     "ABI-L2-ACHAC"
@@ -62,49 +62,49 @@
  "notes": [],
  "forcing": {
   "model": "ncep_rrfs_conus",
-  "rrfs_last_valid": "2026-11-15T18:00:00+00:00",
+  "rrfs_last_valid": "2026-11-16T00:00:00+00:00",
   "flags": [],
   "wind_nudge": {
-   "last_hour": "2026-11-12T21:00:00+00:00",
-   "ratio_last": 1.3947134054689196,
-   "dir_offset_last": 45.0
+   "last_hour": "2026-11-12T23:00:00+00:00",
+   "ratio_last": 0.9217402368652107,
+   "dir_offset_last": 20.340363605463438
   },
   "temp_nudge": {
    "T": [
-    "2026-11-12T21:00:00+00:00",
-    1.5759588235293727
+    "2026-11-12T23:00:00+00:00",
+    2.1860828054299013
    ],
    "Td": [
-    "2026-11-12T21:00:00+00:00",
-    2.8779411764706175
+    "2026-11-12T23:00:00+00:00",
+    0.5999999999999996
    ]
   },
   "fog_source": {
-   "hours_with_obs": 24,
-   "last_obs_hour": "2026-11-12T19:00:00+00:00",
-   "goes_hours": 23,
-   "khaf_hours": 24,
-   "mean_model": 0.08233492058101682,
-   "mean_used": 0.08608258002126323
+   "hours_with_obs": 26,
+   "last_obs_hour": "2026-11-12T21:00:00+00:00",
+   "goes_hours": 25,
+   "khaf_hours": 26,
+   "mean_model": 0.07909129682501718,
+   "mean_used": 0.08170933073116184
   },
   "fog_top_source": "profile",
   "sounding": {
    "valid": "2026-11-12T12:00:00+00:00",
    "inversion_base_m": 108.0
   },
-  "obs_until": "2026-11-12T21:00:00+00:00",
+  "obs_until": "2026-11-12T20:00:00+00:00",
   "coast_lattice_points": 5
  },
  "mode": "observations_nudged",
  "points": 285809,
  "outputs": {
   "index.json": {
-   "bytes": 2747,
-   "gz": 1150
+   "bytes": 2746,
+   "gz": 1152
   },
   "weather.json": {
    "bytes": 6573,
-   "gz": 1866
+   "gz": 1856
   },
   "ribbons_city.bin": {
    "bytes": 3891192,
@@ -116,29 +116,29 @@
   },
   "day0.u8": {
    "bytes": 2495583,
-   "gz": 436350
+   "gz": 452466
   },
   "day1.u8": {
    "bytes": 2403154,
-   "gz": 795465
+   "gz": 862966
   },
   "day2.u8": {
    "bytes": 2403154,
-   "gz": 359351
+   "gz": 359521
   },
   "fog0.png": {
-   "bytes": 61576,
-   "gz": 60560
+   "bytes": 29363,
+   "gz": 28251
   },
   "fog1.png": {
-   "bytes": 102588,
-   "gz": 101846
+   "bytes": 85596,
+   "gz": 85273
   },
   "fog2.png": {
-   "bytes": 51443,
-   "gz": 50852
+   "bytes": 82034,
+   "gz": 80725
   },
-  "first_paint_gz_extra": 2310957,
+  "first_paint_gz_extra": 2294756,
   "S_district": 19444,
   "S_city": 72985
  }
