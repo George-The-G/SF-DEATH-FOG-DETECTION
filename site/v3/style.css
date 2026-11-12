@@ -24,6 +24,7 @@ button, select, input { font: inherit; color: inherit; }
 .views button:hover { background: rgba(30, 45, 75, .9); }
 
 #weather { position: fixed; top: 58px; left: 16px; display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; min-width: 150px; z-index: 4; }
+.note { color: var(--warn); font-size: 11px; }
 .wx { display: flex; justify-content: space-between; gap: 18px; }
 .wx .k { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .wx .v { font-family: var(--mono); font-size: 13px; }
@@ -81,7 +82,7 @@ button, select, input { font: inherit; color: inherit; }
   .views { margin-left: auto; } .views button { padding: 5px 12px; min-height: 34px; }
   .poc { order: 3; flex-basis: 100%; text-align: left; font-size: 10.5px; }
   #weather { top: 82px; left: 12px; right: 12px; flex-direction: row; justify-content: space-between; gap: 6px; padding: 6px 10px; min-width: 0; }
-  .wx { flex-direction: column; gap: 0; } .wx .k { font-size: 9.5px; } .wx .v { font-size: 12px; }
+  .wx { flex-direction: column; gap: 0; } .wx .k { font-size: 9.5px; } .note { flex-basis: 100%; position: absolute; top: 100%; left: 0; margin-top: 4px; background: var(--panel); border-radius: 6px; padding: 1px 8px; } .wx .v { font-size: 12px; }
   #badge { top: 128px; left: 12px; transform: none; }
   #clock { font-size: 20px; }
   .chk { font-size: 12px; }

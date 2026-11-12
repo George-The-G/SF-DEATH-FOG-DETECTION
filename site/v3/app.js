@@ -8,6 +8,7 @@ const RAMP = [[0, '#3a8696'], [18, '#6fb09f'], [24, '#f4e04d'], [50, '#f2c230'],
 const CATS = ['dry', 'damp', 'slick', 'wet', 'icy-fog'];
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const EX = 1.5; // vertical exaggeration (terrain, buildings, streets, fog all share it)
 const isTouch = matchMedia('(pointer: coarse)').matches;
 
 function hexRgb(h) { return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255); }
@@ -90,7 +91,7 @@ function buildHeightGrid(geom, step) {
   let maxI = 0, maxJ = 0;
   for (let k = 0; k < p.count; k++) { maxI = Math.max(maxI, Math.round(p.getX(k) / step)); maxJ = Math.max(maxJ, Math.round(-p.getZ(k) / step)); }
   const ni = maxI + 1, nj = maxJ + 1, h = new Float32Array(ni * nj).fill(-9999);
-  for (let k = 0; k < p.count; k++) h[Math.round(p.getX(k) / step) * nj + Math.round(-p.getZ(k) / step)] = p.getY(k);
+  for (let k = 0; k < p.count; k++) h[Math.round(p.getX(k) / step) * nj + Math.round(-p.getZ(k) / step)] = p.getY(k) * EX;
   return {
     ni, nj, step, h,
     at(x, z) {
@@ -118,7 +119,7 @@ async function loadMeshes() {
       o.material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
       terrainH = buildHeightGrid(g, meta.cell_m * 3);
     });
-    terrainMesh = gl.scene; scene.add(terrainMesh);
+    terrainMesh = gl.scene; terrainMesh.scale.y = EX; scene.add(terrainMesh);
   } catch (e) { console.warn(e); toast('Terrain failed to load'); }
   try {
     const gl = await withTimeout(loadGLB('data/buildings.glb'), 60000, 'buildings');
@@ -127,7 +128,7 @@ async function loadMeshes() {
       if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
       o.material = new THREE.MeshLambertMaterial({ color: 0x6b7a96, emissive: 0x0b1224, side: THREE.DoubleSide });
     });
-    buildingsMesh = gl.scene; scene.add(buildingsMesh);
+    buildingsMesh = gl.scene; buildingsMesh.scale.y = EX; scene.add(buildingsMesh);
   } catch (e) { console.warn(e); toast('Buildings failed to load'); }
 }
 
@@ -140,7 +141,7 @@ function buildPoints(bin, info) {
   elevY = new Float32Array(N);
   const iPos = new Float32Array(N * 3), iBear = new Float32Array(N), iSide = new Float32Array(N), iRoute = new Float32Array(N);
   for (let k = 0; k < N; k++) {
-    const x = f[k * 4], z = f[k * 4 + 2], y = Math.max(f[k * 4 + 1], terrainH ? terrainH.at(x, z) : 0) + 1.5;
+    const x = f[k * 4], z = f[k * 4 + 2], y = Math.max(f[k * 4 + 1] * EX, terrainH ? terrainH.at(x, z) : 0) + 1.5;
     elevY[k] = y; iPos.set([x, y, z], k * 3); iBear[k] = f[k * 4 + 3]; iSide[k] = side[k]; iRoute[k] = route[k];
   }
   const q = new THREE.InstancedBufferGeometry();
@@ -185,7 +186,7 @@ const labelEls = [];
 const beacons = [];
 function buildRoute(info) {
   if (!info.route || info.route.length < 2) return;
-  const lift = (p) => new THREE.Vector3(p[0], Math.max(p[1], terrainH ? terrainH.at(p[0], p[2]) : 0) + 3, p[2]);
+  const lift = (p) => new THREE.Vector3(p[0], Math.max(p[1] * EX, terrainH ? terrainH.at(p[0], p[2]) : 0) + 3, p[2]);
   const rp = info.route.map(lift);
   const curve = new THREE.CatmullRomCurve3(rp, false, 'catmullrom', 0.1);
   const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 300, 2.4, 6, false), new THREE.MeshBasicMaterial({ color: 0x5ef2ff }));
@@ -274,7 +275,7 @@ async function selectNight(i) {
   ]);
   if (sb.byteLength !== want) throw new Error(`streets.u8 has ${sb.byteLength} bytes, expected ${want}`);
   night = n; streets = new Uint8Array(sb); weather = wx; fogGrid = n.fog_grid;
-  $('slider').max = n.n_frames - 1;
+  $('slider').max = n.n_frames - 1; $('wx-note').hidden = !n.approx_direction;
   const ok = n.fog && fogGrid ? await buildFog(base + n.fog, fogGrid) : false;
   $('fogtoggle').disabled = !ok; if (!ok) $('fogtoggle').checked = false;
   fogLayers.forEach((m) => (m.visible = $('fogtoggle').checked));
@@ -295,7 +296,7 @@ function applyTime(force) {
   if (!night) return;
   const nf = night.n_frames, f = clamp(tNow, 0, nf - 1), a = Math.floor(f), b = Math.min(a + 1, nf - 1), u = f - a;
   const w = wall(night.start_iso, f * night.step_min);
-  $('clock').textContent = w.time; $('clock-sub').textContent = w.day + ' PST';
+  $('clock').textContent = w.time; $('clock-sub').textContent = w.day + ' ' + tzName(night.start_iso);
   if (document.activeElement !== $('slider') || force) $('slider').value = f;
   const key = Math.round(f * 20);
   if (force || key !== lastFrameKey) {
@@ -313,6 +314,7 @@ function applyTime(force) {
   }
   if (fogUniforms) fogUniforms.uFrame.value = (f * night.step_min) / fogGrid.frame_min;
 }
+function tzName(iso) { return /-07:00$/.test(iso) ? 'PDT' : /-08:00$/.test(iso) ? 'PST' : ''; }
 function compass(d) { return d == null ? '' : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(d / 45) % 8]; }
 
 /* ------------------------------------------------------------------ controls */
@@ -336,7 +338,7 @@ $('btn-city').onclick = () => flyTo(CITY.pos, CITY.target, 2200);
 $('btn-route').onclick = () => {
   if (!ROUTE.start) { toast('Route not available'); return; }
   const m = ROUTE.mid;
-  const k = innerWidth < innerHeight ? 1.9 : 1; flyTo(new THREE.Vector3(m.x + 520 * k, m.y + 430 * k, m.z + 560 * k), new THREE.Vector3(m.x, m.y - 20, m.z - 40), 2800);
+  const por = innerWidth < innerHeight, k = por ? 2.6 : 1; flyTo(new THREE.Vector3(m.x + 520 * k, m.y + 430 * k, m.z + 560 * k), new THREE.Vector3(m.x, m.y - 20, m.z - 40), 2800);
 };
 const ease = (t) => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
@@ -397,11 +399,12 @@ function frame(ts) {
   if (pointMat) pointMat.uniforms.uScale.value = clamp(dist / 450, 1, 12);
   const bs = clamp(dist / 450, 1, 80); beacons.forEach((b) => b.scale.set(bs * 1.5, 1, bs * 1.5));
   const showLbl = dist < 3500;
+  const edge = innerWidth < innerHeight ? 0.9 : 1.1;
   for (const L of labelEls) {
     v3.copy(L.p).project(camera);
-    const vis = showLbl && v3.z < 1 && Math.abs(v3.x) < 1.1 && Math.abs(v3.y) < 1.1;
+    const vis = showLbl && v3.z < 1 && Math.abs(v3.x) < edge && Math.abs(v3.y) < 1.1;
     L.el.style.display = vis ? '' : 'none';
-    if (vis) L.el.style.transform = `translate(-50%,-100%) translate(${(v3.x * .5 + .5) * innerWidth}px, ${(1 - (v3.y * .5 + .5)) * innerHeight}px)`;
+    if (vis) L.el.style.transform = `translate(-50%,-100%) translate(${clamp((v3.x * .5 + .5) * innerWidth, 70, innerWidth - 70)}px, ${(1 - (v3.y * .5 + .5)) * innerHeight}px)`;
   }
   renderer.render(scene, camera);
 }
@@ -424,8 +427,13 @@ function frame(ts) {
       return;
     }
     index = idx; base = dir; $('badge').hidden = !idx.mock; if (idx.mock) $('badge').textContent = 'Mock data';
-    $('night').innerHTML = idx.nights.map((n, i) => `<option value="${i}">${n.label}</option>`).join('');
-    const firstFog = Math.max(0, idx.nights.findIndex((n) => n.kind === 'fog')); $('night').value = firstFog;
+    $('night').innerHTML = idx.nights.map((n, i) => `<option value="${i}">${n.label}${n.approx_direction ? ' *' : ''}</option>`).join('');
+    const qn = new URLSearchParams(location.search).get('night');
+    let firstFog = idx.nights.findIndex((n) => n.id === qn);
+    if (firstFog < 0) { // default: strongest fog night
+      firstFog = 0; let best = -1;
+      idx.nights.forEach((n, i) => { const w = n.kind === 'fog' ? (n.w_dawn_mean ?? 1) : -1; if (w > best) { best = w; firstFog = i; } });
+    } $('night').value = firstFog;
     tNow = Math.min(60, idx.nights[firstFog].n_frames - 1);
     await selectNight(firstFog);
     window.__ready = true;

@@ -46,7 +46,8 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80
+    "cell_m": 80,
+    "row0": "north"
    },
    "weather": "2026-11-10/weather.json",
    "approx_direction": true,
@@ -79,7 +80,8 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80
+    "cell_m": 80,
+    "row0": "north"
    },
    "weather": "2026-10-08/weather.json",
    "approx_direction": false,
@@ -112,7 +114,8 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80
+    "cell_m": 80,
+    "row0": "north"
    },
    "weather": "2026-10-01/weather.json",
    "approx_direction": false,
@@ -145,7 +148,8 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80
+    "cell_m": 80,
+    "row0": "north"
    },
    "weather": "2026-09-30/weather.json",
    "approx_direction": false,
@@ -178,7 +182,8 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80
+    "cell_m": 80,
+    "row0": "north"
    },
    "weather": "2026-09-24/weather.json",
    "approx_direction": false,
@@ -211,7 +216,8 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80
+    "cell_m": 80,
+    "row0": "north"
    },
    "weather": "2026-09-22/weather.json",
    "approx_direction": true,
@@ -244,7 +250,8 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80
+    "cell_m": 80,
+    "row0": "north"
    },
    "weather": "2026-09-20/weather.json",
    "approx_direction": true,
@@ -277,7 +284,8 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80
+    "cell_m": 80,
+    "row0": "north"
    },
    "weather": "2026-10-16/weather.json",
    "approx_direction": true,
@@ -310,7 +318,8 @@
     "frame_min": 30,
     "x0": 540100,
     "y0": 4171500,
-    "cell_m": 80
+    "cell_m": 80,
+    "row0": "north"
    },
    "weather": "2026-10-03/weather.json",
    "approx_direction": false,
