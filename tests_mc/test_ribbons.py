@@ -65,7 +65,7 @@ class TestRibbonData(unittest.TestCase):
     def test_header_and_sizes(self):
         rib = self.rib
         S = rib["S"]
-        self.assertEqual(rib["version"], 2)
+        self.assertEqual(rib["version"], 3)
         self.assertTrue(0 < S < 40000)
         self.assertEqual(int(rib["stripStart"][-1]), S)
         self.assertEqual(rib["nIdx"], sum(6 * (b - a - 1) for a, b in self.strips))
@@ -103,19 +103,20 @@ class TestRibbonData(unittest.TestCase):
                 self.assertNotEqual(int(pts[int(src[i])]["route_mask"]), 0)
 
     def test_district_streets(self):
-        """Version 3 data: every street of the zones is a ribbon (cls 1): no mask bits, no fade, roughly 20 m sample spacing."""
+        """Every street of the zones is a ribbon (cls 1): no mask bits, roughly 20 m sample spacing; there are no side blocks."""
         P, cls = self.rib["pos"][:, [0, 2]], self.rib["cls"]
         self.assertGreater(int((cls == 1).sum()), 3 * int((cls == 0).sum()), "district streets should dominate the sample count")
         self.assertTrue((self.rib["mask"][cls == 1] == 0).all())
-        self.assertTrue((self.rib["fade"][cls == 1] == 255).all())
         for a, b in self.strips:
             if cls[a] == 1:
                 d = np.hypot(*np.diff(P[a:b], axis=0).T)
                 self.assertLessEqual(d.max(), 46.0, (a, d.max()))
-        self.assertTrue(json.load(open(V3 / "data" / "ribbons_meta.json")).get("district"))
+        meta = json.load(open(V3 / "data" / "ribbons_meta.json"))
+        self.assertFalse({"side_block_counts", "side_block_m"} & set(meta))
+        self.assertNotIn("depth", self.rib)
+        self.assertNotIn("fade", self.rib)
 
-    def test_fade_and_normals(self):
-        self.assertEqual(int(self.rib["fade"].max()), 255)
+    def test_normals(self):
         n = np.hypot(self.rib["nrm"][:, 0], self.rib["nrm"][:, 1])
         self.assertGreaterEqual(float(n.min()), 0.99)
         self.assertLessEqual(float(n.max()), 2.0001)

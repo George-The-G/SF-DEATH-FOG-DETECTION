@@ -25,7 +25,7 @@ def read_ribbons(path):
     assert magic == 0x31424952, "not a RIB1 file"
     off = 24
     pad = lambda n: n + (-n) % 4  # noqa: E731
-    sizes = [("pos", 12 * S), ("nrm", 8 * S), ("src", 4 * S), ("st", 2 * S), ("mask", 2 * S), ("side", S), ("cls", S), ("fade", S),
+    sizes = [("pos", 12 * S), ("nrm", 8 * S), ("src", 4 * S), ("st", 2 * S), ("mask", 2 * S), ("side", S), ("cls", S)] + ([("fade", S)] if ver < 3 else []) + [
              ("stripStart", 4 * (nS + 1))]
     out = {"S": S, "nStrips": nS, "nIdx": nIdx, "width": width, "version": ver}
     dt = {"pos": ("<f4", (S, 3)), "nrm": ("<f4", (S, 2)), "src": ("<u4", (S,)), "st": ("<u2", (S,)), "mask": ("<u2", (S,)),
