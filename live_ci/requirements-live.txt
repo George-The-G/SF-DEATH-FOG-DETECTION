@@ -1,0 +1,14 @@
+# Packages the live builder needs on the GitHub runner (no GPU, no xlb/warp/jax). Versions match requirements-mc.txt.
+numpy==2.5.4
+scipy==1.18.1
+pandas==3.1.1
+pvlib==0.16.1
+pyproj==3.8.0
+rasterio==1.5.2
+shapely==2.2.0
+h5py==3.16.0
+pillow==13.0.0
+requests==2.34.2
+python-dateutil==4.0.0
+pytz==2026.6
+tzdata==2026.6
