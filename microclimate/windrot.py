@@ -24,6 +24,9 @@ from scipy.ndimage import distance_transform_edt, map_coordinates
 DX = 20.0
 PAD_UP = 100  # cells (2 km) of upwind fetch added in front of the domain (filler terrain tapers to sea level, see rotate_solid)
 TAPER_CELLS = 50.0  # filler terrain falls to sea level over this distance (1 km) outside the original domain
+AXIS_PAD = 50       # axis-aligned frames (180 / 360 / 90) fit the original box exactly, so the real terrain (Marin headlands, East Bay,
+                    # San Bruno Mountain) touched the outflow and lateral boundaries and the first 180 run developed speed 2.8x inflow at the
+                    # outflow corner; they get this many filler cells (tapered to sea) on both lateral sides and downwind, like the oblique frames
 
 
 def frame(theta_deg, nx, ny, pad=None):
@@ -40,15 +43,20 @@ def frame(theta_deg, nx, ny, pad=None):
     nxr = int(math.ceil(W * abs(fx) + H * abs(fy) - 1e-9))
     nyr = int(math.ceil(W * abs(nxn) + H * abs(nyn) - 1e-9))
     pad = PAD_UP if pad is None else pad
-    return dict(f=(fx, fy), n=(nxn, nyn), nxr=nxr, nyr=nyr, pad=pad)  # nxr/nyr: core size; the run grid is nxr + pad long in x
+    axis = (fx == 0.0 or fy == 0.0)
+    padlat = AXIS_PAD if axis else 0
+    paddown = AXIS_PAD if axis else 0
+    # nxr/nyr: core size; the run grid is nxr + pad + paddown long in x and nyr + 2 padlat wide in y
+    return dict(f=(fx, fy), n=(nxn, nyn), nxr=nxr, nyr=nyr, pad=pad, padlat=padlat, paddown=paddown)
 
 
 def _coords_rot_to_geo(fr, nx, ny):
     """Original-grid (float) index of every rotated cell centre: returns (I, J) arrays [nxr, nyr]."""
     fx, fy = fr["f"]
     nxn, nyn = fr["n"]
-    ir = np.arange(fr["nxr"] + fr["pad"], dtype=np.float64) + 0.5 - fr["nxr"] / 2.0 - fr["pad"]  # x' in cells, centred on the core
-    jr = np.arange(fr["nyr"], dtype=np.float64) + 0.5 - fr["nyr"] / 2.0
+    ir = np.arange(fr["nxr"] + fr["pad"] + fr["paddown"], dtype=np.float64) + 0.5 - fr["nxr"] / 2.0 - fr["pad"]  # x' in cells, centred on the core
+    nyt = fr["nyr"] + 2 * fr["padlat"]
+    jr = np.arange(nyt, dtype=np.float64) + 0.5 - nyt / 2.0
     X, Y = np.meshgrid(ir, jr, indexing="ij")
     I = nx / 2.0 + X * fx + Y * nxn - 0.5
     J = ny / 2.0 + X * fy + Y * nyn - 0.5
@@ -64,7 +72,7 @@ def _coords_geo_to_rot(fr, nx, ny):
     X, Y = np.meshgrid(ig, jg, indexing="ij")
     xr = X * fx + Y * fy
     yr = X * nxn + Y * nyn
-    return xr + fr["nxr"] / 2.0 + fr["pad"] - 0.5, yr + fr["nyr"] / 2.0 - 0.5
+    return xr + fr["nxr"] / 2.0 + fr["pad"] - 0.5, yr + (fr["nyr"] + 2 * fr["padlat"]) / 2.0 - 0.5
 
 
 def rotate_solid(solid, theta_deg):
@@ -73,7 +81,7 @@ def rotate_solid(solid, theta_deg):
     nx, ny, nz = solid.shape
     fr = frame(theta_deg, nx, ny)
     I, J = _coords_rot_to_geo(fr, nx, ny)
-    out = np.zeros((fr["nxr"] + fr["pad"], fr["nyr"], nz), bool)
+    out = np.zeros((fr["nxr"] + fr["pad"] + fr["paddown"], fr["nyr"] + 2 * fr["padlat"], nz), bool)
     for k in range(nz):
         v = map_coordinates(solid[:, :, k].astype(np.float32), [I, J], order=1, mode="nearest")
         out[:, :, k] = v >= 0.5

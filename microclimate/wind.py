@@ -115,6 +115,10 @@ def run(solid, direction_deg, steps=40000, avg_steps=8000, avg_every=100, omega=
             macro(f0, rho_f, u_f)
             wp.synchronize()
             uu = u_f.numpy()
+            # Only fluid cells count: solid cells deep inside terrain (bc id 0, no boundary condition) are never coupled to the flow and
+            # can drift to garbage in a long run without affecting anything (their output is zeroed); the 180 / 360 runs were
+            # aborted at step 1000 by such a cell while the largest fluid speed was 0.06 - 0.10 (a false alarm of this check).
+            uu = np.where(solid[None], 0.0, uu)
             sp_ = np.sqrt((np.nan_to_num(uu, nan=1e9, posinf=1e9, neginf=1e9) ** 2).sum(0))
             if not np.isfinite(uu).all() or sp_.max() > 0.5:
                 at = np.unravel_index(int(np.argmax(sp_)), sp_.shape)
