@@ -28,3 +28,13 @@ Branch: `v3-dev`. Never touch `main`, `data` or v2 code.
 
 ## M1: NEXT
 Check data sources (DataSF building footprints field name, 3DEP elevation endpoint, Overpass), then build geometry per the spec.
+
+## M1 (part 1 of 2): grids DONE (2026-11-11)
+- Data: DataSF building footprints dataset ynuv-fyni (177,023 buildings, field hgt_median_m in metres, lidar 2023, data_as_of 2023-09-11), saved as ~/deathfog-data/raw/bldg.geojson (131 MB). USGS 3DEP 1/3 arc-second tile USGS_13_n38w123.tif (223 MB) from prd-tnm.s3.amazonaws.com, saved as raw/dem_n38w123.tif. Reachable from PC: DataSF, S3, Open-Meteo, GitHub, PyPI. Overpass main server timed out (use the kumi mirror as v2 does); tnmaccess API returned 403 (not needed, the S3 path works).
+- Grid: 855 x 811 x 40 = 27.7M cells at 20 m, EPSG:32610, z above sea level. Outputs in ~/deathfog-data/grids/ (solid_20m.npz, terrain_20m.npy, bldg_mean_h_20m.npy, bldg_max_h_20m.npy, grid_spec.json, geometry_summary.json). Run: python -m microclimate geometry (about 14 s).
+- Checks: 177,023 of 177,023 buildings loaded (pass, within 5%). Terrain: Twin Peaks cell 255 m (20 m averaging lowers the 277 m peak; accepted), bay water 0 m, 20th & Kansas 79 m. Domain terrain max 372 m is San Bruno Mountain at the south edge, not an error.
+- SPEC CORRECTION: the spec said Salesforce Tower should read about 320 m. This dataset stores the MEDIAN lidar height per footprint, so the tallest value anywhere is 218 m and the downtown cells around Salesforce read 130-175 m. New criterion: downtown cells 100-230 m and tallest building anywhere 200-230 m. Spires and tapers are underestimated. Fine for a 20 m MVP.
+- Known limit: a 20 m cell is solid up to terrain + MEAN building height of the cell (partial coverage counts proportionally), so narrow streets between buildings are not resolved. This is expected at 20 m.
+
+## M1 (part 2 of 2): NEXT
+OSM streets and bus stops for the Potrero zone (Overpass kumi mirror), trace the route from 20th & Kansas downhill to the bus stop, sample street points both sides every 10 m with 2 m terrain, viewer meshes (terrain.glb, buildings.glb), top-down PNG for the user to confirm the route.
