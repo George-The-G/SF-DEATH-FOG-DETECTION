@@ -74,6 +74,12 @@ jobs:
       - name: Save state to the data branch
         run: bash scripts/state_save.sh state
 
+      - name: Add the v3 test page (copied from the v3-dev branch; never blocks v2)
+        continue-on-error: true
+        run: |
+          git fetch --depth=1 origin v3-dev
+          git archive FETCH_HEAD site/v3 | tar -x
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
