@@ -10,6 +10,11 @@ at fine resolution over 3DEP terrain. Output is NOT a replacement wind field but
         corr_shelter  float32  fine mean speed in the lowest 10 m (open cells) / coarse reference speed (residence proxy:
                                lower = more sheltered, air stays longer)
         tke_street    float32  resolved turbulent kinetic energy at street level, in (u/U_in)^2 units (0.5*sum var(u_i))
+        corr_bldg     float32  RECOMMENDED if the main pipeline already applies its own height/roughness scaling: street speed
+                               of the fine run with buildings / street speed of the same fine run with buildings removed
+                               (terrain only). Isolates the building effect from the fine grid's own wall profile.
+        corr_bldg_shelter float32  the same for the lowest-10 m layer
+        street_base   float32  street speed of the terrain-only fine run, u/U_in
         street_fine   float32  fine-run mean speed at street level (1.5-5 m above ground, open columns), u/U_in
         street_ref    float32  coarse reference: 20 m run mean speed in the lowest fluid voxel of the column, u/U_in
         bcover        float32  fraction of the 20 m cell covered by building footprint columns in the fine grid
@@ -225,7 +230,7 @@ def sponge_weights(solid, width):
     return w.astype(np.float32), (d == 0)
 
 
-def run_fine(geo, u_c, solid_c, direction_deg, steps=20000, avg_steps=5000, avg_every=10, omega=1.95, sponge_m=40.0,
+def run_fine(geo, u_c, solid_c, direction_deg, steps=15000, avg_steps=4000, avg_every=10, omega=1.95, sponge_m=40.0,
              log=print, check_every=500, rho_lim=(0.9, 1.1)):
     solid = geo["solid"].copy()
     nx, ny, nz = solid.shape
@@ -409,7 +414,7 @@ def run_patch(spec, patch, dx, direction, u_c, solid_c, ref, raw_dir, cache_dir,
     return res, diag, (geo, mean, tke)
 
 
-def refine(cfg, direction, zone="potrero", dx=5.0, steps=20000, avg_steps=5000, max_patches=None, force=False, log=print,
+def refine(cfg, direction, zone="potrero", dx=5.0, steps=15000, avg_steps=4000, max_patches=None, force=False, log=print,
            data=DATA, omega=1.95):
     data = Path(data)
     lib, grids, raw, out = data / "library", data / "grids", data / "raw", data / "refined"
