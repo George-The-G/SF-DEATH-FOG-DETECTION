@@ -17,7 +17,7 @@ import numpy as np
 
 from .. import wetness
 from . import config as C
-from . import fetch, forcing, goes, outputs, state as statelib
+from . import archive, fetch, forcing, goes, outputs, state as statelib
 
 PT = ZoneInfo("America/Los_Angeles")
 
@@ -93,7 +93,7 @@ def gather(st, t0, now, cache):
     return rr, obs, sector_fn, goes_hours
 
 
-def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, physics=None, carry_state=None):
+def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, physics=None, carry_state=None, archive_dir=None):
     from .. import city
     t_run = time.time()
     now = now or fetch.utcnow()
@@ -170,7 +170,16 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
         traceback.print_exc()
         sinfo["error"] = repr(e)[:200]
     log(f"state: {sinfo}")
-    status = dict(ok=True, model_version=C.MODEL_VERSION, physics=sorted(P), state=sinfo, generated_iso=now.isoformat(), run_seconds=round(time.time() - t_run, 1), simulate_seconds=round(sim_s, 1),
+    ainfo = None
+    if archive_dir and C.ARCHIVE:
+        try:
+            name, size = archive.write_run(archive_dir, W, diag, F, S, t0, now, P, C.MODEL_VERSION, C.OUT_STEP_MIN // C.STEP_MIN)
+            ainfo = dict(file=name, bytes=size)
+        except Exception as e:  # noqa: BLE001
+            traceback.print_exc()
+            ainfo = dict(error=repr(e)[:200])
+        log(f"archive: {ainfo}")
+    status = dict(ok=True, model_version=C.MODEL_VERSION, physics=sorted(P), state=sinfo, archive=ainfo, generated_iso=now.isoformat(), run_seconds=round(time.time() - t_run, 1), simulate_seconds=round(sim_s, 1),
                   window=dict(start_18pt_iso=start.isoformat(), t0_iso=t0.isoformat(), end_iso=end.isoformat(), step_min=C.STEP_MIN, out_step_min=C.OUT_STEP_MIN),
                   observed_until_iso=F["info"]["obs_until"], forecast_from_iso=F["info"]["obs_until"], rrfs_model=rr["model"],
                   sources_used=sorted(st.sources), sources_failed=st.failed, data_as_of=st.sources, notes=st.notes[:20] + F["info"]["flags"],

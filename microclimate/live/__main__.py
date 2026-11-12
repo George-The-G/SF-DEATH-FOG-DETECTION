@@ -1,6 +1,6 @@
 """python -m microclimate.live <command>
 
-  build   [--out DIR] [--static PATH] [--ribbons PATH] [--cache DIR] [--physics a,b|none] [--carry-state]   one live run (default out: site/v3/live;
+  build   [--out DIR] [--static PATH] [--ribbons PATH] [--cache DIR] [--physics a,b|none] [--carry-state] [--archive DIR]   one live run (default out: site/v3/live;
           physics default: config.PHYSICS)
   compare --physics a,b|none [--static PATH] [--out DIR]               same inputs, config.PHYSICS versus the given switches; writes
                                                                        compare_<time>.md/.json (default out: reports/physics_compare)
@@ -23,7 +23,8 @@ def main(argv):
         if ph is not None:
             from . import compare
             ph = compare.parse_physics(ph)
-        sys.exit(build.run(opt(argv, "--out", "site/v3/live"), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"), physics=ph, carry_state=True if "--carry-state" in argv else None))
+        sys.exit(build.run(opt(argv, "--out", "site/v3/live"), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"), physics=ph, carry_state=True if "--carry-state" in argv else None,
+                           archive_dir=opt(argv, "--archive")))
     elif cmd == "compare":
         from . import compare
         if "--physics" not in argv:
