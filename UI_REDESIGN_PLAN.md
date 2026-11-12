@@ -119,3 +119,10 @@ Observed-line timing bug, first-paint size, rain-term saturation, go-live (PLAN_
 ## 9. Build result (2026-11-12)
 Built: sections 1-7 (also ?ui=2 on replay data). Measured 3-D share at 390x844: idle 75.5%, route selected 73.8%, flyover 75.5%, fog playing 73.8%, delayed notice 69.0%; desktop 1440x900 about 90.9%. Normal page unchanged; pytest 124 passed; keyboard (slider arrows, Esc closes list/settings/About) checked.
 Not built / open: settings-open state is an overlay (45.5%, exempt); real-phone performance unmeasured; observed-line timing, first-paint size, rain saturation, go-live as in section 8.
+
+## 9. Time range (built 2026-11-12, `?live=1` only, commit 9f62880)
+Settings row "Time range" (between Night/Speed and Layers): 24 h | 48 h | All (labelled with the real total, 78 h). The value is the total bar length around the observed tick (`observed_until_frame`, else the data-time frame): 24 h = 6 h back + 18 ahead, 48 h = 12 back + 36 ahead, All = every frame (25 back + 53 ahead today, since the tick sits at frame 25). Default 24 h; remembered in localStorage (`df_live_range`).
+- Implementation: `applyRange()` in app.js sets the slider min/max (frame data and shader time unchanged); the track, day labels, clock, play, route peak hour (`livePeak`) all follow the slider window. Play loops inside the range (stops instead if the next days are still loading). Switching range clamps the thumb to the new ends.
+- Right end is limited to loaded frames until days 1-2 arrive (the loading line shows), then the bar grows.
+- Status line (row 3) for 24 h/48 h: "Thu 7 AM – Fri 7 AM · snapshot Thu 10:52" (or "· forecast hour"); the "N h back · M h ahead" text sits under the range switch in settings. All keeps the old status text.
+- Not built: none of the spec. Note the tick is the observed_until_frame (about 2 h after the data time, known bug), so "back/ahead" counts are relative to the tick.
