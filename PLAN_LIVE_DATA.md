@@ -1,99 +1,157 @@
-# Plan: live, observation-driven fog (revised 2026-11-12)
+# Plan: live, whole-city death fog (implementation plan, revised 2026-11-12)
 
-Status: plan only. Nothing here is started. Reviewed and revised by Opus; supersedes the rough draft.
+Status: plan only, nothing started. Written by Opus for Sonnet to implement step by step.
+Scope now: the model, the data and the 3-D render data. UI changes are only documented (section 9), not built.
+Decisions from the user: live window = tonight plus the next 2 days; cover the whole city.
 
-## Goal
-Make the fog layer and the street wetness reflect real conditions as closely as public data allows, for the current night and the next ~12-18 hours, so the site can show live "death fog" predictions. Ground-truth data collection (wet-road observations) comes later; this plan prepares for it but does not depend on it.
+## 0. Ground rules for the implementer
+- Repo: George-The-G/SF-DEATH-FOG-DETECTION. Work on branch v3-dev (worktree C:\Users\George\AppData\Local\Temp\wt_v3dev). Never force-push. Commit trailers as instructed by the session.
+- Windows PC via desktop-commander (PowerShell). Write files LF, UTF-8 without BOM. site/ is gitignored: use `git add -f`.
+- One GPU job at a time; never blanket-kill python. The live pipeline itself must NOT need the GPU or the home PC.
+- main (v2 page) changes only through a PR the user approves (needed once, step 6.4).
+- Track any installed package in INSTALLED_PACKAGES.md.
+- Each step below has a "Done when" check. Do not start the next step until it passes. Stop and report if a step needs more than ~6 h of compute.
 
-## Verdict on viability
-- **Fog presence and fog height: viable, high value.** Free, near-real-time sources exist (satellite, airport observations, the NWS RRFS model). This fixes the biggest weakness today: fog is guessed from one weather point.
-- **Wind direction and speed into the city model: viable.** All 9 direction fields (180-360 deg) are computed and validated on branch v3-wind-dirs. Live runs only need to choose, blend and scale them; no GPU at run time.
-- **Street-level fog distribution: partly viable.** The 20 m citywide fields carry little terrain signal, and the 5 m street correction exists only for the west wind.
-- **Street wetness accuracy: not verifiable yet.** The wetness constants are hand-set. Better inputs make the fog realistic, but "accurate death fog predictions" cannot be claimed until wetness is calibrated against real wet-road data. The site must keep saying so.
-- **Running it live: viable on free infrastructure** if the heavy simulation stays offline and the live job is CPU-only and small (see Architecture).
+## 1. What already exists (do NOT redo)
+- 9 validated wind directions 180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5, 360 with 4 fog tracer bands each, in C:\Users\George\deathfog-data\library (wind_<dir*10>.npz, fog_<dir*10>_<band>.npz, wind_dirs.json). Validation reports in reports/wind_dirs/ on branch v3-wind-dirs. No new wind or fog-tracer runs are needed.
+- Per-step direction blending already exists: microclimate/dirlib.py (`available`, `weights`) and wetness.simulate uses it when DEATHFOG_DIR_LIBRARY != "0".
+- 5 m street correction (297 patches, west wind only) and 2.5 m Potrero: patch_corr_2700*.npz. Not re-run for other directions in this plan (optional, section 8).
+- Fog top from pressure-level humidity/inversion: fogtop.estimate_fog_top(ser).
+- Wetness model: wetness.simulate(pts, ser, ...) with dew, fog, rain, evaporation and sun terms; sun via per-point horizon [N,72].
+- Street points, features, sun horizons and ribbons for Potrero Hill and Golden Gate Heights (S = 19,444 ribbon samples) on v3-dev.
+- Replay writer replay.write -> site/v3/replay/index.json (schema 2) + per night streets.u8, streets_r.u8, fog.png, weather.json.
+- Deploy: main's .github/workflows/collect.yml copies site/v3 from v3-dev with `git archive` and publishes GitHub Pages.
 
-## Where we are today
-- Fog is modelled, not observed: hourly Open-Meteo history for one point in SF; fog top estimated from the humidity/temperature profile (microclimate/fogtop.py).
-- Fog motion: tracer in four height bands. Main branch uses one 270 deg (west) field; branch v3-wind-dirs adds 8 more directions (180-360 deg), validated, not enabled. Enabling them changes Potrero Hill a lot (route means -8 to -20 on four nights) and Golden Gate Heights little (0 to 4).
-- Street correction: 297 nested 5 m patches (2.5 m in Potrero), west wind only. The full 5 m run took about 2 h 20 min of wall time.
-- The replay covers 18:00-09:00 on nine past nights. No satellite or cloud-base observations are used, and nothing has been compared with observations.
+## 2. Viability (summary)
+- Fog presence/height from live data: viable, high value (free satellite, airport observations, NWS RRFS model).
+- Live wind into the city model: viable by choosing/blending the 9 precomputed fields per time step and scaling to live speed. The LBM itself never runs live.
+- Whole city: viable offline (street points, horizons, tables are one-off CPU jobs); the live run is CPU numpy and fits GitHub Actions. The render data size is the main constraint (section 5).
+- Street wetness accuracy: cannot be verified until wet-road data exists (data collection is later). Keep calling it an index.
+- Fog burn-off: covered now through data (see 3.4); a custom burn-off model is deferred.
 
-## Architecture (key revision)
-Split the work into an offline part (heavy, GPU, run rarely on the home PC) and a live part (light, CPU, run every 15-30 min on GitHub Actions).
-1. **Offline: response tables.** For every street sample point and each validated wind direction, precompute small lookup values: fog tracer concentration per height band, wind speed ratio, sheltering (5 m correction), sky view and horizon (already computed). About 21k points x 9 directions x a few floats = a few MB. Commit these with the site data. The big wind/fog fields (~100 MB each) stay on the PC.
-2. **Live: CPU pipeline.** Fetch inputs, build the hourly forcing (wind direction and speed, fog presence upwind, fog top, temperature, dew point, cloud, sun), run the existing wetness model over the street table (seconds on CPU), write the night's frames in the same format the viewer already reads, publish with a "data as of" time.
-3. **Viewer:** add a "Live" entry at the top of the night list (last ~6 h observed + next ~12-18 h forecast), with a clear observed/forecast divider on the time bar and a staleness banner. The nine replay nights stay as reference examples.
+## 3. Live inputs and how each feeds the model
 
-## Live inputs (all free; verify terms in Phase 0)
-| Need | Primary source | Backup | Notes |
+### 3.1 Sources (all free; step 1.1 verifies each)
+| Feed | Source | Use | Notes |
 |---|---|---|---|
-| Wind direction/speed (now) | NDBC Fort Point FTPC1 (inside the model domain), NOAA CO-OPS SF tide station met, METAR KSFO/KOAK/KHAF | NWS api.weather.gov station obs | In-domain stations can also nudge the speed scale of the chosen field. |
-| Wind (forecast, profile) | NWS RRFS 3 km via Open-Meteo (hourly; 15-minutely variant) or NOMADS | GFS | **HRRR on Open-Meteo is discontinued 2026-11-30; build on RRFS, not HRRR.** RRFS is operational since 2026-08-31. |
-| Fog present at the coast | GOES-18 (GOES-West) imagery, AWS bucket noaa-goes18; night fog from IR band difference (3.9 vs 11 um), daytime visible | NOAA GOES ABI L2 Fog/Low Stratus (FLS) product, if obtainable (AWS availability not confirmed; NCEI/CLASS listed) | ~2 km pixels: tells where the fog bank and its edge are, not street detail. Cannot see fog under higher cloud. |
-| Fog base/visibility | METAR ceilings and visibility (aviationweather.gov Data API; 100 req/min, 30-day history, set a User-Agent) | NWS api.weather.gov | KSFO, KOAK, KHAF bracket the city; no METAR inside SF proper. |
-| Fog top / marine layer depth | Oakland sounding (00Z and 12Z) | RRFS profile, boundary layer height | Twice daily only; RRFS fills the gaps. |
-| Fog forecast (next hours) | RRFS cloud_cover_low, visibility, boundary layer height | - | Model burn-off physics comes for free here. |
-| Wet-pavement truth (later) | Caltrans RWIS (cwwp2.dot.ca.gov) has a pavement surface status field | 511 traffic cameras (images) | Whether any RWIS station is near SF is unverified. This is the first candidate for calibration. |
-Not usable: Synoptic/MesoWest free tier is limited to .edu non-commercial research.
+| Forecast + recent past, gridded | NWS RRFS 3 km via Open-Meteo forecast API (`past_days=1`, multi-point request) | all forcing variables per point, hours -24..+66 | HRRR on Open-Meteo is discontinued 2026-11-30: do not use HRRR. Look up the exact RRFS model id on https://open-meteo.com/en/docs/gfs-api. RRFS CONUS: hourly data, 84 h forecast, updated every 6 h; RRFS 15-minutely: 18 h, updated hourly. Stitch: 15-min/hourly product for 0-18 h, 84 h product beyond. |
+| Observed wind (in domain) | NOAA CO-OPS station 9414290 San Francisco (= NDBC FTPC1, Fort Point/Presidio) met data | nudge wind speed/direction for past hours and first forecast hours | Verify id and fields (wind speed, direction, gust, air temp). |
+| Observed coast/airports | METAR KHAF (Half Moon Bay, coastal), KSFO, KOAK via https://aviationweather.gov/data/api/ (`/api/data/metar?ids=...&format=json&hours=...`) | fog presence (visibility, ceiling), ceiling height, T/Td/wind | 100 req/min, 30-day history, set a custom User-Agent. One request per run is enough. |
+| Other stations | NWS api.weather.gov `/stations/{id}/observations` | backup T/Td/wind; find any station inside SF | Set User-Agent. Synoptic/MesoWest free tier is .edu-only: not usable. |
+| Marine layer depth | Oakland upper-air sounding (00Z, 12Z) | fog-top check/override | Find a free JSON/CSV source in step 1.1 (e.g. University of Wyoming text, NOAA IGRA/SPC). Optional if RRFS profile is good. |
+| Satellite low cloud | GOES-18 (GOES-West) AWS bucket noaa-goes18, CONUS sector, every 5 min | observed fog extent offshore and over the city | Preferred: L2 clear-sky mask (ABI-L2-ACMC) + cloud-top height (ABI-L2-ACHAC): low cloud = cloudy and top < ~1 km. Fallback night: brightness-temperature difference band13 - band07 from ABI-L2-CMIPC. Verify product names in the bucket. The L2 Fog/Low Stratus product is listed at NCEI/CLASS, not confirmed on AWS: do not depend on it. ~2 km pixels. |
+| Wet pavement (later, calibration) | Caltrans RWIS (cwwp2.dot.ca.gov), field essSurfaceStatus | not used now | Step 1.1 only checks whether any station near SF exists. |
 
-## Fog burn-off
-- **Now (in scope, cheap):** burn-off is taken from data, not modelled. For observed hours, satellite and METAR show when fog clears. For forecast hours, RRFS low cloud and visibility already include burn-off physics. Extend the live window past sunrise (to about noon) so the existing sun and evaporation terms dry the streets as the fog lifts.
-- **Later (easy to add, deferred):** a local burn-off model (marine-layer depth vs. solar heating, by neighbourhood elevation and sun exposure). The architecture keeps "fog present / fog top per hour" as an input field, so this slots in later without changing anything else. Do it only if Phase 1 shows RRFS gets burn-off timing wrong for SF.
+### 3.2 Forcing becomes spatial
+Today one Open-Meteo point drives the whole city (ser = dict of [n] series). For the whole city:
+- Request RRFS on a lattice of points covering the domain (EPSG:32610 x0=540100, y0=4171500, 855 x 811 cells of 20 m; roughly lat 37.70-37.83, lon -122.52 to -122.35): about 6 x 5 points at ~3 km spacing, one Open-Meteo call with comma-separated latitude/longitude lists.
+- Per street point, interpolate (bilinear in lat/lon) temperature_2m, dew_point_2m, wind_speed_10m, wind vector (interpolate u/v, not degrees), cloud_cover_low, precipitation, shortwave_radiation, plus the pressure-level variables used by fogtop.
+- Keep the scalar series too: the fog SOURCE strength s(t) is computed at the coast (upwind), not at each street. Define the coast series as the mean of the lattice points west of x = 545000 m (Ocean Beach strip), and for observed hours combine with KHAF + GOES (3.3).
+- Memory: n = 433 steps (72 h at 10 min) x N (~100k points) float32 = 173 MB per variable. Do not hold all variables as [n,N]: hold lattice series [n, L] (L ~ 30) and interpolate per step inside the time loop with a precomputed [N, 4] weight/index table.
 
-## Phases
-### Phase 0: Source check (about 1 day)
-- Confirm each source in the table: access, latency, update rate, terms, and a 7-day sample for SF.
-- Decide RRFS access path (Open-Meteo vs NOMADS); confirm GOES FLS availability or plan the band-difference fallback.
-- Find out whether any Caltrans RWIS station near SF reports pavement status.
+### 3.3 Observations nudge the forcing (past hours, fading into the forecast)
+- Wind: at the CO-OPS station compute ratio r = observed speed / RRFS speed (rolling 3 h median, clipped 0.5-2.0) and direction offset d = observed - RRFS (vector mean, clipped +-45 deg). Apply r and d to all lattice points for past hours; for forecast hour h apply r^(exp(-h/6)) and d*exp(-h/6).
+- Temperature/dew point: same idea with additive offsets from the nearest station; fade with 6 h e-folding.
+- Fog source s(t): for past hours set s_obs from (a) GOES low-cloud fraction in an upwind sector box 2-15 km off the coast, chosen by the hour's wind direction, and (b) KHAF visibility <= 3 mi or ceiling <= 1000 ft. s_used = 0.5*s_model + 0.5*s_obs when both exist, s_obs when the model is missing; fade the correction into the forecast with a 3 h e-folding. Keep the weights as constants in a new `microclimate/live/config.py` so they can be calibrated later.
+- Fog top: if a sounding from the last 6 h exists, use its inversion base as fog top for those hours (overrides estimate_fog_top), else estimate_fog_top on the interpolated RRFS profile. If a METAR ceiling at KHAF/KSFO is reported, the fog top must be >= ceiling + 100 m.
 
-### Phase 1: Truth test with public observations (about 2-3 days)
-- For the nine replay nights plus ~30 recent nights, compare modelled fog (present, base, top, timing including burn-off) with METAR ceiling/visibility and GOES.
-- Compare the west-only and the 9-direction library against observed wind at Fort Point.
-- Output: a scorecard (hit rate, false alarms, timing error). This decides the order of Phases 2-4 and gives the site an honest accuracy statement.
+### 3.4 Fog burn-off (now: from data; later: own model)
+- The current model already dries streets after sunrise: shortwave raises T - Td, which lowers the fog source s(t) in wetness.fog_inflow, and the sun/evaporation terms dry the surface. With a 3-day window the morning hours are simply part of the run (today the replay stops at 09:00).
+- Observed hours: GOES and METAR show when the fog actually cleared (3.3), so burn-off timing is observed, not modelled.
+- Forecast hours: RRFS cloud_cover_low and visibility carry the model's own burn-off physics.
+- Deferred (easy to add later, only if section 7 shows burn-off timing errors): a local burn-off term using marine-layer depth vs. solar heating per neighbourhood. It plugs into the per-step fog-top/source series without other changes.
 
-### Phase 2: Observed and forecast forcing (about 3-5 days)
-- Replace the single Open-Meteo point with: station wind (now) + RRFS (forecast), fog presence from METAR/GOES, fog top from the sounding + RRFS.
-- Enable the 9-direction wind library (decide per district based on Phase 1).
-- Rerun Phase 1; keep only changes that improve the scorecard.
+## 4. Implementation steps
 
-### Phase 3: Response tables and live CPU pipeline (about 3-5 days)
-- Generate the per-point, per-direction tables offline; verify that the table-based run reproduces the current replay exactly for the west wind.
-- Write the live job: fetch, build forcing, run wetness, write frames, publish.
-- Run it on a schedule in shadow mode (see Go-live).
+### Step 1. Prepare (about 1 day)
+1.1 Source check script `tools/live_sources_check.py` (not shipped): fetch 24 h from each source in 3.1 for SF, print latency (newest timestamp vs now), fields present, and save samples under bench/live_samples/. Record findings in PROGRESS.md (RRFS model id, CO-OPS fields, GOES product names, sounding source, RWIS near SF yes/no).
+1.2 Merge branch v3-wind-dirs into v3-dev. Conflicts are expected only in PROGRESS.md and microclimate/wetness.py/replay.py (v3-dev changed routes/ribbons; v3-wind-dirs changed wetness/replay/fog). After merging, set the default of DEATHFOG_DIR_LIBRARY to "0" for the replay writer only (replay must not change until the user decides), and use the library always in the live path. Run the 42 unit tests (install pytest into the venv if missing and note it).
+Done when: tests pass; `python -m microclimate routes --only replay` regenerates byte-identical replay files (git shows no diff in site/v3/replay); source findings are in PROGRESS.md.
 
-### Phase 4: Satellite fog edge (about 3-5 days)
-- Use GOES to set where the fog bank is at the coast and how far inland it reaches each hour; feed that as the tracer source strength by direction.
-- Known limits: coarse pixels, higher cloud masks the fog.
+### Step 2. Whole-city street points and static tables (offline, PC; about 2-3 days)
+2.1 City streets: fetch OSM highways for the domain bbox with routes.fetch_bbox (classes = routes.RIDE). Clip to the model domain and to land (terrain > 0.5 m). Sample every 20 m along each way (routes.densify). New zone id "city" in routes.toml ([zone.city] mode = "bbox"). Keep the existing Potrero and GGH rows first and unchanged (their row ids stay stable); city rows follow, excluding samples within 5 m of an existing district sample.
+2.2 Street features for city rows: street.build (wind ratio, fog bands, refine_corr; NaN refine -> 1.0 as today).
+2.3 Sun horizons: sun.py currently computes a 2 m surface only around ZONE_CENTER. Generalise: tile the city into 1.5 km tiles, build fine_surface per tile with a 700 m apron, cast the 72 rays (3 km) through fine surface then the 20 m surface. Benchmark one tile first; if the projected total is > 6 h, use a 4 m surface for tiles without district points and report.
+2.4 Static live table `live_static.npz` (float16 where possible) with per point: x, y, z, svf, porous, wind_ratio, rel_wind (from refine_corr), horizon [N,72] uint8, zone id, and the precomputed profile-mode tracer per direction: tracer [9, N] = fogtop.points_tracer(pts, data_dir, d) for each validated direction (this removes the need to ship the 100 MB library fields). Also the 80 m city tracer per direction for fog sheets: tr80 [9, H, W] (replay.city_tracer_80m).
+2.5 Publish live_static.npz as a GitHub Release asset (tag live-static-v1); the live job downloads it. Do not commit it to git.
+Done when: N_city and file size are reported; a run of wetness.simulate on the static table for one replay night reproduces the shipped district values (max abs diff <= 1 on the 0-100 scale) for the first 21,210 + 7,792 district rows.
 
-### Phase 5: Directional street correction (optional, GPU)
-- Re-run the 5 m patches for 225 and 315 deg (about 2-2.5 h each; Potrero 2.5 m extra). Do this only if Phase 1/2 show direction matters at street level.
+### Step 3. Make the wetness core live-ready (about 2 days)
+Edit microclimate/wetness.py and fogtop.py; keep the replay path behaviour identical (regression test from step 2).
+3.1 Arbitrary window: add weather.series(data, start_utc, end_utc, step_min=10) generalising night_series (which stays as a wrapper for 16 h).
+3.2 Table input: simulate(..., tracer_dirs=None) where tracer_dirs is the [9, N] table from 2.4; when given, skip fogtop.points_tracer and the library file reads.
+3.3 Spatial forcing: allow the per-step forcing dict f in the loop to hold arrays [N] (interpolated from the lattice, 3.2) instead of scalars; `step()` already broadcasts, check each term. Keep the coast source s(t) scalar.
+3.4 Time-varying lag: today the lag uses one mean flow direction and mean wind for the whole night. For a 72 h window compute it per 3 h block (mean direction and speed of that block, dirlib-consistent) and use the block of the current step.
+3.5 Output: return W at the output cadence only (hourly for the live run) to save memory; keep the internal 10 min step.
+3.6 Remove any import of warp/xlb from modules the live path imports (fog.py imports warp at module top: the live path must not import fog.py).
+Done when: unit tests for weather.series, table input and per-block lag pass; replay regression unchanged; a 72 h run on the full city table finishes in < 5 min and < 2 GB RAM on the PC CPU.
 
-### Phase 6: Calibration (later, when data collection starts)
-- Fit the wetness constants against wet-road truth (RWIS if available, then the project's own data collection). Until then, show wetness as a relative index.
+### Step 4. Live builder (about 2-3 days)
+New package microclimate/live/: config.py (URLs, station ids, lattice, nudging constants), fetch.py (one function per source, 3 retries, timeouts, User-Agent "sf-death-fog (github.com/George-The-G/SF-DEATH-FOG-DETECTION)"), forcing.py (3.2-3.3), goes.py (3.3 low-cloud fraction from ACM/ACHA; read with xarray/netCDF4 over anonymous S3 HTTP; only the CONUS file nearest each hour; crop to the SF box before decoding), build.py (entry point).
+`python -m microclimate.live build --out site/v3/live` does:
+1. Window: start = previous 18:00 PT if now is before 18:00, else today 18:00 PT, minus 6 h of history; end = start + 72 h ("tonight + next 2 days").
+2. Fetch all sources; any failed source is logged and skipped (fallback order: stations -> RRFS only -> previous good output).
+3. Build forcing, run simulate on the city table with direction blending always on, hourly output.
+4. Write outputs (section 5) plus status.json: run time, data-as-of per source, sources used/failed, observed/forecast split time, model version.
+Done when: two consecutive local runs produce outputs; a run with the network blocked for METAR/GOES still produces output using RRFS only and flags it in status.json.
 
-## Go-live plan (smooth rollout)
-1. **Shadow mode:** the live job writes to site/v3/live/ on the existing GitHub Pages deploy, not linked anywhere. Viewable only with ?live=1. Run for 1-2 weeks; compare each morning with what actually happened (METAR, GOES, photos).
-2. **Soft launch:** add the "Live (beta)" entry to the night list, default still a replay night. Show "data as of HH:MM", observed vs forecast on the time bar, and the proof-of-concept pill.
-3. **Default to live** once the shadow period looks right. Replay nights stay as examples.
-- **Staleness and fallbacks:** if inputs are older than ~1 h, show a "data delayed" banner; if a source is down, fall back in order (stations -> RRFS -> last good frames); never show a blank page. Any failed run keeps the previous good output live.
-- **Scheduling:** GitHub Actions cron can start 15-60 min late (seen on this repo). Run every 15-30 min and design for late starts; optionally trigger workflow_dispatch from an external free cron for punctuality.
-- **Repo hygiene:** publish live frames through the Pages artifact only; do not commit them to git every run (repo bloat). Keep a small rolling archive (e.g. last 7 nights) for review, and later for calibration.
-- **Monitoring:** workflow failure notifications; a small status JSON (last run, sources used, staleness) shown in the About pop-up.
-- **Versioning:** keep the replay schema; add a schema version for live; the viewer must keep loading old data. Main v2 page stays untouched.
-- **Size budget:** a live night must stay within the current ~4.2 MB per load.
+## 5. Render data for the whole city (3-D part)
+Budget: first paint <= 5 MB gzipped (today ~4.2 MB for one replay night with the two districts).
+5.1 Frames: live output is hourly (73 frames for 72 h) instead of 10-min (97 frames for 16 h). The viewer already interpolates between frames in the ribbon shader.
+5.2 City ribbons: build ribbons for all city streets with make_ribbons (district streets logic, cls 1 = district street) at 40 m sample spacing for city rows (districts keep 20 m, routes 10 m). Expected S_city ~ 50k samples: verify.
+5.3 Chunking: write wetness as one file per day: live/day0.u8, day1.u8, day2.u8 (frame-major [frames, S], uint8, 255 = missing). Estimate: 25 frames x 70k samples = 1.75 MB raw per day, ~0.7-0.9 MB gz. The viewer loads day0 first and the rest on demand (UI work, section 9; for now the shadow check only needs the files).
+5.4 Fog sheet: hourly tiles, one PNG per day (25 tiles of 214 x 203 px) using replay.fog_sheet with the per-hour blended tr80 (direction weights per hour, not one mean direction). Multiply by the GOES low-cloud mask for observed hours (cells where GOES says clear get at most 30% opacity).
+5.5 Index: live/index.json reusing the replay night schema (schema 2 fields) plus: "live": true, "step_min": 60, "frame_files": ["day0.u8", ...], "fog_files": [...], "observed_until_iso", "data_as_of", "status": "status.json". Keep ribbons geometry for the city in live/ribbons_city.bin (same RIB format as data/ribbons.bin, version bump only if needed).
+Done when: total gz size of index + day0 + fog day0 + ribbons_city <= 3 MB extra on top of the existing static data; report exact sizes. If over budget: raise city spacing to 60 m, then drop to 2-hourly frames for days 1-2.
 
-## Risks and open questions
-- Wetness accuracy is unverified until calibration; say so on the site.
-- RRFS is new (operational 2026-08-31); HRRR on Open-Meteo ends 2026-11-30. Expect format and access changes.
-- Satellite cannot see street-level fog or fog under higher cloud.
-- The 20 m grid shows little terrain speed-up; the 5 m correction is west-only.
-- The live pipeline must never depend on the home PC (GPU stays offline-only).
-- Rate limits and terms for each source (aviationweather.gov 100 req/min; NOAA attribution).
-- Decide scope of "live": SF only, current night + next ~18 h.
+## 6. Running it live
+6.1 Shadow output path: site/v3/live/ (published with the site, not linked anywhere).
+6.2 Workflow: scheduled workflows only run from the default branch (main), and two workflows deploying Pages would overwrite each other. So the live step goes into main's collect.yml, after the existing `git archive ... site/v3` copy: set up Python, install numpy/pvlib/requests/xarray/netCDF4/s3fs (pin versions in requirements-live.txt on v3-dev), download live_static.npz from the release, run `python -m microclimate.live build --out site/v3/live` with the microclimate code taken from v3-dev the same way site/v3 is, then upload-pages-artifact as today. `continue-on-error: true` on the live step so the v2 page always deploys. If the build fails, restore the previous live/ from the last deployed site (fetch it from the Pages URL) so nothing goes blank.
+6.3 Schedule: every 30 min (cron `7,37 * * * *`). GitHub cron often starts 15-60 min late on this repo; that is acceptable because status.json carries data-as-of. Open-Meteo RRFS hourly updates appear within the hour.
+6.4 This needs one PR to main (user approval). Nothing else on main changes.
+6.5 Runtime limit: the job must finish in < 10 min; RAM < 7 GB (GitHub runner). Measure in step 4.
+6.6 Rolling archive: keep status.json and the observed part of each run (first frames) for the last 14 days in a separate branch `live-archive` (small, one commit per day) for later calibration. Never commit full live outputs to v3-dev or main.
+Done when: shadow output updates on the live site at least 40 times per day for 3 days with no failed deploy of the v2 page.
+
+## 7. Checking against reality (one tool for backtest and daily monitoring)
+`python -m microclimate.live check --since 30d` compares, per hour, model fog at the station locations (KHAF, KSFO, KOAK points snapped to the nearest street samples or the coast series) with METAR visibility/ceiling and GOES low cloud over SF. Output reports/live_check/<date>.json: hit rate, false alarms, onset/clear (burn-off) timing error in minutes, wind direction/speed bias at the CO-OPS station.
+- Run once as a backtest over the 9 replay nights plus the last 30 days (RRFS/Open-Meteo history for those days, METAR 30-day history).
+- Run daily in shadow mode (same tool, last 24 h).
+- Use the result to (a) tune the nudging weights in live/config.py and (b) decide the open items in section 8. Do not tune wetness constants (needs wet-road data).
+Done when: the backtest report exists and is summarised in PROGRESS.md.
+
+## 8. Explicitly deferred (do not do now)
+- Own burn-off model (3.4), only if section 7 shows timing errors.
+- 5 m street correction for other directions (about 2-2.5 h GPU each; 225 and 315 first), only if section 7 shows direction matters at street level.
+- Wetness calibration and data collection (later, by the user).
+- Enabling the direction library in the 9 replay nights (user decision pending; Potrero changes a lot).
+- Live data for areas outside the 20 m domain.
+
+## 9. UI changes needed (document only, build later)
+- Night list: a "Live (beta)" entry first; label "Tonight + 2 days"; later the default selection.
+- Time bar: 72 h with day labels (Tonight / Tomorrow / Day after), a marker at observed_until (left = observed, right = forecast), and hourly stepping. Clock shows weekday + time.
+- Load day files on demand when the scrubber enters day 1/2; show a small loading state on the bar.
+- Status: "Data as of HH:MM" near the time bar; a "data delayed" banner if data_as_of is older than 90 min; a "forecast only" note if observations were missing.
+- About pop-up: add a short "Live data" section (sources: NWS RRFS via Open-Meteo, NOAA GOES-18, METAR, NOAA CO-OPS; attribution lines) and the accuracy statement from section 7.
+- Whole-city view: city streets drawn as wetness ribbons at 40 m; districts and routes keep their styles; a layer chip "City streets" (default on) next to "District streets".
+- Weather strip: show live values for the selected hour, and which station/model they come from.
+- Shadow access: ?live=1 loads site/v3/live/index.json directly before the UI exists.
+
+## 10. Order and effort
+1. Step 1 (1 day) -> 2. Step 2 (2-3 days, mostly unattended compute) -> 3. Step 3 (2 days) -> 4. Step 4 (2-3 days) -> 5. Section 5 (1-2 days) -> 6. Section 6 (1 day + 3 days shadow) -> 7. Section 7 (1-2 days; can run in parallel with section 6 shadow time).
+Total about 2.5-3.5 weeks of agent work. UI (section 9) afterwards.
+
+## 11. Risks
+- RRFS is new (operational 2026-08-31) and Open-Meteo drops HRRR on 2026-11-30: expect API changes; keep model ids in live/config.py.
+- GOES L2 product names/availability on AWS must be verified (step 1.1); the band-difference fallback works at night only.
+- City sun horizons may be slow (step 2.3 benchmark first).
+- Render size for the whole city (section 5 budget and fallbacks).
+- GitHub Actions schedule delays and runner limits (section 6).
+- Accuracy of street wetness is unverified until calibration; the site must say so.
 
 ## Sources checked (2026-11-12)
 - RRFS implementation notice: https://www.weather.gov/media/notification/pdf_2026/SCN26-048-Updated_RRFS_and_REFS_Implementation.aaa.pdf
-- Open-Meteo GFS/HRRR/RRFS API: https://open-meteo.com/en/docs/gfs-api
+- Open-Meteo GFS/HRRR/RRFS API (HRRR discontinued 2026-11-30): https://open-meteo.com/en/docs/gfs-api
 - NOAA GOES on AWS: https://registry.opendata.aws/noaa-goes/
 - GOES ABI L2 Fog/Low Stratus: https://catalog.data.gov/dataset/noaa-goes-r-series-advanced-baseline-imager-abi-level-2-fog-low-stratus-fls
 - Aviation Weather Center Data API: https://aviationweather.gov/data/api/
