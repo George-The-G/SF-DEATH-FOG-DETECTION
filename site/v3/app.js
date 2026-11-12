@@ -11,6 +11,7 @@ const SRC_DIRS = SRC_Q === 'mock' ? ['replay_mock/'] : SRC_Q === 'synth' ? ['rep
 const RAMP = [[0, '#3a8696'], [18, '#6fb09f'], [24, '#f4e04d'], [50, '#f2c230'], [65, '#ee8a2c'], [80, '#d9531e'], [90, '#b3202f'], [100, '#7a0f3b']];
 const CATS = ['dry', 'damp', 'slick', 'wet', 'icy-fog'];
 const $ = (id) => document.getElementById(id);
+const ICON_PAUSE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 5v14M15 5v14"/></svg>';
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const EX = 1.5; // vertical exaggeration (terrain, buildings, streets, fog all share it)
 const isTouch = matchMedia('(pointer: coarse)').matches;
@@ -277,6 +278,7 @@ let ROUTES = [], selRoute = -1, fly = null, flySpeed = 1;
 const labelEls = [];
 const beacons = [];
 const mi = (m) => (m / 1609.344).toFixed(2), ft = (m) => Math.round(m * 3.28084).toLocaleString('en-US');
+const routeStats = (R) => `${mi(R.len)} mi \u00b7 ${ft(R.def.drop_m)} ft drop` + (R.def.climb_m >= 3 ? ` \u00b7 ${ft(R.def.climb_m)} ft climb` : ''); // one wording: list, header, everywhere
 const lift = (p) => new THREE.Vector3(p[0], Math.max(p[1] * EX, terrainH ? terrainH.at(p[0], p[2]) : 0) + 3, p[2]);
 const shortName = (r, zones) => r.name.replace((zones.find((z) => z.id === r.zone) || {}).name + ': ', '');
 
@@ -300,15 +302,15 @@ function buildRoutes(rj) {
   // picker: grouped by zone, colour swatch per route
   const list = $('rlist'); list.innerHTML = '';
   { const b = document.createElement('button'); b.type = 'button'; b.className = 'ritem on'; b.dataset.city = '1'; b.setAttribute('role', 'option');
-    b.innerHTML = '<span class="sw" style="background:transparent"></span><span class="rn">Whole city</span><span class="rm">Reset the camera, no route selected</span>'; list.appendChild(b); }
+    b.innerHTML = '<span class="sw city"></span><span class="rn">Whole city</span><span class="rm">No route selected</span><span class="ck">&#10003;</span>'; list.appendChild(b); }
   for (const z of rj.zones) {
     const rs = ROUTES.map((r, i) => [r, i]).filter(([r]) => r.def.zone === z.id);
     if (!rs.length) continue;
     const h = document.createElement('div'); h.className = 'rzone'; h.textContent = z.name; list.appendChild(h);
     for (const [r, i] of rs) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'ritem'; b.dataset.i = i; b.setAttribute('role', 'option');
-      b.innerHTML = `<span class="sw" style="background:${r.def.color}"></span><span class="rn"></span><span class="rm">${mi(r.len)} mi · ${ft(r.def.drop_m)} ft drop</span>`;
-      b.querySelector('.rn').textContent = shortName(r.def, rj.zones);
+      b.innerHTML = `<span class="sw" style="background:${r.def.color}"></span><span class="rn"></span><span class="rm"></span><span class="ck">&#10003;</span>`;
+      b.querySelector('.rn').textContent = shortName(r.def, rj.zones); b.querySelector('.rm').textContent = routeStats(r);
       list.appendChild(b);
     }
   }
@@ -324,9 +326,8 @@ function clearRoute(goCity = true) {
   if (rib) rib.setRoute(-1);
   if (routeBuf) { routeBuf.fill(0); routeAttr.needsUpdate = true; }
   beacons.forEach((b) => { b.visible = false; }); labelEls.forEach((l) => { l.on = false; l.el.style.display = 'none'; });
-  $('rsw').style.background = 'transparent'; $('rlabel').textContent = 'Whole city';
-  $('rcsw').style.background = 'transparent'; $('rcname').textContent = 'No route selected'; $('rcstats').textContent = '';
-  $('fly').disabled = true; $('flyhdr').disabled = true;
+  $('rsw').style.background = 'transparent'; $('rsw').classList.add('city'); $('rlabel').textContent = 'Whole city'; $('rstat').textContent = 'No route selected';
+  $('flyhdr').disabled = true;
   [...$('rlist').querySelectorAll('.ritem')].forEach((b) => b.classList.toggle('on', !!b.dataset.city));
   flyUI(); closePicker();
   if (goCity) flyTo(CITY.pos, CITY.target, 2200);
@@ -347,10 +348,7 @@ function selectRoute(i, flyCam = true) {
     const p = lift(e.p); beacons[j].position.set(p.x, p.y + 350, p.z); beacons[j].visible = true;
     labelEls[j].p.copy(p).add(new THREE.Vector3(0, 30, 0)); labelEls[j].el.textContent = e.label; labelEls[j].on = true;
   });
-  $('rsw').style.background = R.def.color; $('rlabel').textContent = shortName(R.def, ZONES); $('fly').disabled = false; $('flyhdr').disabled = false;
-  $('rcsw').style.background = R.def.color; $('rcname').textContent = R.def.name;
-  $('rcstats').textContent = `${mi(R.len)} mi · drops ${ft(R.def.drop_m)} ft` + (R.def.climb_m >= 3 ? ` · ${ft(R.def.climb_m)} ft of climbing` : '');
-  $('routecard').hidden = false;
+  $('rsw').classList.remove('city'); $('rsw').style.background = R.def.color; $('rlabel').textContent = shortName(R.def, ZONES); $('rstat').textContent = routeStats(R); $('flyhdr').disabled = false;
   [...$('rlist').querySelectorAll('.ritem')].forEach((b) => b.classList.toggle('on', !b.dataset.city && +b.dataset.i === i));
   flyUI(); closePicker();
   if (flyCam) flyToRoute(R);
@@ -371,7 +369,7 @@ const LSK = 'df3.sheetOpen';
 const lsGet = () => { try { return localStorage.getItem(LSK); } catch { return null; } };
 const lsSet = (v) => { try { localStorage.setItem(LSK, v); } catch { /* private mode etc.: state just does not persist */ } };
 function setSheet(open) {
-  $('sheet').hidden = !open; $('menubtn').setAttribute('aria-expanded', String(open)); $('sheettab').setAttribute('aria-expanded', String(open));
+  $('sheet').hidden = !open; $('sheettab').setAttribute('aria-expanded', String(open));
   document.body.classList.toggle('sheet-closed', !open);
   if (open) closePicker();
   if (deskMQ.matches) lsSet(open ? '1' : '0');
@@ -379,11 +377,15 @@ function setSheet(open) {
 function closePicker() { $('rpop').hidden = true; $('rbtn').setAttribute('aria-expanded', 'false'); }
 function openPicker(o) { $('rpop').hidden = !o; $('rbtn').setAttribute('aria-expanded', String(o)); if (o && !deskMQ.matches) setSheet(false); }
 $('rbtn').onclick = () => openPicker($('rpop').hidden);
-$('menubtn').onclick = () => setSheet($('sheet').hidden);
 $('sheettab').onclick = () => setSheet($('sheet').hidden);
 document.querySelector('#sheet .grab').onclick = () => setSheet(false);
-$('legend').onclick = () => { setSheet(true); $('fullleg').scrollIntoView({ block: 'nearest' }); };
-$('wxbtn').onclick = () => { const o = $('wxgrid').hidden; $('wxgrid').hidden = !o; $('wxbtn').setAttribute('aria-expanded', String(o)); };
+/* legend strip: settings only. Weather strip: expands the weather grid AND opens the settings sheet on top of it (phone; the desktop panel is pinned). */
+$('legend').onclick = () => setSheet($('sheet').hidden);
+$('wxbtn').onclick = () => {
+  const o = $('wxgrid').hidden; $('wxgrid').hidden = !o; $('wxbtn').setAttribute('aria-expanded', String(o));
+  if (!deskMQ.matches) setSheet(o);
+};
+$('poc').addEventListener('click', () => { closePicker(); if (!deskMQ.matches) setSheet(false); }); // About and the other popovers: one at a time
 function initSheet() { // phone: starts closed; desktop: starts open unless the user collapsed it
   const v = lsGet(); setSheet(deskMQ.matches ? v !== '0' : false);
   if (deskMQ.matches) lsSet(v === '0' ? '0' : '1');
@@ -392,7 +394,7 @@ deskMQ.addEventListener('change', () => { const v = lsGet(); setSheet(deskMQ.mat
 $('rlist').addEventListener('click', (e) => { const b = e.target.closest('.ritem'); if (!b) return; if (b.dataset.city) clearRoute(true); else selectRoute(+b.dataset.i, true); });
 document.addEventListener('pointerdown', (e) => {
   if (!e.target.closest('#rpop, #rbtn')) closePicker();
-  if (!deskMQ.matches && !e.target.closest('#sheet, #menubtn, #legend')) setSheet(false);
+  if (!deskMQ.matches && !e.target.closest('#dock')) setSheet(false);
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePicker(); if (!deskMQ.matches) setSheet(false); stopFly(); } });
 
@@ -400,14 +402,14 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePic
 const FLY = { back: 150, ahead: 130, up: 62 };
 function flyUI() {
   const on = !!fly; document.body.classList.toggle('flying', on);
-  { const fh = $('flyhdr'); fh.innerHTML = on ? '&#9632;' : '&#9654;'; fh.setAttribute('aria-label', on ? 'Stop the flyover' : 'Fly the route'); fh.title = fh.getAttribute('aria-label'); } if (on) { closePicker(); if (!deskMQ.matches) setSheet(false); }
-  $('fly').hidden = on; $('flypause').hidden = !on; $('flystop').hidden = !on; $('flyspeed').hidden = !on; $('rcinfo').hidden = !on;
+  { const fh = $('flyhdr'); fh.setAttribute('aria-label', on ? 'Exit the flyover' : 'Fly the route'); fh.title = fh.getAttribute('aria-label'); } if (on) { closePicker(); if (!deskMQ.matches) setSheet(false); }
+  $('flypill').hidden = !on; $('flypause').hidden = !on;
   if (on) {
     const paused = fly.paused;
-    $('flypause').innerHTML = fly.done ? '&#8635;' : paused ? '&#9654;' : '&#10074;&#10074;';
+    $('flypause').innerHTML = fly.done ? '&#8635;' : paused ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>' : ICON_PAUSE;
     $('flypause').setAttribute('aria-label', fly.done ? 'Replay' : paused ? 'Resume' : 'Pause');
   }
-  [...$('flyspeed').children].forEach((c) => c.classList.toggle('on', +c.dataset.s === flySpeed));
+  $('flyspeed').textContent = flySpeed + 'x'; $('flyspeed').dataset.s = flySpeed; $('flyspeed').setAttribute('aria-label', `Fly speed ${flySpeed}x, tap to change`);
 }
 function startFly() {
   const R = ROUTES[selRoute]; if (!R) { toast('Pick a route first'); return; }
@@ -446,8 +448,9 @@ function flyReadout(s) {
   const txt = `${street}|${w}`;
   if (txt !== fly.txt) {
     fly.txt = txt;
-    $('rcinfo').innerHTML = `<span class="rc-st"></span>` + (w == null ? '' : ` <span class="sw" style="background:${rgbCss(rampColor(w))}"></span><b>${w}</b> wetness`);
-    $('rcinfo').querySelector('.rc-st').textContent = street;
+    $('fpst').textContent = street;
+    $('fpw').innerHTML = w == null ? '' : `<span class="sw" style="background:${rgbCss(rampColor(w))}"></span><b>${w}</b>`;
+    $('fpw').title = $('fpw').ariaLabel = w == null ? '' : `wetness ${w}`;
   }
 }
 function flyStep(ts) {
@@ -487,11 +490,9 @@ function placeSkater(R, s, dt, camGoal) {
   skater.setVisible(true);
   skater.update({ pos: P, forward: _sf, scale, w: routeWetAt(R, m), dt });
 }
-$('fly').onclick = startFly;
 $('flyhdr').onclick = () => { if (fly) stopFly(); else startFly(); };
-$('flystop').onclick = stopFly;
 $('flypause').onclick = () => { if (!fly) return; if (fly.done) { fly.u = 0; fly.done = false; fly.paused = false; } else fly.paused = !fly.paused; flyUI(); };
-$('flyspeed').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; flySpeed = +b.dataset.s; flyUI(); });
+$('flyspeed').addEventListener('click', () => { flySpeed = flySpeed === 1 ? 2 : 1; flyUI(); });
 
 async function initRoutes() {
   try { buildRoutes(await withTimeout(getJSON('data/routes.json'), 15000, 'routes')); } catch (e) { console.warn(e); toast('Routes failed to load'); $('rbtn').disabled = true; }
@@ -561,14 +562,14 @@ function setMode(r) {
 function ensureWet() { if (useRib && wetDirty) { rib.fillWet(wetNow, curF); wetDirty = false; } }
 
 async function selectNight(i) {
-  const n = index.nights[i]; setStatus(`Loading ${n.label}…`); overlay.classList.remove('hide');
+  const n = index.nights[i]; setStatus(`Loading ${nightLabel(n)}…`); overlay.classList.remove('hide');
   const flag = new URLSearchParams(location.search).get('ribbons');
   let useR = flag !== '0' && !!(n.streets_r && n.ribbons);
   if (flag === '1' && !useR) toast('No ribbon data for this night: using the old street quads');
   let sb = null, wx = null, ru8 = null;
   if (useR) { // continuous ribbons: ribbons.bin/meta once, streets_r.u8 per night
     try {
-      setStatus('Loading street geometry…'); await ensureRibbons(n); setStatus(`Loading ${n.label}: street wetness…`);
+      setStatus('Loading street geometry…'); await ensureRibbons(n); setStatus(`Loading ${nightLabel(n)}: street wetness…`);
       const [rb, w2] = await Promise.all([withTimeout(getBuf(base + n.streets_r), 60000, 'ribbon street data'), getJSON(base + n.weather).catch(() => null)]);
       if (rb.byteLength !== n.n_frames * rib.samples.S) throw new Error(`streets_r.u8 has ${rb.byteLength} bytes, expected ${n.n_frames * rib.samples.S}`);
       ru8 = new Uint8Array(rb); wx = w2;
@@ -597,12 +598,13 @@ async function selectNight(i) {
   overlay.classList.add('hide'); $('status').textContent = ''; // hidden overlay must not keep a stale 'Loading' text
 }
 
+const nightLabel = (n) => n.label.replace(/^(\w{3}),? (\d{1,2}) (\w{3})/, '$1 $3 $2'); // 'Thu 1 Oct, fog night' -> 'Thu Oct 1, fog night'
 /* wall-clock label from ISO string (ignores offset: shows local time as written) */
 function wall(iso, addMin) {
   const m = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)/.exec(iso); if (!m) return { time: '--:--', day: '' };
   const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5] + Math.round(addMin)));
   const p = (x) => String(x).padStart(2, '0');
-  return { time: `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`, day: d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) };
+  return { time: `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`, day: d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }) + ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) }; // 'Thu Oct 1'
 }
 
 let lastFrameKey = -1;
@@ -629,19 +631,20 @@ function applyTime(force) {
       $('wx-temp').textContent = gF(weather.temp_c) + ' °F'; $('wx-dew').textContent = gF(weather.dewpoint_c) + ' °F';
       $('wx-wind').textContent = (weather.wind_ms && weather.wind_ms[i] != null ? (weather.wind_ms[i] * 2.23694).toFixed(0) : '--') + ' mph ' + (weather.wind_dir ? compass(weather.wind_dir[i]) : '');
       $('wx-cloud').textContent = g(weather.cloud_low_pct, 0) + ' %';
-      const s = weather.sun_el ? weather.sun_el[i] : null; $('wx-sun').textContent = s == null ? '--' : (s > 0 ? 'up ' : 'down ') + s.toFixed(0) + '°';
-      const t = $('wx-temp').textContent.replace(' ', ''), dp = $('wx-dew').textContent.replace(' °F', '°'), wd = $('wx-wind').textContent.trim() + ($('wx-note').hidden ? '' : '*');
-      $('wxline').textContent = `${t} · dew ${dp} · ${wd} · ${$('wx-cloud').textContent.replace(' ', '')} cloud · sun ${s == null ? '--' : Math.round(s) + '°'}`;
+      const s = weather.sun_el ? weather.sun_el[i] : null; $('wx-sun').textContent = s == null ? '--' : (s > 0 ? 'up ' : 'down ') + minus(s.toFixed(0)) + '°';
+      const t = $('wx-temp').textContent.replace(' ', ''), dp = $('wx-dew').textContent.replace(' °F', '°F'), wd = $('wx-wind').textContent.trim() + ($('wx-note').hidden ? '' : '*');
+      $('wxline').textContent = `${t} · dew ${dp} · ${wd} · ${$('wx-cloud').textContent.replace(' ', '')} cloud · sun ${s == null ? '--' : minus(Math.round(s)) + '°'}`;
     }
     if (hoverIdx >= 0) showTip(hoverIdx, hoverXY);
   }
   fog.setFrame((f * night.step_min) / fogGrid.frame_min);
 }
+function minus(v) { return String(v).replace('-', '\u2212'); } // true minus sign
 function tzName(iso) { return /-07:00$/.test(iso) ? 'PDT' : /-08:00$/.test(iso) ? 'PST' : ''; }
 function compass(d) { return d == null ? '' : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(d / 45) % 8]; }
 
 /* ------------------------------------------------------------------ controls */
-function setPlaying(p) { playing = p; $('play').innerHTML = p ? '&#10074;&#10074;' : '&#9654;'; $('play').setAttribute('aria-label', p ? 'Pause' : 'Play'); lastTs = 0; }
+function setPlaying(p) { playing = p; $('play').classList.toggle('playing', p); $('play').setAttribute('aria-label', p ? 'Pause' : 'Play'); lastTs = 0; }
 $('play').onclick = () => { if (night && tNow >= night.n_frames - 1.001) tNow = 0; setPlaying(!playing); };
 $('slider').addEventListener('input', (e) => { tNow = parseFloat(e.target.value); applyTime(true); });
 $('speed').addEventListener('click', (e) => {
@@ -684,7 +687,7 @@ function showTip(k, xy) {
   ensureWet();
   const v = wetNow[k], cat = CATS[v < 20 ? 0 : v < 50 ? 1 : v < 80 ? 2 : v < 95 ? 3 : 4];
   const when = night ? wall(night.start_iso, curF * night.step_min).time : '';
-  tip.innerHTML = v < 0 ? `no data<br>${G.names[G.st[k]]}` : `<span class="sw" style="background:${rgbCss(rampColor(v))}"></span><b>${Math.round(v)}</b> · ${cat}${useRib ? ' (modelled)' : ''}<br>${G.names[G.st[k]]}, ${G.side[k] ? 'right' : 'left'} side${selRoute >= 0 && ((G.mask[k] >> ROUTES[selRoute].def.index) & 1) ? ' · on route' : G.cls[k] ? ' · district street' : ''} · ${when}`;
+  tip.innerHTML = v < 0 ? `no data<br>${G.names[G.st[k]]}` : `<span class="sw" style="background:${rgbCss(rampColor(v))}"></span><b>${Math.round(v)}</b> wetness · ${cat}${useRib ? ' (modelled)' : ''}<br>${G.names[G.st[k]]}, ${G.side[k] ? 'right' : 'left'} side${selRoute >= 0 && ((G.mask[k] >> ROUTES[selRoute].def.index) & 1) ? ' · on route' : G.cls[k] ? ' · district street' : ''} · ${when}`;
   tip.hidden = false;
   const topH = $('top').getBoundingClientRect().bottom, botY = $('controls').getBoundingClientRect().top; // keep the tooltip clear of the glass stacks
   tip.style.left = clamp(xy[0], 125, innerWidth - 125) + 'px'; tip.style.top = clamp(xy[1], topH + 70, botY - 6) + 'px';
@@ -759,7 +762,7 @@ function frame(ts) {
       return;
     }
     index = idx; base = dir; $('badge').hidden = !idx.mock; if (idx.mock) $('badge').textContent = 'Mock data';
-    $('night').innerHTML = idx.nights.map((n, i) => `<option value="${i}">${n.label}${n.approx_direction ? ' *' : ''}</option>`).join('');
+    $('night').innerHTML = idx.nights.map((n, i) => `<option value="${i}">${nightLabel(n)}${n.approx_direction ? ' *' : ''}</option>`).join('');
     const qn = new URLSearchParams(location.search).get('night');
     let firstFog = idx.nights.findIndex((n) => n.id === qn);
     if (firstFog < 0) { // default: strongest fog night

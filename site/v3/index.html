@@ -16,10 +16,25 @@
 </head>
 <body>
 <header id="top">
-  <button id="rbtn" type="button" class="chip accent" aria-haspopup="listbox" aria-expanded="false" aria-controls="rpop"><span class="sw" id="rsw"></span><span id="rlabel">Routes</span><span class="car">&#9662;</span></button>
-  <button id="flyhdr" type="button" class="ib accent" aria-label="Fly the route" title="Fly the route">&#9654;</button>
-  <button id="poc" type="button" class="poc" data-no-info aria-label="Proof of concept, 5 m simulation, not a forecast. Open: how this works"><span>Proof of concept &middot; 5 m simulation &middot; not a forecast</span></button>
-  <button id="menubtn" type="button" class="ib" aria-label="Menu" aria-expanded="false" aria-controls="sheet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
+  <button id="rbtn" type="button" class="chip accent" aria-haspopup="listbox" aria-expanded="false" aria-controls="rpop">
+    <span class="sw" id="rsw"></span>
+    <span class="tx"><span id="rlabel" class="nm">Whole city</span><span id="rstat" class="st">No route selected</span></span>
+    <span class="car">&#9662;</span>
+  </button>
+  <div id="flypill" class="chip accent" hidden>
+    <div class="fp-row">
+      <span class="fp-st" id="fpst"></span>
+      <span class="fp-w" id="fpw"></span>
+      <button id="flyspeed" type="button" class="spd" data-s="1" aria-label="Fly speed 1x">1x</button>
+    </div>
+    <i id="flyprog"><b id="flyfill"></b></i>
+  </div>
+  <button id="flypause" type="button" class="pb" aria-label="Pause" hidden></button>
+  <button id="flyhdr" type="button" class="pb" aria-label="Fly the route" title="Fly the route">
+    <svg class="tri" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 5.5 L35 20 L10 34.5 Z"/></svg><span class="e" aria-hidden="true">&#x1F6F9;</span>
+    <span class="xi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>Exit</span>
+  </button>
+  <button id="poc" type="button" class="poc" data-no-info aria-label="Proof of concept, 5 m simulation, not a forecast. Open: how this works"><span class="pill">Proof of concept &middot; <span class="nc">5 m</span> simulation &middot; not a forecast</span></button>
 </header>
 
 <main id="mid">
@@ -27,19 +42,17 @@
     <canvas id="gl" aria-label="3-D view of San Francisco terrain, buildings and street wetness"></canvas>
     <div id="labels"></div>
     <div id="badge" hidden>Mock data</div>
-    <button id="sheettab" type="button" aria-label="Show or hide the panel" aria-expanded="true"><span aria-hidden="true">&#9656;</span></button>
+    <button id="sheettab" type="button" aria-label="Show or hide the settings panel" aria-expanded="true"><span aria-hidden="true">&#9656;</span></button>
 
     <div id="rpop" role="dialog" aria-label="Choose a skate route" hidden>
       <div id="rlist" role="listbox"></div>
-      <div id="rcfoot">
-        <span class="sw" id="rcsw"></span>
-        <div class="rcm"><b id="rcname"></b><div id="rcstats"></div></div>
-        <button id="fly" type="button" class="chip accent">Fly the route</button>
-      </div>
     </div>
   </div>
+</main>
 
-  <aside id="sheet" aria-label="Menu" hidden>
+<div id="dock">
+  <aside id="sheet" aria-label="Settings" hidden>
+    <div class="grab" aria-hidden="true"></div>
     <div class="two sec">
       <div><h4>Night</h4><select id="night" aria-label="Night"></select></div>
       <div><h4>Speed</h4><div class="seg" id="speed" role="group" aria-label="Speed"><button type="button" data-s="1" class="on">1x</button><button type="button" data-s="4">4x</button><button type="button" data-s="16">16x</button></div></div>
@@ -53,31 +66,12 @@
       </div>
       <div class="dens"><label for="fogdens">Fog density</label><input type="range" id="fogdens" min="30" max="200" value="100" aria-label="Fog density"></div>
     </div>
-    <div class="sec" id="fullleg">
-      <h4>Death fog chance <span class="lg-sub">street wetness index</span></h4>
-      <div class="ramp"></div>
-      <div class="ticks"><span>0</span><span>20</span><span>50</span><span>80</span><span>100</span></div>
-      <div class="cats"><span>dry</span><span>damp</span><span>slick</span><span>wet</span><span>icy-fog</span></div>
-    </div>
-    <p class="pocnote"><span class="poc">Proof of concept</span> 5 m simulation of overnight street wetness. Not a forecast.</p>
-      <div class="grab" aria-hidden="true"></div>
   </aside>
-</main>
 
-<footer id="controls">
-  <div class="inner">
-    <div id="flybar">
-      <div id="routecard" class="card" hidden><div class="rc-info" id="rcinfo" hidden></div></div>
-      <div id="flytr" class="bar">
-        <button id="flystop" type="button" class="fbtn on" aria-label="Stop" hidden>&#9632;</button>
-        <button id="flypause" type="button" class="fbtn" aria-label="Pause" hidden>&#10074;&#10074;</button>
-        <div class="seg" id="flyspeed" role="group" aria-label="Fly speed" hidden><button type="button" data-s="1" class="on">1x</button><button type="button" data-s="2">2x</button></div>
-        <div id="flyprog"><i id="flyfill"></i></div>
-      </div>
-    </div>
-    <div id="normal">
+  <footer id="controls">
+    <div class="inner">
       <section id="weather" aria-label="Weather readout">
-        <button id="wxbtn" type="button" aria-expanded="false" aria-controls="wxgrid"><span id="wxline">--</span><span class="car">&#9662;</span></button>
+        <button id="wxbtn" type="button" aria-expanded="false" aria-controls="wxgrid"><span id="wxline">--</span><svg class="sl" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
         <div id="wxgrid" hidden>
           <div class="wx"><span class="k">Temp</span><span class="v" id="wx-temp">--</span></div>
           <div class="wx"><span class="k">Dew pt</span><span class="v" id="wx-dew">--</span></div>
@@ -87,18 +81,19 @@
           <div class="note" id="wx-note" hidden>* approx. wind direction</div>
         </div>
       </section>
-      <button id="legend" type="button" aria-label="Legend: street wetness index. Tap for the full legend">
+      <button id="legend" type="button" aria-label="Legend: wetness, 0 dry to 100 icy-fog. Open settings">
         <div class="ramp" id="ramp"></div>
-        <div class="ticks"><span>0 dry</span><span>20</span><span>50 slick</span><span>80</span><span>100 icy-fog</span></div>
+        <div class="ticks"><i style="left:0">0 dry</i><i style="left:20%">20</i><i style="left:50%">50 slick</i><i style="left:100%">100 icy-fog</i></div>
       </button>
       <div id="timebar" class="bar">
-        <button id="play" type="button" aria-label="Play">&#9654;</button>
+        <button id="play" type="button" class="pb" aria-label="Play">
+          <svg class="tri" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 5.5 L35 20 L10 34.5 Z"/></svg><span class="e" aria-hidden="true">&#x1F301;</span><span class="pz" aria-hidden="true">&#10074;&#10074;</span></button>
         <input id="slider" type="range" min="0" max="96" step="any" value="0" aria-label="Time">
         <div class="clock"><span id="clock">--:--</span><span id="clock-sub"></span></div>
       </div>
     </div>
-  </div>
-</footer>
+  </footer>
+</div>
 
 <div id="tip" role="status" hidden></div>
 <div id="overlay"><div class="box"><div class="spin"></div><div id="status">Loading…</div><button id="retry" type="button" hidden>Retry</button></div></div>
