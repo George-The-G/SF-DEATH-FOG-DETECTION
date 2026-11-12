@@ -428,14 +428,18 @@ function routeBins(R) {
   }
   return (R.bins = bins);
 }
+/* wetness (0-100, interpolated in time like the street colours) of the route samples within +-1 bin (20 m) of arc position s; null = no data */
+function routeWetAt(R, s) {
+  ensureWet();
+  const bins = routeBins(R), b0 = Math.floor(s / 20); let sum = 0, n = 0;
+  for (let b = b0 - 1; b <= b0 + 1; b++) for (const k of bins.get(b) || []) if (wetNow[k] >= 0) { sum += wetNow[k]; n++; }
+  return n ? sum / n : null;
+}
 function flyReadout(s) {
   const R = fly.R, d = R.def; let lo = 0, hi = d.s.length - 1;
   while (hi - lo > 1) { const m = (lo + hi) >> 1; if (d.s[m] <= s) lo = m; else hi = m; }
   const street = d.streets[d.st[lo]] || '';
-  ensureWet();
-  const bins = routeBins(R), b0 = Math.floor(s / 20); let sum = 0, n = 0;
-  for (let b = b0 - 1; b <= b0 + 1; b++) for (const k of bins.get(b) || []) if (wetNow[k] >= 0) { sum += wetNow[k]; n++; }
-  const w = n ? Math.round(sum / n) : null;
+  const w0 = routeWetAt(R, s), w = w0 == null ? null : Math.round(w0);
   const txt = `${street}|${w}`;
   if (txt !== fly.txt) {
     fly.txt = txt;
@@ -506,7 +510,8 @@ async function ensureRibbons(n) {
   const r = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch });
   r.build(buf, m);
   if (rib) rib.dispose();
-  rib = r; ribMeta = m; ribPath = n.ribbons; r.setSideDepth(sideDepth); syncSideSel();
+  rib = r; ribMeta = m; ribPath = n.ribbons; r.setSideDepth($('disttoggle').checked ? 3 : 0); r.setRouteColors(ROUTES.map((R) => R.def.color));
+  if (selRoute >= 0) setRouteHighlight(selRoute);
 }
 function setMode(r) {
   useRib = r;
@@ -620,12 +625,9 @@ $('speed').addEventListener('click', (e) => {
 $('night').addEventListener('change', async (e) => { setPlaying(false); try { await selectNight(+e.target.value); } catch (err) { setStatus('Could not load this night: ' + err.message, true); } });
 $('fogtoggle').addEventListener('change', (e) => fog.setVisible(e.target.checked));
 $('fogdens').addEventListener('input', (e) => fog.setDensity(+e.target.value / 100));
-let sideDepth = 1; // street blocks of side street drawn beyond each route intersection: 0 off, 1..3
-function syncSideSel() {
-  const mx = rib ? rib.samples.maxDepth : 1;
-  [...$('sidesel').children].forEach((b) => { const d = +b.dataset.d; b.classList.toggle('on', d === sideDepth); b.disabled = d > mx; });
-}
-$('sidesel').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b || b.disabled) return; sideDepth = +b.dataset.d; if (rib) rib.setSideDepth(sideDepth); syncSideSel(); });
+/* "District streets": every street of Potrero Hill and Golden Gate Heights as a wetness gradient (default on). With older ribbon data
+   (side blocks only, depth 1-3) the same switch shows or hides all of those blocks. */
+$('disttoggle').addEventListener('change', (e) => { if (rib) rib.setSideDepth(e.target.checked ? 3 : 0); hideTip(); });
 $('bldtoggle').addEventListener('change', (e) => { if (buildingsMesh) buildingsMesh.visible = e.target.checked; });
 
 /* camera flights */
@@ -657,7 +659,7 @@ function showTip(k, xy) {
   ensureWet();
   const v = wetNow[k], cat = CATS[v < 20 ? 0 : v < 50 ? 1 : v < 80 ? 2 : v < 95 ? 3 : 4];
   const when = night ? wall(night.start_iso, curF * night.step_min).time : '';
-  tip.innerHTML = v < 0 ? `no data<br>${G.names[G.st[k]]}` : `<span class="sw" style="background:${rgbCss(rampColor(v))}"></span><b>${Math.round(v)}</b> · ${cat}${useRib ? ' (modelled)' : ''}<br>${G.names[G.st[k]]}, ${G.side[k] ? 'right' : 'left'} side${selRoute >= 0 && ((G.mask[k] >> ROUTES[selRoute].def.index) & 1) ? ' · on route' : G.cls[k] ? ' · side street' : ''} · ${when}`;
+  tip.innerHTML = v < 0 ? `no data<br>${G.names[G.st[k]]}` : `<span class="sw" style="background:${rgbCss(rampColor(v))}"></span><b>${Math.round(v)}</b> · ${cat}${useRib ? ' (modelled)' : ''}<br>${G.names[G.st[k]]}, ${G.side[k] ? 'right' : 'left'} side${selRoute >= 0 && ((G.mask[k] >> ROUTES[selRoute].def.index) & 1) ? ' · on route' : G.cls[k] ? ' · district street' : ''} · ${when}`;
   tip.hidden = false;
   const topH = $('top').getBoundingClientRect().bottom, botY = $('controls').getBoundingClientRect().top; // keep the tooltip clear of the glass stacks
   tip.style.left = clamp(xy[0], 125, innerWidth - 125) + 'px'; tip.style.top = clamp(xy[1], topH + 70, botY - 6) + 'px';
@@ -699,8 +701,8 @@ function frame(ts) {
   if (pointMat && !useRib) pointMat.uniforms.uScale.value = clamp(dist / 450, 1, 12);
   if (useRib) {
     rib.setLod(dist);
-    // route tubes would hide the ribbons (the ribbon outline carries the route colour); keep them only for the far view
-    const tubes = dist > 2200; ROUTES.forEach((r, k) => { r.hi.visible = tubes && k === selRoute; r.dim.visible = tubes && k !== selRoute; });
+    // the ribbon shader draws every route (dashed unless selected), so the old solid route tubes stay hidden
+    ROUTES.forEach((r) => { r.hi.visible = false; r.dim.visible = false; });
   }
   const bs = clamp(dist / 450, 1, 80); beacons.forEach((b) => b.scale.set(bs * 1.5, 1, bs * 1.5));
   const showLbl = dist < 3500;

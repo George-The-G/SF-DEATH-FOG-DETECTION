@@ -12,9 +12,12 @@ const VERT = `
   attribute vec4 aInfo;     // sample id, across (-1..1), class (0 route, 1 side), fade 0..1
   attribute float aMask;    // route_mask bits
   attribute float aDepth;   // side-block depth 1..3 (street blocks from the route intersection); 1 for route strips and v1 data
+  attribute vec2 aRt;       // arc length in metres along the strip, lane side (0 left, 1 right)
   uniform sampler2D uWet;
-  uniform float uRows, uFa, uFb, uU, uWidth, uRouteBit, uDepthK;
-  varying float vWet, vMiss, vAcross, vCls, vFade, vSel, vDepth;
+  uniform vec3 uCols[16];   // route colours by route index (bit number in the mask)
+  uniform float uRows, uFa, uFb, uU, uWidth, uRouteBit, uDepthK, uThin, uLane;
+  varying float vWet, vMiss, vAcross, vCls, vFade, vSel, vDepth, vArc;
+  varying vec3 vRtCol;
   void main(){
     int s = int(aInfo.x + .5), R = int(uRows + .5);
     int ix = s & 4095, iy = s >> 12;
@@ -24,9 +27,19 @@ const VERT = `
     vMiss = (m0 && m1) ? 1. : 0.;
     vWet = m0 ? w1 : (m1 ? w0 : mix(w0, w1, uU));
     vDepth = aDepth; vAcross = aInfo.y; vCls = aInfo.z; vFade = aInfo.w;
-    vSel = (uRouteBit >= 0. && mod(floor(aMask / exp2(uRouteBit)), 2.) > .5) ? 1. : 0.;
-    vec3 p = position + vec3(aOff.x, 0., aOff.y) * uWidth;
-    p.y += 0.35 * (uWidth - 1.);
+    float sel = (uRouteBit >= 0. && mod(floor(aMask / exp2(uRouteBit)), 2.) > .5) ? 1. : 0.;
+    vSel = sel;
+    // route colour of the lowest route in the mask (the selected route's own colour is used when it is selected)
+    vRtCol = uCols[0]; bool found = false;
+    for (int i = 0; i < 16; i++) if (!found && mod(floor(aMask / exp2(float(i))), 2.) > .5) { vRtCol = uCols[i]; found = true; }
+    vArc = aRt.x;
+    // not-selected routes: ONE thin dashed centre line per street (right lane dropped, left lane moved to the street centre)
+    bool dashed = aInfo.z < .5 && sel < .5;
+    vec2 off = aOff * uWidth * (dashed ? uThin : 1.), sh = vec2(0.);
+    if (dashed) sh = -normalize(aOff * aInfo.y + vec2(1e-6)) * uLane;
+    vec3 p = position + vec3(off.x + sh.x, 0., off.y + sh.y);
+    p.y += 0.35 * (uWidth - 1.) + (dashed ? .15 : 0.);
+    if (dashed && aRt.y > .5) { gl_Position = vec4(2., 2., 2., 1.); return; }
     gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(p, 1.);
     // small view-dependent depth bias (metres along the view ray, converted to clip-space depth)
     gl_Position.z -= uDepthK * (1. + 0.003 * gl_Position.w) / gl_Position.w;
@@ -34,14 +47,24 @@ const VERT = `
 
 const frag = (glslRamp) => `
   precision highp float;
-  varying float vWet, vMiss, vAcross, vCls, vFade, vSel, vDepth;
-  uniform float uSideFade, uSideVis, uSideDepth;
+  varying float vWet, vMiss, vAcross, vCls, vFade, vSel, vDepth, vArc;
+  varying vec3 vRtCol;
+  uniform float uSideFade, uSideVis, uSideDepth, uDash, uWidth;
   uniform vec3 uRouteCol;
   ${glslRamp}
   void main(){
     if (vCls > .5 && vDepth > uSideDepth + .5) discard;
     vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : ramp(vWet);
     float ea = abs(vAcross), a;
+    if (vCls < .5 && vSel < .5) { // route that is not selected: thin dashed line, route colour inside, wetness ramp on the edge band
+      float f = vArc / (uDash * uWidth), ph = fract(f), aa = clamp(fwidth(f), 1e-4, .2);
+      float on = smoothstep(0., aa, ph) * (1. - smoothstep(.58, .58 + aa, ph));
+      vec3 d = mix(vRtCol, c, smoothstep(.42, .5, ea));
+      d = mix(d, vec3(.03, .06, .11), smoothstep(.84, .92, ea));
+      if (on < .03) discard;
+      gl_FragColor = vec4(d, on);
+      return;
+    }
     if (vCls < .5) { c = min(c * 1.07, vec3(1.)); a = 1.; }
     else { c *= .94; a = .8 * vFade * uSideFade * uSideVis; }
     if (vCls < .5) { // route strips: thick wetness-gradient line with a thin two-tone border (inner light or route colour, outer dark) that reads on every ramp colour
@@ -57,7 +80,8 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
   const uniforms = {
     uWet: { value: null }, uRows: { value: 1 }, uFa: { value: 0 }, uFb: { value: 0 }, uU: { value: 0 },
     uWidth: { value: 1 }, uRouteBit: { value: -1 }, uRouteCol: { value: new THREE.Color(0x5ef2ff) },
-    uSideFade: { value: 1 }, uSideVis: { value: 1 }, uSideDepth: { value: 1 }, uDepthK: { value: 16 },
+    uSideFade: { value: 1 }, uSideVis: { value: 1 }, uSideDepth: { value: 3 }, uDepthK: { value: 16 },
+    uCols: { value: Array.from({ length: 16 }, () => new THREE.Color(0x5ef2ff)) }, uThin: { value: 0.5 }, uLane: { value: 5 }, uDash: { value: 30 },
   };
   const material = new THREE.ShaderMaterial({
     uniforms, vertexShader: VERT, fragmentShader: frag(glslRamp),
@@ -91,10 +115,14 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
     const V = S * 2, half = widthM / 2;
     const P = new Float32Array(V * 3), OFF = new Float32Array(V * 2), INFO = new Float32Array(V * 4), MASK = new Float32Array(V), DEPTH = new Float32Array(V);
     const lifted = new Float32Array(S * 3);
+    const RT = new Float32Array(V * 2); // arc length along the strip (dash pattern) and lane side
     const h = terrainH ? (x, z) => terrainH.at(x, z) : () => -1e9;
+    let arc = 0, nextStrip = 0;
     for (let k = 0; k < S; k++) {
       const x = pos[k * 3], z = pos[k * 3 + 2], nx = nrm[k * 2], nz = nrm[k * 2 + 1];
-      const wf = cls[k] ? 0.7 : 1, hx = nx * half * wf, hz = nz * half * wf;
+      if (k === stripStart[nextStrip]) { arc = 0; nextStrip++; } else arc += Math.hypot(x - pos[k * 3 - 3], z - pos[k * 3 - 1]);
+      RT[2 * (2 * k)] = RT[2 * (2 * k + 1)] = arc; RT[2 * (2 * k) + 1] = RT[2 * (2 * k + 1) + 1] = side[k];
+      const wf = cls[k] ? 0.9 : 1, hx = nx * half * wf, hz = nz * half * wf;
       let y = Math.max(pos[k * 3 + 1] * EX, h(x, z), h(x + hx, z + hz), h(x - hx, z - hz)) + 1.0 + (cls[k] ? 0 : 0.3);
       lifted[k * 3] = x; lifted[k * 3 + 1] = y; lifted[k * 3 + 2] = z;
       for (let sg = 0; sg < 2; sg++) {
@@ -111,6 +139,7 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
     geom.setAttribute('aInfo', new THREE.BufferAttribute(INFO, 4));
     geom.setAttribute('aMask', new THREE.BufferAttribute(MASK, 1));
     geom.setAttribute('aDepth', new THREE.BufferAttribute(DEPTH, 1));
+    geom.setAttribute('aRt', new THREE.BufferAttribute(RT, 2));
     geom.setIndex(new THREE.BufferAttribute(idx, 1));
     mesh = new THREE.Mesh(geom, material);
     mesh.frustumCulled = false; mesh.renderOrder = 10; mesh.matrixAutoUpdate = false;
@@ -150,13 +179,14 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
   };
 
   api.setRoute = (bit, hex) => { uniforms.uRouteBit.value = bit; selected = bit >= 0; if (hex != null) uniforms.uRouteCol.value.set(hex); api.setLod(dist); };
+  api.setRouteColors = (hexes) => { hexes.forEach((hx, i) => { if (i < 16) uniforms.uCols.value[i].set(hx); }); };
   api.setSideVisible = (v) => { sideVis = !!v; uniforms.uSideVis.value = sideVis ? 1 : 0; };
   api.setSideDepth = (d) => { uniforms.uSideDepth.value = d; api.setSideVisible(d > 0); }; // 0 = off, 1..3 = blocks from each route intersection
   api.setLod = (d) => {
     dist = d;
     uniforms.uWidth.value = Math.min(8, Math.max(1, d / 450));
-    const t = Math.min(1, Math.max(0, (7000 - d) / 3500));
-    uniforms.uSideFade.value = selected && d < 12000 ? 1 : t * t * (3 - 2 * t);
+    const t = Math.min(1, Math.max(0, (24000 - d) / 6000)); // district streets stay drawn at every useful zoom; only the whole-region view thins them out
+    uniforms.uSideFade.value = t * t * (3 - 2 * t);
   };
   api.setVisible = (v) => { if (mesh) mesh.visible = v; };
   api.dispose = () => {

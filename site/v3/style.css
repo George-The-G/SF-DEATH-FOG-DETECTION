@@ -78,7 +78,7 @@ h4 { margin: 0 0 8px; font-size: 11px; letter-spacing: .09em; text-transform: up
 .tgs input:checked + span { border-color: var(--accent); color: var(--accent); background: rgba(94, 242, 255, .12); }
 .tgs input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tgs input:disabled + span { opacity: .4; }
-.ribonly { display: none; } body.ribbons .ribonly { display: block; }
+.ribonly { display: none; } body.ribbons .ribonly { display: block; } body.ribbons .tgs label.ribonly { display: inline-flex; }
 .dens { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: 12px; color: var(--dim); }
 .dens input { flex: 1; min-width: 0; height: 44px; accent-color: var(--accent); background: transparent; margin: 0; }
 .ramp { height: 10px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, .25); }
