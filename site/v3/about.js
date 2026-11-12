@@ -114,10 +114,13 @@ async function loadHtml() {
 }
 
 const LIVE_ABOUT = new URLSearchParams(location.search).get('live') === '1';
-const LIVE_HTML = '<h3>Live data</h3><p>Streets are coloured by a modelled wetness index, refreshed through the day. Sources:</p><ul>' +
-  '<li><b>Forecast:</b> NWS RRFS model via Open-Meteo</li><li><b>Fog cover:</b> NOAA GOES-18 satellite</li>' +
-  '<li><b>Surface:</b> airport reports (METAR KSFO, KOAK, KHAF)</li><li><b>Wind:</b> NOAA CO-OPS Fort Point</li></ul>' +
-  '<p class="ab-msg">Accuracy: wetness is modelled, not measured, and has not yet been checked against real wet-road reports. Treat it as a guide, not a forecast.</p>';export function isOpen() { return !!state.root; }
+const LIVE_HTML = '<h3>Live data</h3><p>Streets are coloured by a modelled wetness index for tonight and the next two days, refreshed through the day.</p><ul>' +
+  '<li><b>Forecast:</b> NWS RRFS, via Open-Meteo</li><li><b>Fog cover:</b> NOAA GOES-18 satellite</li>' +
+  '<li><b>Surface:</b> airport reports from KSFO, KOAK and KHAF</li><li><b>Wind:</b> NOAA tide station at Fort Point</li></ul>' +
+  '<p class="ab-acc">Wetness is modelled, not measured, and has not been checked against real wet-road reports yet. Use it as a guide.</p>';
+const LIVE_REPLACE = ['A replay of nine recent nights (7 foggy, 2 dry) showing how wet streets may have been along a few skate routes.', 'Modelled street wetness for tonight and the next two days across San Francisco, with detail on a few skate routes. The nine past-night replays are in the Night list.'];
+
+export function isOpen() { return !!state.root; }
 
 export async function openAbout() {
   if (state.root) return;
@@ -155,7 +158,7 @@ export async function openAbout() {
   document.body.appendChild(root);
   const place = () => {
     const tp = document.getElementById('top'), bt = document.getElementById('controls');
-    if (!tp) { root.classList.remove('ab-att'); root.style.top = ''; return; }
+    if (!tp || document.body.classList.contains('ui2')) { root.classList.remove('ab-att'); root.style.top = ''; return; }
     const top = Math.max(0, Math.round(tp.getBoundingClientRect().bottom) - 1);
     const bot = bt ? Math.round(bt.getBoundingClientRect().top) - 6 : innerHeight - 8;
     root.classList.add('ab-att');
@@ -169,7 +172,7 @@ export async function openAbout() {
   if (state.trigger) state.trigger.setAttribute('aria-expanded', 'true');
 
   const html = await loadHtml();
-  if (state.root === root) { body.innerHTML = (LIVE_ABOUT ? LIVE_HTML : '') + html; body.scrollTop = 0; }
+  if (state.root === root) { body.innerHTML = LIVE_ABOUT ? LIVE_HTML + html.replace(LIVE_REPLACE[0], LIVE_REPLACE[1]) : html; body.scrollTop = 0; }
 }
 
 export function closeAbout() {

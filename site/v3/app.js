@@ -9,6 +9,8 @@ import { ICON_SKATE_PLAY, ICON_FOG_PLAY, ICON_FOG_PAUSE } from './icons.js';
 /* ------------------------------------------------------------------ config */
 const SRC_Q = new URLSearchParams(location.search).get('src');
 const SRC_DIRS = SRC_Q === 'mock' ? ['replay_mock/'] : SRC_Q === 'synth' ? ['replay_synth/'] : ['replay/', 'replay_mock/']; // synth = tools/make_synthetic_ribbons.py fixture
+const UI2 = new URLSearchParams(location.search).get('live') === '1' || new URLSearchParams(location.search).get('ui') === '2'; // redesigned chrome (body.ui2), see UI_REDESIGN_PLAN.md
+if (UI2) document.body.classList.add('ui2');
 const LIVE = new URLSearchParams(location.search).get('live') === '1'; // hidden preview of the live builder snapshot (site/v3/live/); absent = replay, unchanged
 const RAMP = [[0, '#3a8696'], [18, '#6fb09f'], [24, '#f4e04d'], [50, '#f2c230'], [65, '#ee8a2c'], [80, '#d9531e'], [90, '#b3202f'], [100, '#7a0f3b']];
 const CATS = ['dry', 'damp', 'slick', 'wet', 'icy-fog'];
@@ -306,14 +308,14 @@ function buildRoutes(rj) {
   // picker: grouped by zone, colour swatch per route
   const list = $('rlist'); list.innerHTML = '';
   { const b = document.createElement('button'); b.type = 'button'; b.className = 'ritem on'; b.dataset.city = '1'; b.setAttribute('role', 'option');
-    b.innerHTML = '<span class="sw city"></span><span class="rn">Whole city</span><span class="rm">No route selected</span><span class="ck">&#10003;</span>'; list.appendChild(b); }
+    b.innerHTML = '<span class="sw city"></span><span class="rn">Whole city</span><span class="rm">' + (UI2 ? 'All streets' : 'No route selected') + '</span><span class="ck">&#10003;</span>'; list.appendChild(b); }
   for (const z of rj.zones) {
     const rs = ROUTES.map((r, i) => [r, i]).filter(([r]) => r.def.zone === z.id);
     if (!rs.length) continue;
     const h = document.createElement('div'); h.className = 'rzone'; h.textContent = z.name; list.appendChild(h);
     for (const [r, i] of rs) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'ritem'; b.dataset.i = i; b.setAttribute('role', 'option');
-      b.innerHTML = `<span class="sw" style="background:${r.def.color}"></span><span class="rn"></span><span class="rm"></span><span class="ck">&#10003;</span>`;
+      b.innerHTML = `<span class="sw" style="background:${r.def.color}"></span><span class="rn"></span><span class="rm"></span><span class="ck">&#10003;</span>${UI2 ? '<span class="mp"></span><span class="wn"></span>' : ''}`;
       b.querySelector('.rn').textContent = shortName(r.def, rj.zones); b.querySelector('.rm').textContent = routeStats(r);
       list.appendChild(b);
     }
@@ -330,12 +332,12 @@ function clearRoute(goCity = true) {
   if (rib) rib.setRoute(-1);
   if (routeBuf) { routeBuf.fill(0); routeAttr.needsUpdate = true; }
   beacons.forEach((b) => { b.visible = false; }); labelEls.forEach((l) => { l.on = false; l.el.style.display = 'none'; });
-  $('rsw').style.background = 'transparent'; $('rsw').classList.add('city'); $('rlabel').textContent = 'Whole city'; $('rstat').textContent = 'No route selected';
+  $('rsw').style.background = 'transparent'; $('rsw').classList.add('city'); $('rlabel').textContent = 'Whole city'; $('rstat').textContent = UI2 ? 'Pick a route to fly it' : 'No route selected';
   $('flyhdr').disabled = true;
   [...$('rlist').querySelectorAll('.ritem')].forEach((b) => b.classList.toggle('on', !!b.dataset.city));
   flyUI(); closePicker();
   if (goCity) flyTo(CITY.pos, CITY.target, 2200);
-  if (LV && LV.el) liveStrip();
+  ui2Refresh(true);
 }
 
 function setRouteHighlight(i) {
@@ -357,7 +359,7 @@ function selectRoute(i, flyCam = true) {
   [...$('rlist').querySelectorAll('.ritem')].forEach((b) => b.classList.toggle('on', !b.dataset.city && +b.dataset.i === i));
   flyUI(); closePicker();
   if (flyCam) flyToRoute(R);
-  if (LV && LV.el) liveStrip();
+  ui2Refresh(true);
 }
 
 function flyToRoute(R) {
@@ -371,44 +373,46 @@ function flyToRoute(R) {
 
 /* popovers: route list and menu sheet, one open at a time. On desktop the sheet is a pinned side panel (open state persisted). */
 const deskMQ = matchMedia('(min-width: 700px) and (min-height: 501px)');
+const SIDE = () => deskMQ.matches && !UI2; // pinned side panel only in the old desktop layout; ui2 settings always open inside the dock
 const LSK = 'df3.sheetOpen';
 const lsGet = () => { try { return localStorage.getItem(LSK); } catch { return null; } };
 const lsSet = (v) => { try { localStorage.setItem(LSK, v); } catch { /* private mode etc.: state just does not persist */ } };
 function setSheet(open) {
-  $('sheet').hidden = !open; $('sheettab').setAttribute('aria-expanded', String(open));
+  $('sheet').hidden = !open; $('sheettab').setAttribute('aria-expanded', String(open)); { const g = $('gear'); if (g) g.classList.toggle('on', open); }
   document.body.classList.toggle('sheet-closed', !open);
   if (open) closePicker();
-  if (deskMQ.matches) lsSet(open ? '1' : '0');
+  if (SIDE()) lsSet(open ? '1' : '0');
 }
 function closePicker() { $('rpop').hidden = true; $('rbtn').setAttribute('aria-expanded', 'false'); }
-function openPicker(o) { $('rpop').hidden = !o; $('rbtn').setAttribute('aria-expanded', String(o)); if (o && !deskMQ.matches) setSheet(false); }
+function openPicker(o) { $('rpop').hidden = !o; if (o) ui2List(true); $('rbtn').setAttribute('aria-expanded', String(o)); if (o && !SIDE()) setSheet(false); }
 $('rbtn').onclick = () => openPicker($('rpop').hidden);
 $('sheettab').onclick = () => setSheet($('sheet').hidden);
 document.querySelector('#sheet .grab').onclick = () => setSheet(false);
 /* legend strip: settings only. Weather strip: expands the weather grid AND opens the settings sheet on top of it (phone; the desktop panel is pinned). */
 $('legend').onclick = () => setSheet($('sheet').hidden);
 $('wxbtn').onclick = () => {
+  if (UI2) return; // ui2: one fixed weather line, nothing expands
   const o = $('wxgrid').hidden; $('wxgrid').hidden = !o; $('wxbtn').setAttribute('aria-expanded', String(o));
-  if (!deskMQ.matches) setSheet(o);
+  if (!SIDE()) setSheet(o);
 };
-$('poc').addEventListener('click', () => { closePicker(); if (!deskMQ.matches) setSheet(false); }); // About and the other popovers: one at a time
+$('poc').addEventListener('click', () => { closePicker(); if (!SIDE()) setSheet(false); }); // About and the other popovers: one at a time
 function initSheet() { // phone: starts closed; desktop: starts open unless the user collapsed it
-  const v = lsGet(); setSheet(deskMQ.matches ? v !== '0' : false);
-  if (deskMQ.matches) lsSet(v === '0' ? '0' : '1');
+  const v = lsGet(); setSheet(SIDE() ? v !== '0' : false);
+  if (SIDE()) lsSet(v === '0' ? '0' : '1');
 }
-deskMQ.addEventListener('change', () => { const v = lsGet(); setSheet(deskMQ.matches ? v !== '0' : false); });
+deskMQ.addEventListener('change', () => { const v = lsGet(); setSheet(SIDE() ? v !== '0' : false); });
 $('rlist').addEventListener('click', (e) => { const b = e.target.closest('.ritem'); if (!b) return; if (b.dataset.city) clearRoute(true); else selectRoute(+b.dataset.i, true); });
 document.addEventListener('pointerdown', (e) => {
   if (!e.target.closest('#rpop, #rbtn')) closePicker();
-  if (!deskMQ.matches && !e.target.closest('#dock')) setSheet(false);
+  if (!SIDE() && !e.target.closest('#dock')) setSheet(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePicker(); if (!deskMQ.matches) setSheet(false); stopFly(); } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePicker(); if (!SIDE()) setSheet(false); stopFly(); } });
 
 /* fly-along: chase camera that looks ahead along the route polyline */
 const FLY = { back: 150, ahead: 130, up: 62 };
 function flyUI() {
   const on = !!fly; document.body.classList.toggle('flying', on);
-  { const fh = $('flyhdr'); fh.setAttribute('aria-label', on ? 'Exit the flyover' : 'Fly the route'); fh.title = fh.getAttribute('aria-label'); } if (on) { closePicker(); if (!deskMQ.matches) setSheet(false); }
+  { const fh = $('flyhdr'); fh.setAttribute('aria-label', on ? 'Exit the flyover' : 'Fly the route'); fh.title = fh.getAttribute('aria-label'); } if (on) { closePicker(); if (!SIDE()) setSheet(false); }
   $('flypill').hidden = !on; $('flypause').hidden = !on;
   if (on) {
     const paused = fly.paused;
@@ -450,7 +454,7 @@ function flyReadout(s) {
   const R = fly.R, d = R.def; let lo = 0, hi = d.s.length - 1;
   while (hi - lo > 1) { const m = (lo + hi) >> 1; if (d.s[m] <= s) lo = m; else hi = m; }
   const street = d.streets[d.st[lo]] || '';
-  const w0 = routeWetAt(R, s), w = w0 == null ? null : Math.round(w0);
+  const w0 = routeWetAt(R, s), w = w0 == null ? null : Math.round(w0); fly.w = w;
   const txt = `${street}|${w}`;
   if (txt !== fly.txt) {
     fly.txt = txt;
@@ -472,7 +476,7 @@ function flyStep(ts) {
   const k = fly.last && dt ? 1 - Math.exp(-dt * 3.5) : 0;
   fly.cam.lerp(c, k); fly.tgt.lerp(t, k);
   camera.position.copy(fly.cam); controls.target.copy(fly.tgt);
-  flyReadout(s);
+  flyReadout(s); if (UI2) ui2Fly(s);
   placeSkater(R, s, dt, c);
 }
 /* The skateboarder rides the street ahead of the chase camera. Its arc position is chosen so that the board sits just above the
@@ -482,7 +486,7 @@ const _sp = new THREE.Vector3(), _sf = new THREE.Vector3();
 function placeSkater(R, s, dt, camGoal) {
   if (!fly || fly.cam.distanceTo(camGoal) > 90) { skater.setVisible(false); return; } // not while the camera is still flying in
   camera.lookAt(controls.target); camera.updateMatrixWorld(); // same pose OrbitControls.update() is about to set
-  const H = innerHeight, yT = Math.min(H, $('controls').getBoundingClientRect().top) - 18;
+  const H = innerHeight, yT = Math.min(H, $(UI2 ? 'dock' : 'controls').getBoundingClientRect().top) - 18;
   const at = (m) => R.curve.getPointAt(clamp(m / R.len, 0, 1));
   const sy = (m) => { _sp.copy(at(m)); _sp.y -= 1.6; _sp.project(camera); return _sp.z > 1 ? -1e9 : (1 - (_sp.y * .5 + .5)) * H; };
   let lo = s - FLY.back + 14, hi = s + 40; // lo = near (lower on screen), hi = far
@@ -561,7 +565,7 @@ function setMode(r) {
     G = { n: N, x, y: elevY, z, mask: pts.mask, cls: new Uint8Array(N), st: pts.st, side: pts.side, names: pts.streets };
     wetNow = wetAttr.array;
   }
-  ROUTES.forEach((R, k) => { R.bins = null; if (!r) { R.hi.visible = k === selRoute; R.dim.visible = k !== selRoute; } });
+  ROUTES.forEach((R, k) => { R.bins = null; R.grp = null; if (!r) { R.hi.visible = k === selRoute; R.dim.visible = k !== selRoute; } });
   if (selRoute >= 0) setRouteHighlight(selRoute);
   wetDirty = true; document.body.classList.toggle('ribbons', r);
 }
@@ -618,7 +622,7 @@ function applyTime(force) {
   if (!night) return;
   const nf = night.n_frames, f = clamp(tNow, 0, nf - 1), a = Math.floor(f), b = Math.min(a + 1, nf - 1), u = f - a;
   const w = wall(night.start_iso, f * night.step_min);
-  $('clock').textContent = w.time; $('clock-sub').textContent = w.day + ' ' + tzName(night.start_iso);
+  $('clock').textContent = w.time; $('clock-sub').textContent = w.day + ' ' + tzName(night.start_iso); if (UI2) ui2Clock(w, f);
   if (document.activeElement !== $('slider') || force) $('slider').value = f;
   const key = Math.round(f * 20);
   curF = f;
@@ -640,10 +644,10 @@ function applyTime(force) {
       const s = weather.sun_el ? weather.sun_el[i] : null; $('wx-sun').textContent = s == null ? '--' : (s > 0 ? 'up ' : 'down ') + minus(s.toFixed(0)) + '°';
       const t = $('wx-temp').textContent.replace(' ', ''), dp = $('wx-dew').textContent.replace(' °F', '°F'), wd = $('wx-wind').textContent.trim() + ($('wx-note').hidden ? '' : '*');
       if (LV && LV.el) liveWx(i);
-      $('wxline').textContent = `${t} · dew ${dp} · ${wd} · ${$('wx-cloud').textContent.replace(' ', '')} cloud · sun ${s == null ? '--' : minus(Math.round(s)) + '°'}`;
+      if (UI2) $('wxline').innerHTML = ui2WxLine(i); else $('wxline').textContent = `${t} · dew ${dp} · ${wd} · ${$('wx-cloud').textContent.replace(' ', '')} cloud · sun ${s == null ? '--' : minus(Math.round(s)) + '°'}`;
     }
     if (hoverIdx >= 0) showTip(hoverIdx, hoverXY);
-    if (LV && LV.el) liveStrip();
+    ui2Refresh(false);
   }
   fog.setFrame((f * night.step_min) / fogGrid.frame_min);
 }
@@ -782,54 +786,28 @@ async function composeFog(idx) { // the three day PNGs -> one contiguous tile sh
   const blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
   return { url: URL.createObjectURL(blob), grid: { ...g, rows } };
 }
-function livePlaceMarker() {
-  if (!LV) return;
-  const sl = $('slider'), max = +sl.max, fr = LV.idx.observed_until_frame, bar = $('timebar');
-  const mk = LV.el.mark, ob = LV.el.obs, fc = LV.el.fc;
-  if (max > 0 && sl.offsetWidth) { // day labels at local midnights (and the first frame)
-    const dl = LV.el.days; dl.textContent = '';
-    const marks = [];
-    for (let f = 0; f <= max; f++) {
-      const w = wall(LV.idx.start_iso, f * LV.idx.step_min); if (f && w.time !== '00:00') continue;
-      marks.push({ t: w.day.split(' ')[0], x: sl.offsetLeft + 8 + (f / max) * (sl.offsetWidth - 16) });
-    }
-    marks.forEach((m, i) => { // drop a label that would collide with the next one
-      if (i + 1 < marks.length && marks[i + 1].x - m.x < 40) return;
-      const s = document.createElement('span'); s.textContent = m.t; s.style.left = m.x + 'px'; dl.appendChild(s);
-    });
-  }
-  if (fr == null || !(max > 0) || !sl.offsetWidth) { mk.hidden = true; ob.hidden = true; fc.textContent = 'forecast only'; fc.style.left = '0px'; return; }
-  const x = sl.offsetLeft + 8 + Math.min(1, fr / max) * (sl.offsetWidth - 16), W = bar.clientWidth;
-  mk.hidden = false; mk.style.left = x + 'px'; ob.hidden = false; ob.style.right = (W - x + 5) + 'px'; fc.style.left = (x + 5) + 'px';
-}
 const fmtAge = (m) => { m = Math.round(m); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
-function liveBar(idx, st) {
-  const bar = document.createElement('div'); bar.id = 'livebar';
-  bar.innerHTML = '<div class="lv-days" id="lv-days"></div><div class="lv-row"><span class="lv-obs">observed</span><span class="lv-fc">forecast</span><span class="lv-load" id="lv-load"></span><i class="lv-ld" id="lv-ld"></i></div><div class="lv-note" id="lv-note"></div>';
-  $('timebar').before(bar);
-  const mk = document.createElement('i'); mk.id = 'livemark'; mk.title = 'Observed until here, forecast after'; $('timebar').appendChild(mk);
+function liveBar(idx, st) { // ui2 only: status inputs, data notices in the dock, City streets switch, weather extras
   const asof = st && st.generated_iso ? st.generated_iso : idx.data_as_of;
   const real = !!(st && st.scheduled); // false for the static preview snapshot: it never updates, so its age is not shown (a banner would be permanent)
   const ageMin = LQ === 'delayed' ? 130 : real && asof ? (Date.now() - Date.parse(asof)) / 60000 : null;
-  const when = asof ? ptFmt(asof, { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).replace(',', '') : '';
-  const note = $('lv-note');
-  note.innerHTML = (real ? '' : '<b>Preview snapshot, not updating</b> · ') + (when ? `Data as of ${when}` : '') + (ageMin != null ? ` · updated ${fmtAge(ageMin)} ago` : '');
-  note.classList.toggle('late', ageMin != null && ageMin > 90);
+  LV.asofTxt = asof ? ptFmt(asof, { weekday: 'short', hour: '2-digit', minute: '2-digit' }).replace(',', '') : 'unknown time';
+  LV.real = real; LV.ageMin = ageMin;
   const fo = LQ === 'forecast' || !!(st && st.mode && st.mode !== 'observations_nudged') || idx.observed_until_frame == null;
-  const stack = document.createElement('div'); stack.id = 'lvstack'; document.body.appendChild(stack);
+  const stack = document.createElement('div'); stack.id = 'lvstack'; $('dock').prepend(stack);
   stack.innerHTML = (ageMin != null && ageMin > 90 ? `<div class="lvb warn">Data delayed. Last update was ${fmtAge(ageMin)} ago. Showing the most recent run.</div>` : '') +
-    (fo ? '<div class="lvb info">Forecast only. No recent station or satellite readings, so nothing is corrected by observations.</div>' : '') +
-    '<div class="lvb rs" id="lv-rs" hidden></div>';
+    (fo ? '<div class="lvb info">Forecast only. No recent station or satellite readings, so nothing is corrected by observations.</div>' : '');
   // City streets layer switch (next to District streets), default on
   const lab = document.createElement('label'); lab.innerHTML = '<input type="checkbox" id="citytoggle" checked><span>City streets</span>';
   $('disttoggle').closest('label').before(lab);
   $('citytoggle').addEventListener('change', (e) => { LV.cityOn = e.target.checked; rib2.setVisible(e.target.checked); hideTip(); });
-  // Weather grid: rain row and source line
+  // weather: rain row (kept for the hidden grid) and the source line
   const rain = document.createElement('div'); rain.className = 'wx'; rain.innerHTML = '<span class="k">Rain</span><span class="v" id="wx-rain">--</span>';
   $('wxgrid').insertBefore(rain, $('wx-note'));
   const src = document.createElement('div'); src.className = 'note'; src.id = 'wx-src'; $('wxgrid').appendChild(src);
-  LV.el = { mark: mk, obs: bar.querySelector('.lv-obs'), fc: bar.querySelector('.lv-fc'), load: $('lv-load'), ld: $('lv-ld'), days: $('lv-days'), rs: $('lv-rs') };
-  new ResizeObserver(livePlaceMarker).observe($('timebar')); setBandVars();
+  LV.el = { ld: $('trkld'), load: { textContent: '' } };
+  $('trkld').hidden = false;
+  new ResizeObserver(ui2Track).observe($('trk')); setBandVars();
 }
 function liveWx(i) { // rain row + source line for the selected hour
   const p = weather && weather.precip_mm ? weather.precip_mm[i] : null;
@@ -848,24 +826,13 @@ function livePeak(R) { // frame where the route's mean wetness is highest in the
   }
   R.lvPk = { nf: LV.nf, f: bf }; return bf;
 }
-function liveStrip() { // one line under the top row: average and worst wetness on the selected route, and when it peaks
-  const el = LV.el && LV.el.rs; if (!el) return;
-  const R = selRoute >= 0 ? ROUTES[selRoute] : null; if (!R || !LV.u8) { el.hidden = true; return; }
-  ensureWet();
-  let sum = 0, n = 0, mx = -1;
-  for (const k of liveRouteCols(R)) { const v = wetNow[k]; if (v >= 0) { sum += v; n++; if (v > mx) mx = v; } }
-  if (!n) { el.hidden = true; return; }
-  const pk = livePeak(R), pkTxt = pk >= 0 ? ptFmt(new Date(Date.parse(LV.idx.start_iso) + pk * LV.idx.step_min * 60000).toISOString(), { weekday: 'short', hour: 'numeric', hour12: true }).replace(',', '') : '';
-  el.innerHTML = `<span><i>Wet now</i> avg ${Math.round(sum / n)} · worst ${Math.round(mx)}</span>` + (pkTxt ? `<span><i>Wettest</i> ${pkTxt}</span>` : '');
-  el.hidden = false;
-}
 async function bootLive() {
   base = 'live/';
   const [idx, st] = await Promise.all([withTimeout(getJSON(base + 'index.json'), 15000, 'live index'), getJSON(base + 'status.json').catch(() => null)]);
   const S1 = idx.ribbons_n, S2 = idx.ribbons_city_n, ST = S1 + S2, nF = idx.n_frames, f0 = idx.frame_ranges[0][1] - idx.frame_ranges[0][0];
   LV = { idx, st, ST, S1, el: null, cityOn: true, u8: null, nf: 0 };
   if (LQ === 'forecast') idx.observed_until_frame = null;
-  index = { nights: [idx] }; $('night').innerHTML = '<option value="0">Live (beta) \u00b7 tonight + 2 days</option>';
+  index = { nights: [idx] }; $('night').innerHTML = '<option value="0">Live (beta)</option>';
   setStatus('Loading street geometry…');
   await ensureRibbons({ ribbons: 'data/ribbons.bin' });
   if (rib.samples.S !== S1) throw new Error(`live index expects ${S1} district samples, ribbons.bin has ${rib.samples.S}`);
@@ -886,7 +853,7 @@ async function bootLive() {
   liveBar(idx, st);
   const asof = st && st.generated_iso ? Date.parse(st.generated_iso) : Date.now(), t0 = Date.parse(idx.start_iso);
   tNow = clamp(Math.round((asof - t0) / 3600000), 0, f0 - 1);
-  applyTime(true); livePlaceMarker();
+  applyTime(true); ui2Track();
   overlay.classList.add('hide'); $('status').textContent = '';
   liveRest(idx, d0, f0, nF, ST); // background: days 1-2 (not awaited)
 }
@@ -900,10 +867,121 @@ async function liveRest(idx, d0, f0, nF, ST) {
     const cf = await composeFog(idx);
     liveSetData(full, nF); night.n_frames = nF;
     fogGrid = cf.grid; await fog.build(cf.url, fogGrid); fog.setVisible($('fogtoggle').checked);
-    $('slider').max = nF - 1; LV.el.load.textContent = ''; LV.el.ld.hidden = true; livePlaceMarker(); applyTime(true);
+    $('slider').max = nF - 1; LV.el.load.textContent = ''; LV.el.ld.hidden = true; ui2Track(); applyTime(true); ui2Refresh(true);
     window.__liveFull = true;
   } catch (e) { console.warn(e); LV.el.load.textContent = 'later days unavailable'; LV.el.ld.hidden = true; }
 }
+
+/* ------------------------------------------------------------------ redesigned chrome (body.ui2: ?live=1 and ?ui=2), see UI_REDESIGN_PLAN.md
+   One dock (weather+legend+settings / fog play+time track+clock / status), route chip with wetness line and profile strip,
+   route list with mini profiles. The existing elements and handlers are reused; this block only builds the extra bits and updates them. */
+const UI2_GEAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>';
+const UI2_INFO = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>';
+const UI2_CLOUD = '<svg class="ci" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 20.5a4.6 4.6 0 0 1-.55-9.2 6.8 6.8 0 0 1 12.9-1.3A5.3 5.3 0 0 1 19 20.5Z"/></svg>';
+const PROF_N = 24, PROF_NODATA = 'rgba(157,176,201,.25)';
+
+function ui2Build() {
+  $('rbtn').querySelector('.tx').insertAdjacentHTML('beforeend', '<span class="wt" id="rwet" hidden></span>');
+  $('rbtn').insertAdjacentHTML('beforeend', '<span class="prof" id="rprof" hidden></span>');
+  $('fpst').insertAdjacentHTML('beforebegin', '<span id="fptx"><span class="nm" id="fpnm"></span><span class="st" id="fpsub"></span></span>');
+  const g = document.createElement('button'); g.id = 'gear'; g.type = 'button'; g.className = 'ib'; g.title = 'Settings'; g.setAttribute('aria-label', 'Settings'); g.innerHTML = UI2_GEAR;
+  g.onclick = () => setSheet($('sheet').hidden); $('legend').after(g);
+  $('legend').querySelector('.ticks').innerHTML = '<span>dry</span><span>icy fog</span>';
+  const tr = document.createElement('div'); tr.id = 'trk';
+  tr.innerHTML = '<div id="trkdays"></div><div class="rail"></div><div class="obs" id="trkobs"></div><div class="played" id="trkplay"></div><i class="now" id="trknow" hidden></i><i class="thumb" id="trkthumb"></i><i class="ld" id="trkld" hidden></i>';
+  $('slider').before(tr); tr.appendChild($('slider'));
+  const st = document.createElement('div'); st.id = 'st3'; st.innerHTML = '<span class="stl" id="st3l"></span>'; $('timebar').after(st);
+  st.appendChild($('poc')); $('poc').innerHTML = '<span class="pill">' + UI2_INFO + '5 m sim · not a forecast</span>';
+}
+
+/* time track: observed part solid, forecast part dotted, yellow tick at the data time, played part cyan, day labels at local midnights */
+let trkSig = '';
+function ui2Track() {
+  const tr = $('trk'); if (!tr || !night) return;
+  const sl = $('slider'), max = +sl.max, W = tr.clientWidth; if (!(max > 0) || !W) return;
+  const x = (f) => 8 + clamp(f / max, 0, 1) * (W - 16);
+  const fr = LV ? LV.idx.observed_until_frame : max; // replay (?ui=2): the whole night is drawn as observed
+  $('trkthumb').style.left = x(tNow) + 'px'; $('trkplay').style.width = Math.max(0, x(tNow) - 8) + 'px';
+  $('trkobs').style.width = fr == null ? '0px' : Math.max(0, x(fr) - 8) + 'px';
+  const nw = $('trknow'); nw.hidden = !(LV && fr != null); if (!nw.hidden) nw.style.left = x(fr) + 'px';
+  const sig = max + '|' + W + '|' + night.start_iso; if (sig === trkSig) return; trkSig = sig;
+  const dl = $('trkdays'); dl.textContent = ''; const marks = [];
+  for (let f = 0; f <= max; f++) { const w = wall(night.start_iso, f * night.step_min); if (f && w.time !== '00:00') continue; marks.push({ t: w.day.split(' ')[0], x: x(f) }); }
+  marks.forEach((m, i) => { // drop a label that would collide with the next one
+    if (i + 1 < marks.length && marks[i + 1].x - m.x < 44) return;
+    const s = document.createElement('span'); s.textContent = m.t; s.style.left = m.x + 'px'; dl.appendChild(s);
+  });
+}
+let stSig = '';
+function ui2Clock(w, f) { // clock second line, status line, track
+  const i = Math.round(f), fr = LV ? LV.idx.observed_until_frame : null, fc = !!LV && (fr == null || i > fr);
+  $('clock-sub').textContent = LV ? `${w.day.split(' ')[0]} · ${fc ? 'forecast' : 'observed'}` : w.day + ' ' + tzName(night.start_iso);
+  $('clock-sub').classList.toggle('fc', fc);
+  const t = LV
+    ? (fc ? 'Forecast hour · NWS RRFS model' : LV.real ? `As of ${LV.asofTxt} · Fort Point, KSFO` : `Preview snapshot · as of ${LV.asofTxt}`) + (LV.ageMin != null && LV.ageMin > 90 ? ` · ${fmtAge(LV.ageMin)} old` : '')
+    : nightLabel(night) + ' · replay';
+  if (t !== stSig) { $('st3l').textContent = t; stSig = t; }
+  ui2Track();
+}
+function ui2WxLine(i) { // one line: 66° dew 57° · SW 11 mph · cloud 47% · rain 0
+  const g = (a) => (a && a[i] != null ? a[i] : null), F = (c) => (c == null ? '--' : Math.round(c * 9 / 5 + 32));
+  const ws = g(weather.wind_ms), c = g(weather.cloud_low_pct), p = g(weather.precip_mm), dot = '<span>·</span>';
+  const wind = (weather.wind_dir ? compass(weather.wind_dir[i]) + ' ' : '') + (ws == null ? '--' : Math.round(ws * 2.23694)) + ' mph' + ($('wx-note').hidden ? '' : '*');
+  return `${F(g(weather.temp_c))}° <span>dew</span> ${F(g(weather.dewpoint_c))}° ${dot} ${wind} ${dot} ${UI2_CLOUD}${c == null ? '--' : Math.round(c)}%` + (p == null ? '' : ` ${dot} <span>rain</span> ${p < 0.05 ? '0' : p.toFixed(1)}`);
+}
+
+/* route profile: the route's samples grouped into 24 equal stretches along its length, mean wetness per stretch, drawn as hard-stop gradient */
+function routeGroups(R) {
+  if (R.grp) return R.grp;
+  const bins = routeBins(R), nb = Math.max(1, Math.ceil(R.len / 20)), g = Array.from({ length: PROF_N }, () => []);
+  for (const [b, ks] of bins) { const a = g[Math.min(PROF_N - 1, Math.floor(b * PROF_N / nb))]; for (const k of ks) a.push(k); }
+  return (R.grp = g);
+}
+function routeStat(R) {
+  const grp = routeGroups(R), prof = []; let sum = 0, n = 0, mx = -1;
+  for (const ks of grp) {
+    let s = 0, m = 0;
+    for (const k of ks) { const v = wetNow[k]; if (v >= 0) { s += v; m++; if (v > mx) mx = v; } }
+    prof.push(m ? s / m : -1); sum += s; n += m;
+  }
+  return { prof, avg: n ? sum / n : -1, mx };
+}
+function profGradient(vals) {
+  return 'linear-gradient(90deg,' + vals.map((v, i) => `${v < 0 ? PROF_NODATA : rgbCss(rampColor(v))} ${(i / PROF_N * 100).toFixed(2)}% ${((i + 1) / PROF_N * 100).toFixed(2)}%`).join(',') + ')';
+}
+let chipT = 0, chipTO = 0;
+function ui2Chip(force) { // route chip: wet line (avg, worst, peak hour) and profile strip; chip height follows the selection
+  document.body.classList.toggle('ui2-route', selRoute >= 0);
+  const R = selRoute >= 0 ? ROUTES[selRoute] : null, w = $('rwet'), p = $('rprof');
+  if (!R || !night || !G.n) { w.hidden = true; p.hidden = true; return; }
+  const now = performance.now();
+  if (!force && now - chipT < 120) { if (!chipTO) chipTO = setTimeout(() => { chipTO = 0; ui2Chip(true); }, 130); return; }
+  chipT = now; ensureWet();
+  const s = routeStat(R); if (s.avg < 0) { w.hidden = true; p.hidden = true; return; }
+  let pk = '';
+  if (LV && LV.u8) { const f = livePeak(R); if (f >= 0) pk = ' · peaks ' + ptFmt(new Date(Date.parse(LV.idx.start_iso) + f * LV.idx.step_min * 60000).toISOString(), { weekday: 'short', hour: 'numeric', hour12: true }).replace(',', ''); }
+  w.innerHTML = `Wet <b>${Math.round(s.avg)}</b> avg · <b style="color:${rgbCss(rampColor(s.mx))}">${Math.round(s.mx)}</b> worst${pk}`; w.hidden = false;
+  p.style.background = profGradient(s.prof); p.hidden = false;
+}
+let listT = 0, listTO = 0;
+function ui2List(force) { // route list rows: mini profile and current mean wetness
+  if ($('rpop').hidden || !night || !G.n) return;
+  const now = performance.now();
+  if (!force && now - listT < 200) { if (!listTO) listTO = setTimeout(() => { listTO = 0; ui2List(true); }, 210); return; }
+  listT = now; ensureWet();
+  for (const b of $('rlist').querySelectorAll('.ritem[data-i]')) {
+    const s = routeStat(ROUTES[+b.dataset.i]), wn = b.querySelector('.wn');
+    b.querySelector('.mp').style.background = profGradient(s.prof);
+    wn.textContent = s.avg < 0 ? '' : Math.round(s.avg); wn.style.color = s.avg < 0 ? '' : rgbCss(rampColor(s.avg));
+  }
+}
+function ui2Refresh(force) { if (UI2) { ui2Chip(force); ui2List(force); } }
+function ui2Fly(s) { // flyover panel: route name and "0.33 of 0.78 mi · wet 84 here"
+  const R = fly.R, a = shortName(R.def, ZONES), b = `${mi(s)} of ${mi(R.len)} mi` + (fly.w == null ? '' : ` · wet ${fly.w} here`);
+  if (fly.nm !== a) { $('fpnm').textContent = a; fly.nm = a; }
+  if (fly.sub !== b) { $('fpsub').textContent = b; fly.sub = b; }
+}
+if (UI2) ui2Build();
 
 /* ------------------------------------------------------------------ boot */
 (async function boot() {
