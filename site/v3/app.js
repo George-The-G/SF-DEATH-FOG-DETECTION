@@ -962,8 +962,8 @@ function ui2Clock(w, f) { // clock second line, status line, track
 function ui2WxLine(i) { // one line: 66° dew 57° · SW 11 mph · cloud 47% · rain 0
   const g = (a) => (a && a[i] != null ? a[i] : null), F = (c) => (c == null ? '--' : Math.round(c * 9 / 5 + 32));
   const ws = g(weather.wind_ms), c = g(weather.cloud_low_pct), p = g(weather.precip_mm), dot = '<span>·</span>';
-  const wind = (weather.wind_dir ? compass(weather.wind_dir[i]) + ' ' : '') + (ws == null ? '--' : Math.round(ws * 2.23694)) + ' mph' + ($('wx-note').hidden ? '' : '*');
-  return `${F(g(weather.temp_c))}°F <span>dew</span> ${F(g(weather.dewpoint_c))}°F ${dot} ${wind} ${dot} ${UI2_CLOUD}${c == null ? '--' : Math.round(c)}%` + (p == null ? '' : ` ${dot} ${UI2_DROP}${p < 0.05 ? '0' : p.toFixed(1)} mm/h`);
+  const wind = (weather.wind_dir ? compass(weather.wind_dir[i]) + ' ' : '') + (ws == null ? '--' : Math.round(ws * 2.23694)) + '\u00a0mph' + ($('wx-note').hidden ? '' : '*');
+  return `${F(g(weather.temp_c))}°F <span>dew</span> ${F(g(weather.dewpoint_c))}°F ${dot} ${wind} ${dot} ${UI2_CLOUD}${c == null ? '--' : Math.round(c)}%` + (p == null ? '' : ` ${dot} ${UI2_DROP}${p < 0.05 ? '0' : p.toFixed(1)}\u00a0mm/h`);
 }
 
 /* route profile: the route's samples grouped into 24 equal stretches along its length, mean wetness per stretch, drawn as hard-stop gradient */
