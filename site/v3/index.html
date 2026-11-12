@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b1020">
 <title>Death Fog 3D</title>
-<meta name="description" content="Overnight wet-street replay for skate routes in San Francisco (Potrero Hill, Golden Gate Heights): a 20 m proof-of-concept simulation.">
+<meta name="description" content="Overnight wet-street replay for skate routes in San Francisco (Potrero Hill, Golden Gate Heights): a 5 m proof-of-concept simulation.">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 { "imports": {
@@ -16,9 +16,9 @@
 </head>
 <body>
 <header id="top">
-  <div class="brand" id="brand"><span class="dot"></span><b>Death Fog</b></div>
-  <div class="poc"><span>Proof of concept &middot; 20 m sim &middot; not a forecast</span></div>
   <button id="rbtn" type="button" class="chip accent" aria-haspopup="listbox" aria-expanded="false" aria-controls="rpop"><span class="sw" id="rsw"></span><span id="rlabel">Routes</span><span class="car">&#9662;</span></button>
+  <button id="flyhdr" type="button" class="ib accent" aria-label="Fly the route" title="Fly the route">&#9654;</button>
+  <button id="poc" type="button" class="poc" data-no-info aria-label="Proof of concept, 5 m simulation, not a forecast. Open: how this works"><span>Proof of concept &middot; 5 m simulation &middot; not a forecast</span></button>
   <button id="menubtn" type="button" class="ib" aria-label="Menu" aria-expanded="false" aria-controls="sheet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
 </header>
 
@@ -61,7 +61,7 @@
       <div class="ticks"><span>0</span><span>20</span><span>50</span><span>80</span><span>100</span></div>
       <div class="cats"><span>dry</span><span>damp</span><span>slick</span><span>wet</span><span>icy-fog</span></div>
     </div>
-    <p class="pocnote"><span class="poc">Proof of concept</span> 20 m simulation of overnight street wetness. Not a forecast.</p>
+    <p class="pocnote"><span class="poc">Proof of concept</span> 5 m simulation of overnight street wetness. Not a forecast.</p>
   </aside>
 </main>
 

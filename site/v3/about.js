@@ -48,7 +48,7 @@ const CSS = `
 `;
 
 const FOCUSABLE = 'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])';
-const SELECTORS = ['#brand', '.brand', '#title', 'header .title'];
+const SELECTORS = ['#poc', '#brand', '.brand', '#title', 'header .title'];
 let state = { opts: {}, trigger: null, root: null, html: null, prevFocus: null, prevOverflow: null, warned: false, styled: false };
 
 function injectCss() {
@@ -84,7 +84,7 @@ function bindTrigger(el) {
   el.setAttribute('tabindex', '0');
   el.setAttribute('aria-haspopup', 'dialog');
   el.setAttribute('aria-label', 'Death Fog: how this simulation works');
-  if (!el.querySelector('.ab-info')) {
+  if (!el.hasAttribute('data-no-info') && !el.querySelector('.ab-info')) {
     const i = document.createElement('span');
     i.className = 'ab-info';
     i.setAttribute('aria-hidden', 'true');

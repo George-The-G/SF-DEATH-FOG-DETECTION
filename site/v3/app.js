@@ -378,7 +378,8 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePic
 /* fly-along: chase camera that looks ahead along the route polyline */
 const FLY = { back: 150, ahead: 130, up: 62 };
 function flyUI() {
-  const on = !!fly; document.body.classList.toggle('flying', on); if (on) { closePicker(); if (!deskMQ.matches) setSheet(false); }
+  const on = !!fly; document.body.classList.toggle('flying', on);
+  { const fh = $('flyhdr'); fh.innerHTML = on ? '&#9632;' : '&#9654;'; fh.setAttribute('aria-label', on ? 'Stop the flyover' : 'Fly the route'); fh.title = fh.getAttribute('aria-label'); } if (on) { closePicker(); if (!deskMQ.matches) setSheet(false); }
   $('fly').hidden = on; $('flypause').hidden = !on; $('flystop').hidden = !on; $('flyspeed').hidden = !on; $('rcinfo').hidden = !on;
   if (on) {
     const paused = fly.paused;
@@ -440,6 +441,7 @@ function flyStep(ts) {
   flyReadout(s);
 }
 $('fly').onclick = startFly;
+$('flyhdr').onclick = () => { if (fly) stopFly(); else startFly(); };
 $('flystop').onclick = stopFly;
 $('flypause').onclick = () => { if (!fly) return; if (fly.done) { fly.u = 0; fly.done = false; fly.paused = false; } else fly.paused = !fly.paused; flyUI(); };
 $('flyspeed').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; flySpeed = +b.dataset.s; flyUI(); });
