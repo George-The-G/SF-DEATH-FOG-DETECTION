@@ -19,9 +19,15 @@ multiplied by dt_h = step_min / 60. Per 10-minute step and per point:
 
 Wind used is the Open-Meteo 10 m wind times the street wind ratio (~1 everywhere in the MVP) times the normalised refined
 factor rel = clip(refine_corr/0.91, 0.25, 1) (USE_REFINED); it enters cooling, fog factor, evaporation and the lag.
-The tracer is the 270-degree (west) 20 m fog field; other directions are approximated with it (the speed factor
-(0.5 + wind/5) scales the deposition) and offshore wind gets no advected fog.
+The tracer is the 270-degree (west) 20 m fog field unless the direction library (dirlib.py, DIR_LIBRARY) holds validated
+fields for other directions: then the tracer at each time step is the linear blend of the two neighbouring directions' fields
+for the instantaneous wind direction and the front lag is measured along the night's mean (fog-weighted) flow direction
+from the upwind domain edge. Without them other directions are approximated with the 270 field (the speed factor
+(0.5 + wind/5) scales the deposition). Offshore wind gets no advected fog either way.
 """
+import os
+from pathlib import Path
+
 import numpy as np
 
 # ---- tunable constants (W units per hour unless stated) ----
@@ -42,6 +48,7 @@ K_DIFF = 10.0        # per 1000 W/m2 shortwave, everywhere
 LAG_MAX_H = 3.0
 WIND_LAG_MIN = 1.5
 X_WEST = 540100.0    # grid west edge, m (EPSG:32610)
+DIR_LIBRARY = os.environ.get("DEATHFOG_DIR_LIBRARY", "1") != "0"  # use validated non-270 fields when present (profile mode only)
 USE_REFINED = True   # apply the nested 5 m wind correction (street_features.refine_corr) after normalisation
 REFINE_NORM = 0.91   # raw refine_corr is over-damped (median 0.26, p95 0.91): divide by its p95 ...
 REFINE_MIN = 0.25    # ... and clip to [REFINE_MIN, 1]; NaN (no patch) -> 1.0. Absolute magnitudes stay uncalibrated.
@@ -103,6 +110,26 @@ def lag_seconds(x, wind_mean):
     return np.clip((np.asarray(x, float) - X_WEST) / np.maximum(wind_mean, WIND_LAG_MIN), 0, LAG_MAX_H * 3600.0)
 
 
+GRID_X0, GRID_Y0, GRID_W_M, GRID_H_M = 540100.0, 4171500.0, 855 * 20.0, 811 * 20.0
+
+
+def lag_seconds_dir(x, y, mean_dir, wind_mean):
+    """Like lag_seconds but along the flow of wind-FROM direction mean_dir: distance from the upwind edge/corner of the grid
+    (projection on the flow vector, zero at the most upwind grid corner). Equals lag_seconds(x) for mean_dir = 270."""
+    th = np.radians(mean_dir)
+    fx, fy = -np.sin(th), -np.cos(th)
+    corners = [(GRID_X0 + a * GRID_W_M) * fx + (GRID_Y0 + b * GRID_H_M) * fy for a in (0, 1) for b in (0, 1)]
+    d = np.asarray(x, float) * fx + np.asarray(y, float) * fy - min(corners)
+    return np.clip(d / np.maximum(wind_mean, WIND_LAG_MIN), 0, LAG_MAX_H * 3600.0)
+
+
+def mean_flow_dir(s, wdir):
+    """Fog-inflow-weighted circular mean of the wind-from direction over a night (plain mean when s is all zero)."""
+    th = np.radians(np.asarray(wdir, float))
+    wgt = s if np.sum(s) > 0 else np.ones_like(s)
+    return float((np.degrees(np.arctan2((wgt * np.sin(th)).sum(), (wgt * np.cos(th)).sum())) + 360) % 360)
+
+
 def fog_exposure(tracer):
     return np.clip(np.asarray(tracer, float) / TRACER_REF, 0, 1) ** FOG_EXP
 
@@ -161,7 +188,19 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     wr = pts.get("wind_ratio", 1.0) * (pts["rel_wind"] if refined and "rel_wind" in pts else 1.0)  # local wind / 10 m wind
     s = fog_inflow(ser["temperature_2m"], ser["dew_point_2m"], ser["cloud_cover_low"], ser["wind_dir"])
     wmean = float(np.mean(ser["wind_speed_10m"]))
-    lag_steps = lag_seconds(pts["x"], wmean * wr) / (step_min * 60.0)
+    mdir = mean_flow_dir(s, ser["wind_dir"])
+    dirs = Wt = E = None
+    if prof and tracer is None and DIR_LIBRARY:  # validated non-270 fields: per-direction tracer, blended per time step
+        from . import dirlib
+        dd = dirlib.available(Path(DATA_DIR or Path.home() / "deathfog-data") / "library")
+        if len(dd) > 1:
+            dirs = np.array(dd)
+            E = np.stack([fog_exposure(fogtop.points_tracer(pts, DATA_DIR, d)) for d in dd]).astype(np.float32)
+            Wt = dirlib.weights(ser["wind_dir"], dirs)
+    if dirs is not None:
+        lag_steps = lag_seconds_dir(pts["x"], pts["y"], mdir, wmean * wr) / (step_min * 60.0)
+    else:
+        lag_steps = lag_seconds(pts["x"], wmean * wr) / (step_min * 60.0)
     expo = fog_exposure(tr)
     az, el = sun_position(ser["t_utc"])
     dt_h = step_min / 60.0
@@ -173,7 +212,7 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     for i in range(n):
         f = dict(temp=ser["temperature_2m"][i], dew=ser["dew_point_2m"][i], wind=ser["wind_speed_10m"][i],
                  cloud_low=ser["cloud_cover_low"][i], precip=ser["precipitation"][i], sw=ser["shortwave_radiation"][i])
-        local = lagged(s, i - lag_steps) * expo
+        local = lagged(s, i - lag_steps) * (expo if E is None else Wt[i] @ E)
         if prof:  # street counts as inside the fog only while the (lagged) fog top is above it
             local = local * fogtop.fog_top_ramp(lagged(top, i - lag_steps), pts["z"])
         lit = np.zeros(N, bool)
@@ -185,7 +224,7 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
         lit_all[i] = lit
         for k in dep:
             dep[k] += parts[k]
-    diag = dict(sun_az=az, sun_el=el, s=s, lit=lit_all, lag_steps=lag_steps, fog_mode=mode, fog_top=top, tracer=np.asarray(tr, np.float32),
+    diag = dict(dirs_used=(None if dirs is None else dirs.tolist()), mean_flow_dir=mdir, sun_az=az, sun_el=el, s=s, lit=lit_all, lag_steps=lag_steps, fog_mode=mode, fog_top=top, tracer=np.asarray(tr, np.float32),
                 **{k + "_total": v for k, v in dep.items()})
     return out, diag
 

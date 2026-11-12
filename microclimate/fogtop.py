@@ -53,27 +53,33 @@ def blend_bands(bands, z_target, centres=None):
     return (lo * (1 - t) + hi * t).astype(np.float32)
 
 
-def _library(data_dir):
-    key = str(data_dir)
+def _fname(direction):
+    return f"{int(round(float(direction) * 10)):04d}"
+
+
+def _library(data_dir, direction=270):
+    """(first-fluid-k [nx,ny], four band fields) of one direction. Only the most recent direction stays in memory."""
+    key = (str(data_dir), _fname(direction))
     if key not in _CACHE:
+        _CACHE.clear()
         D = Path(data_dir)
         solid = np.load(D / "grids" / "solid_20m.npz")["solid"]
         nz = solid.shape[2]
         any_s = solid.any(axis=2)
         last = nz - 1 - np.argmax(solid[:, :, ::-1], axis=2)
         kf = np.where(any_s, last + 1, 0).astype(np.int32)
-        fields = [np.load(D / "library" / f"fog_2700_{b}.npz")["c"] for b in range(4)]
+        fields = [np.load(D / "library" / f"fog_{_fname(direction)}_{b}.npz")["c"] for b in range(4)]
         _CACHE[key] = (kf, fields)
     return _CACHE[key]
 
 
-def sample_bands(x, y, z_target, data_dir=None, x0=540100.0, y0=4171500.0, cell=20.0):
+def sample_bands(x, y, z_target, data_dir=None, x0=540100.0, y0=4171500.0, cell=20.0, direction=270):
     """Tracer of each of the 4 source bands at (x, y, z_target), z_target metres above sea level. Returns [N,4] float32.
     Bilinear over the 4 surrounding 20 m columns; in each column the height is raised to the first fluid cell if the
     target is inside the solid, then interpolated linearly between cell centres (k + 0.5) * cell."""
     data_dir = _w().DATA_DIR if data_dir is None else data_dir
     data_dir = Path.home() / "deathfog-data" if data_dir is None else data_dir
-    kf, fields = _library(data_dir)
+    kf, fields = _library(data_dir, direction)
     nx, ny, nz = fields[0].shape
     x, y = np.asarray(x, float), np.asarray(y, float)
     zt = np.broadcast_to(np.asarray(z_target, float), x.shape)
@@ -95,13 +101,14 @@ def sample_bands(x, y, z_target, data_dir=None, x0=540100.0, y0=4171500.0, cell=
     return out
 
 
-def points_tracer(pts, data_dir=None):
+def points_tracer(pts, data_dir=None, direction=270):
     """Profile-mode tracer for a point table dict with x, y, z (z = street elevation above sea level): bands sampled
     at z + TRACER_Z_OFFSET_M, blended by band centre. Cached in pts['_tracer_profile']."""
-    if "_tracer_profile" not in pts:
+    key = "_tracer_profile" if float(direction) == 270.0 else f"_tracer_profile_{_fname(direction)}"
+    if key not in pts:
         zt = np.asarray(pts["z"], float) + _w().TRACER_Z_OFFSET_M
-        pts["_tracer_profile"] = blend_bands(sample_bands(pts["x"], pts["y"], zt, data_dir), zt)
-    return pts["_tracer_profile"]
+        pts[key] = blend_bands(sample_bands(pts["x"], pts["y"], zt, data_dir, direction=direction), zt)
+    return pts[key]
 
 
 def estimate_fog_top(ser):

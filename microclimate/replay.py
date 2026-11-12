@@ -88,7 +88,7 @@ def run_night(P, night, step_min=10, **kw):
     return wetness.simulate(P, night["ser"], step_min, **kw)
 
 
-def night_meta(night):
+def night_meta(night, data_dir=None):
     ser = night["ser"]
     s = wetness.fog_inflow(ser["temperature_2m"], ser["dew_point_2m"], ser["cloud_cover_low"], ser["wind_dir"])
     th = np.radians(ser["wind_dir"])
@@ -96,17 +96,25 @@ def night_meta(night):
     mdir = (np.degrees(np.arctan2((wgt * np.sin(th)).sum(), (wgt * np.cos(th)).sum())) + 360) % 360
     dev = abs((mdir - 270 + 180) % 360 - 180)
     ons = wetness.onshore_weight(ser["wind_dir"])
-    return dict(mean_dir=float(mdir), dev_from_270=float(dev), approx_direction=bool(dev > 22.5),
+    approx = bool(dev > 22.5)   # legacy rule: only the 270 field exists
+    dirs_used = None
+    if wetness.DIR_LIBRARY and data_dir is not None:
+        from . import dirlib
+        dd = dirlib.available(Path(data_dir) / "library")
+        if len(dd) > 1:  # validated direction library: approximate only when no validated direction lies within MAX_GAP_DEG
+            approx = bool(dirlib.gap_deg(mdir, dd) > dirlib.MAX_GAP_DEG)
+            dirs_used = dd
+    return dict(mean_dir=float(mdir), dev_from_270=float(dev), approx_direction=approx, dir_library=dirs_used,
                 offshore_pct=float(100 * (ons == 0).mean()), mean_wind_ms=float(np.mean(ser["wind_speed_10m"])),
                 mean_inflow=float(s.mean()), tier=night["tier"])
 
 
-def city_tracer_80m(data_dir):
+def city_tracer_80m(data_dir, direction=270):
     """Band-0 tracer at street level (first fluid cell above terrain + mean building height) in 80 m blocks.
     Returns [FOG_H, FOG_W], row 0 = north, column 0 = west."""
     from .street import first_fluid_k
     D = Path(data_dir)
-    c = np.load(D / "library" / "fog_2700_0.npz")["c"]
+    c = np.load(D / "library" / f"fog_{int(round(direction * 10)):04d}_0.npz")["c"]
     solid = np.load(D / "grids" / "solid_20m.npz")["solid"]
     k = first_fluid_k(solid)
     nx, ny = k.shape
@@ -117,19 +125,24 @@ def city_tracer_80m(data_dir):
     return a.reshape(FOG_H, 4, FOG_W, 4).mean(axis=(1, 3)).astype(np.float32)
 
 
-def fog_sheet(tr80, ser, step_min=10, frame_min=30):
+def fog_sheet(tr80, ser, step_min=10, frame_min=30, mean_dir=None):
     from PIL import Image
     n = len(ser["temperature_2m"])
     s = wetness.fog_inflow(ser["temperature_2m"], ser["dew_point_2m"], ser["cloud_cover_low"], ser["wind_dir"])
     wmean = float(np.mean(ser["wind_speed_10m"]))
     xs = wetness.X_WEST + FOG_CELL * (np.arange(FOG_W) + 0.5)
-    lag = wetness.lag_seconds(xs, wmean) / (step_min * 60.0)
+    if mean_dir is None:
+        lag = wetness.lag_seconds(xs, wmean) / (step_min * 60.0)
+    else:  # direction library: lag along the flow from the upwind grid corner (2-D, row 0 = north)
+        ys = 4171500.0 + 20 * 811 - FOG_CELL * (np.arange(FOG_H) + 0.5)
+        lag = wetness.lag_seconds_dir(xs[None, :], ys[:, None], mean_dir, wmean) / (step_min * 60.0)
     nt = (n - 1) * step_min // frame_min + 1
     rows = (nt + FOG_COLS - 1) // FOG_COLS
     sheet = np.zeros((rows * FOG_H, FOG_COLS * FOG_W), np.uint8)
     for k in range(nt):
         i = k * frame_min / step_min
-        tile = 255.0 * wetness.lagged(s, i - lag)[None, :] * tr80
+        lg = wetness.lagged(s, i - lag)
+        tile = 255.0 * (lg[None, :] if lg.ndim == 1 else lg) * tr80
         r, c = divmod(k, FOG_COLS)
         sheet[r * FOG_H:(r + 1) * FOG_H, c * FOG_W:(c + 1) * FOG_W] = np.clip(np.rint(tile), 0, 255).astype(np.uint8)
     return Image.fromarray(sheet, "L"), rows, nt
@@ -141,6 +154,12 @@ def write(cfg, data_dir, out_dir, until=None):
     P = load_inputs(data_dir)
     nights = get_nights(cfg, data_dir, until)
     tr80 = city_tracer_80m(data_dir)
+    dirs80 = None
+    if wetness.DIR_LIBRARY:
+        from . import dirlib
+        dd = dirlib.available(Path(data_dir) / "library")
+        if len(dd) > 1:
+            dirs80 = (dd, {d: city_tracer_80m(data_dir, d) for d in dd})
     step_min = cfg["replay"]["step_min"]
     frame_min = cfg["replay"]["fog_frame_min"]
     N = len(P["x"])
@@ -155,7 +174,15 @@ def write(cfg, data_dir, out_dir, until=None):
         W, diag = run_night(P, nt, step_min)
         n = W.shape[0]
         (out / d / "streets.u8").write_bytes(np.rint(W).astype(np.uint8).tobytes())
-        img, rows, ntiles = fog_sheet(tr80, nt["ser"], step_min, frame_min)
+        if dirs80 is None:
+            img, rows, ntiles = fog_sheet(tr80, nt["ser"], step_min, frame_min)
+        else:  # tile tracer = blend of the two neighbouring directions at the night's mean flow direction
+            from . import dirlib
+            sg = wetness.fog_inflow(nt["ser"]["temperature_2m"], nt["ser"]["dew_point_2m"], nt["ser"]["cloud_cover_low"], nt["ser"]["wind_dir"])
+            md = wetness.mean_flow_dir(sg, nt["ser"]["wind_dir"])
+            wts = dirlib.weights(md, np.array(dirs80[0]))[0]
+            trb = sum(w * dirs80[1][d] for d, w in zip(dirs80[0], wts) if w > 0)
+            img, rows, ntiles = fog_sheet(trb, nt["ser"], step_min, frame_min, mean_dir=md)
         img.save(out / d / "fog.png", optimize=True)
         local = [x.astimezone(weather.PT) for x in nt["ser"]["t_utc"]]
         ser = nt["ser"]
@@ -165,7 +192,7 @@ def write(cfg, data_dir, out_dir, until=None):
               "sun_el": np.round(diag["sun_el"], 2).tolist(), "precip_mm": np.round(ser["precipitation"], 2).tolist(),
               "shortwave_wm2": np.round(ser["shortwave_radiation"], 1).tolist()}
         (out / d / "weather.json").write_text(json.dumps(wj, separators=(",", ":")))
-        meta = night_meta(nt)
+        meta = night_meta(nt, data_dir)
         d0 = local[0]
         entries.append({
             "id": d, "label": f"{d0:%a} {d0.day} {d0:%b}, {nt['kind']} night", "kind": nt["kind"], "step_min": step_min,

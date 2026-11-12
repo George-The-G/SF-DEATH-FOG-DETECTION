@@ -175,3 +175,31 @@ def build(cfg, grids_dir, lib_dir, directions=None):
             print(json.dumps(diag), flush=True)
             res.append(diag)
     return res
+
+
+def build_dirs(cfg, grids_dir, lib_dir, directions, tol=0.01, schedule=(3, 6, 12, 24, 48)):
+    """Fog tracer bands for non-270 directions, each band converged (drift over the last 2000 steps < tol) by growing the number
+    of transits; writes fog_<d>_<b>.npz/.json (diagnostics include the attempts). Skips bands that already exist."""
+    grids_dir, lib_dir = Path(grids_dir), Path(lib_dir)
+    spec = json.load(open(grids_dir / "grid_spec.json"))
+    solid = np.load(grids_dir / "solid_20m.npz")["solid"]
+    lib = cfg["library"]
+    for d in directions:
+        stem0 = f"{int(round(d * 10)):04d}"
+        wf = lib_dir / f"wind_{stem0}.npz"
+        if not wf.exists():
+            print(f"no wind field for {d}, skipping", flush=True)
+            continue
+        u = np.load(wf)["u"]
+        for bi, band in enumerate(lib["fog_bands_m"]):
+            f = lib_dir / f"fog_{stem0}_{bi}.npz"
+            if f.exists():
+                continue
+            t0 = time.time()
+            c, diag, hist = converge_band(u, solid, spec, d, band, tol=tol, schedule=schedule, speed_ms=lib["ref_speed_ms"],
+                                          kd=lib["eddy_diffusivity_m2s"], vd=lib["deposition_velocity_ms"], loss_per_km=lib["fog_loss_per_km"])
+            diag["total_seconds_incl_retries"] = round(time.time() - t0, 1)
+            diag["attempts"] = [(h["transits"], h["drift_last_2000_steps"]) for h in hist]
+            np.savez_compressed(f, c=c)
+            json.dump(diag, open(lib_dir / f"fog_{stem0}_{bi}.json", "w"))
+            print("DONE", d, bi, json.dumps(diag), flush=True)

@@ -1,4 +1,4 @@
-﻿import json
+import json
 import sys
 from pathlib import Path
 
@@ -23,6 +23,15 @@ def main(argv):
         from . import wind
         order = [270, 247.5, 292.5, 225, 315, 202.5, 337.5, 360]
         wind.build(cfg, DATA / "grids", DATA / "library", directions=order)
+    elif cmd == "winddirs":  # winddirs [dir ...] [--fog] [--validate]: rotated-frame wind runs, fog bands, validation + manifest
+        from . import windrot, fog, validate_dirs
+        dirs = [float(a) for a in argv[1:] if not a.startswith("--")] or [315, 225, 180, 360, 247.5, 292.5, 337.5, 202.5]
+        if "--validate" not in argv:
+            windrot.build(cfg, DATA / "grids", DATA / "library", dirs)
+        if "--fog" in argv:
+            fog.build_dirs(cfg, DATA / "grids", DATA / "library", dirs)
+        if "--validate" in argv:
+            validate_dirs.run(DATA, dirs)
     elif cmd == "street":
         from . import street
         print(json.dumps(street.build(cfg, DATA / "grids", DATA / "library"), indent=1))
@@ -44,7 +53,7 @@ def main(argv):
         validate.overview(cfg, DATA, Path("site/v3/replay"))
         sys.exit(0 if ok else 1)
     else:
-        print("commands: geometry, zone, meshes, wind, street, sun [--check], replay, validate, "
+        print("commands: geometry, zone, meshes, wind, winddirs [dirs] [--fog|--validate], street, sun [--check], replay, validate, "
               "routes [--force] [--from STEP] [--only STEP] [--no-validate]  (routes: everything for all routes in routes.toml)")
 
 

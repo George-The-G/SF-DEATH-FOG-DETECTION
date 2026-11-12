@@ -118,7 +118,11 @@ def run(solid, direction_deg, steps=40000, avg_steps=8000, avg_every=100, omega=
             sp_ = np.sqrt((np.nan_to_num(uu, nan=1e9, posinf=1e9, neginf=1e9) ** 2).sum(0))
             if not np.isfinite(uu).all() or sp_.max() > 0.5:
                 at = np.unravel_index(int(np.argmax(sp_)), sp_.shape)
-                log(f"step {s}: NaN/inf or |u|>0.5 in velocity field (max at cell {tuple(int(a) for a in at)}, bc id {int(bc_mask.numpy()[(0,) + at])}), aborting")
+                i_, j_, k_ = (int(a) for a in at)
+                nb = solid[max(i_ - 1, 0):i_ + 2, max(j_ - 1, 0):j_ + 2, max(k_ - 1, 0):k_ + 2]
+                fl_max = float(np.where(solid, 0.0, sp_).max())
+                log(f"step {s}: NaN/inf or |u|>0.5 in velocity field (max at cell {tuple(int(a) for a in at)}, bc id {int(bc_mask.numpy()[(0,) + at])}, "
+                    f"solid={bool(solid[at])}, solid neighbours={int(nb.sum())}/{nb.size}, max over fluid cells={fl_max:.3f}), aborting")
                 return None, {"direction_deg": direction_deg, "steps": s, "aborted_at": s, "seconds": round(time.time() - t0),
                               "nan": True, "max_speed_ratio": 0.0, "mean_speed_ratio_near_ground": 0.0}
             umax = float(np.sqrt((uu ** 2).sum(0)).max())
