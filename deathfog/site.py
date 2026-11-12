@@ -169,7 +169,7 @@ def _hero_html(cfg, conn, by_zone, now, tz):
             'Faded bars are the past 12 hours, the rest is the forecast.</p>'
             f'{"".join(radios)}<div class="tabs">{"".join(tabs)}</div>{"".join(panels)}{legend}'
             '<p class="mute">The score is a rule-of-thumb index from weather data, not a measured probability. '
-            '<a href="#how">How it is calculated</a> &middot; <a href="#sources">where the data comes from</a></p></section>')
+            '<a href="#how">How it is calculated</a> &middot; <a href="#sources">where the data comes from</a> &middot; <a href="v3/">3-D microclimate preview (v3, proof of concept)</a></p></section>')
 
 
 SOURCE_INFO = {   # what each built-in source type is, shown on the page (plugins fall back to their type name)
