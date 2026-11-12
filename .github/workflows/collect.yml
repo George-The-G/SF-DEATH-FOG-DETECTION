@@ -5,6 +5,7 @@ name: collect
 on:
   schedule:
     - cron: "*/10 * * * *"        # GitHub may start runs a few minutes late; that is fine for fog
+    - cron: "7,37 * * * *"        # live fog data (v3): the full live build runs on this one; the */10 runs reuse the last published live output
   workflow_dispatch:
     inputs:
       rebuild_baseline:
@@ -22,7 +23,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20             # the live build (about 3 to 4 minutes) runs inside this job
     env:
       DEATHFOG_DATA_DIR: state
       DEATHFOG_SITE_DIR: site
@@ -79,6 +80,39 @@ jobs:
         run: |
           git fetch --depth=1 origin v3-dev
           git archive FETCH_HEAD site/v3 | tar -x
+
+      # Live fog data for /v3/. Code and scripts come from the v3-dev branch (like site/v3), so main stays small.
+      # The build runs on the 7,37 cron and on manual runs; every other run only carries the last published live output into this deploy.
+      # Never blocks v2 (continue-on-error). Switch it off without a code change: repo variable DEATHFOG_LIVE = false.
+      - name: Live fog data, Python (build runs only)
+        if: vars.DEATHFOG_LIVE != 'false' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '7,37 * * * *')
+        continue-on-error: true
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Live fog data, static tables cache (build runs only)
+        if: vars.DEATHFOG_LIVE != 'false' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '7,37 * * * *')
+        continue-on-error: true
+        uses: actions/cache@v4
+        with:
+          path: live_static
+          key: live-static-v1
+
+      - name: Live fog data
+        if: vars.DEATHFOG_LIVE != 'false'
+        continue-on-error: true
+        timeout-minutes: 12
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --depth=1 origin v3-dev
+          git archive FETCH_HEAD live_ci microclimate | tar -x
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event.schedule }}" = "7,37 * * * *" ]; then
+            bash live_ci/refresh.sh build
+          else
+            bash live_ci/refresh.sh reuse
+          fi
 
       - uses: actions/upload-pages-artifact@v3
         with:
