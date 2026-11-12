@@ -11,9 +11,10 @@ const VERT = `
   attribute vec2 aOff;      // normal offset in xz (metres at width scale 1): nrm * sign * width/2 * class factor
   attribute vec4 aInfo;     // sample id, across (-1..1), class (0 route, 1 side), fade 0..1
   attribute float aMask;    // route_mask bits
+  attribute float aDepth;   // side-block depth 1..3 (street blocks from the route intersection); 1 for route strips and v1 data
   uniform sampler2D uWet;
   uniform float uRows, uFa, uFb, uU, uWidth, uRouteBit, uDepthK;
-  varying float vWet, vMiss, vAcross, vCls, vFade, vSel;
+  varying float vWet, vMiss, vAcross, vCls, vFade, vSel, vDepth;
   void main(){
     int s = int(aInfo.x + .5), R = int(uRows + .5);
     int ix = s & 4095, iy = s >> 12;
@@ -22,7 +23,7 @@ const VERT = `
     bool m0 = w0 > 254.5, m1 = w1 > 254.5;
     vMiss = (m0 && m1) ? 1. : 0.;
     vWet = m0 ? w1 : (m1 ? w0 : mix(w0, w1, uU));
-    vAcross = aInfo.y; vCls = aInfo.z; vFade = aInfo.w;
+    vDepth = aDepth; vAcross = aInfo.y; vCls = aInfo.z; vFade = aInfo.w;
     vSel = (uRouteBit >= 0. && mod(floor(aMask / exp2(uRouteBit)), 2.) > .5) ? 1. : 0.;
     vec3 p = position + vec3(aOff.x, 0., aOff.y) * uWidth;
     p.y += 0.35 * (uWidth - 1.);
@@ -33,11 +34,12 @@ const VERT = `
 
 const frag = (glslRamp) => `
   precision highp float;
-  varying float vWet, vMiss, vAcross, vCls, vFade, vSel;
-  uniform float uSideFade, uSideVis;
+  varying float vWet, vMiss, vAcross, vCls, vFade, vSel, vDepth;
+  uniform float uSideFade, uSideVis, uSideDepth;
   uniform vec3 uRouteCol;
   ${glslRamp}
   void main(){
+    if (vCls > .5 && vDepth > uSideDepth + .5) discard;
     vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : ramp(vWet);
     float ea = abs(vAcross), a;
     if (vCls < .5) { c = min(c * 1.07, vec3(1.)); a = 1.; }
@@ -55,7 +57,7 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
   const uniforms = {
     uWet: { value: null }, uRows: { value: 1 }, uFa: { value: 0 }, uFb: { value: 0 }, uU: { value: 0 },
     uWidth: { value: 1 }, uRouteBit: { value: -1 }, uRouteCol: { value: new THREE.Color(0x5ef2ff) },
-    uSideFade: { value: 1 }, uSideVis: { value: 1 }, uDepthK: { value: 16 },
+    uSideFade: { value: 1 }, uSideVis: { value: 1 }, uSideDepth: { value: 1 }, uDepthK: { value: 16 },
   };
   const material = new THREE.ShaderMaterial({
     uniforms, vertexShader: VERT, fragmentShader: frag(glslRamp),
@@ -75,7 +77,7 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
     const dv = new DataView(buffer);
     if (dv.getUint32(0, true) !== 0x31424952) throw new Error('bad ribbons.bin');
     S = dv.getUint32(4, true); const nStrips = dv.getUint32(8, true), nIdx = dv.getUint32(12, true);
-    widthM = dv.getFloat32(16, true);
+    widthM = dv.getFloat32(16, true); const version = dv.getUint32(20, true);
     if (meta && meta.S != null && meta.S !== S) throw new Error(`ribbons meta S=${meta.S} != bin S=${S}`);
     let o = 24;
     const take = (T, n) => { const a = new T(buffer, o, n); o += Math.ceil(n * T.BYTES_PER_ELEMENT / 4) * 4; return a; };
@@ -83,9 +85,11 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
     const mask = take(Uint16Array, S), side = take(Uint8Array, S), cls = take(Uint8Array, S), fade = take(Uint8Array, S);
     const stripStart = take(Uint32Array, nStrips + 1); take(Float32Array, nStrips * 4);
     const idx = take(Uint32Array, nIdx);
+    const depth = version >= 2 ? take(Uint8Array, S) : new Uint8Array(S).fill(1); // v2 appends u8 depth[S] after idx
+    let maxDepth = 1; for (let k = 0; k < S; k++) if (depth[k] > maxDepth) maxDepth = depth[k];
 
     const V = S * 2, half = widthM / 2;
-    const P = new Float32Array(V * 3), OFF = new Float32Array(V * 2), INFO = new Float32Array(V * 4), MASK = new Float32Array(V);
+    const P = new Float32Array(V * 3), OFF = new Float32Array(V * 2), INFO = new Float32Array(V * 4), MASK = new Float32Array(V), DEPTH = new Float32Array(V);
     const lifted = new Float32Array(S * 3);
     const h = terrainH ? (x, z) => terrainH.at(x, z) : () => -1e9;
     for (let k = 0; k < S; k++) {
@@ -98,7 +102,7 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
         P[v * 3] = x; P[v * 3 + 1] = y; P[v * 3 + 2] = z;
         OFF[v * 2] = nx * sign * half * wf; OFF[v * 2 + 1] = nz * sign * half * wf;
         INFO[v * 4] = k; INFO[v * 4 + 1] = sign; INFO[v * 4 + 2] = cls[k]; INFO[v * 4 + 3] = fade[k] / 255;
-        MASK[v] = mask[k];
+        MASK[v] = mask[k]; DEPTH[v] = depth[k];
       }
     }
     geom = new THREE.BufferGeometry();
@@ -106,11 +110,12 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
     geom.setAttribute('aOff', new THREE.BufferAttribute(OFF, 2));
     geom.setAttribute('aInfo', new THREE.BufferAttribute(INFO, 4));
     geom.setAttribute('aMask', new THREE.BufferAttribute(MASK, 1));
+    geom.setAttribute('aDepth', new THREE.BufferAttribute(DEPTH, 1));
     geom.setIndex(new THREE.BufferAttribute(idx, 1));
     mesh = new THREE.Mesh(geom, material);
     mesh.frustumCulled = false; mesh.renderOrder = 10; mesh.matrixAutoUpdate = false;
     scene.add(mesh); api.mesh = mesh; api.widthM = widthM;
-    Object.assign(samples, { S, src, side, st, mask, cls, pos: lifted, stripStart, nStrips, nIdx });
+    Object.assign(samples, { S, src, side, st, mask, cls, depth, maxDepth, pos: lifted, stripStart, nStrips, nIdx });
     return api;
   };
 
@@ -146,6 +151,7 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
 
   api.setRoute = (bit, hex) => { uniforms.uRouteBit.value = bit; selected = bit >= 0; if (hex != null) uniforms.uRouteCol.value.set(hex); api.setLod(dist); };
   api.setSideVisible = (v) => { sideVis = !!v; uniforms.uSideVis.value = sideVis ? 1 : 0; };
+  api.setSideDepth = (d) => { uniforms.uSideDepth.value = d; api.setSideVisible(d > 0); }; // 0 = off, 1..3 = blocks from each route intersection
   api.setLod = (d) => {
     dist = d;
     uniforms.uWidth.value = Math.min(8, Math.max(1, d / 450));
