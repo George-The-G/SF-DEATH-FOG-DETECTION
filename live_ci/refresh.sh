@@ -15,6 +15,12 @@ mkdir -p "$OUT"
 echo "::group::previous live output from $PAGES"
 python3 live_ci/fetch_previous.py "$PAGES" "$OUT" || echo "no previous live output could be fetched; keeping what is in $OUT"
 echo "::endgroup::"
+
+# >>> cloud score carry (guide 04): keep cloud_score.json and the sat*.png tiles of the last published output, in both modes; the build merges into the file named below
+python3 live_ci/fetch_extras.py "$PAGES" "$OUT" || echo "no cloud score files carried"
+export DEATHFOG_CLOUDSCORE_PREV="$OUT/cloud_score.json"
+# <<< cloud score carry
+
 [ "$MODE" = build ] || { echo "reuse mode: done"; exit 0; }
 
 echo "::group::dependencies"
