@@ -77,6 +77,19 @@ class Nav:
         sz = rc * np.sin(phic)
         return np.arcsin(-sy / np.sqrt(sx ** 2 + sy ** 2 + sz ** 2)), np.arctan(sz / sx)
 
+    def lonlat(self, x, y):
+        """Inverse of xy(): scan angles x, y (rad, arrays) -> (lon, lat) in degrees (PUG inverse navigation)."""
+        x, y = np.asarray(x, float), np.asarray(y, float)
+        k = self.req ** 2 / self.rpol ** 2
+        a = np.sin(x) ** 2 + np.cos(x) ** 2 * (np.cos(y) ** 2 + k * np.sin(y) ** 2)
+        b = -2.0 * self.H * np.cos(x) * np.cos(y)
+        c = self.H ** 2 - self.req ** 2
+        rs = (-b - np.sqrt(b ** 2 - 4.0 * a * c)) / (2.0 * a)
+        sx, sy, sz = rs * np.cos(x) * np.cos(y), -rs * np.sin(x), rs * np.cos(x) * np.sin(y)
+        lat = np.degrees(np.arctan(k * sz / np.sqrt((self.H - sx) ** 2 + sy ** 2)))
+        lon = np.degrees(self.lam0 - np.arctan(sy / (self.H - sx)))
+        return lon, lat
+
 
 def _axis(ds, name):
     a = ds[name]
@@ -129,6 +142,31 @@ class LowCloud:
         v = (a[r0, c0] * (1 - tx) * (1 - ty) + a[r0, c0 + 1] * tx * (1 - ty) + a[r0 + 1, c0] * (1 - tx) * ty + a[r0 + 1, c0 + 1] * tx * ty)
         out[ok] = v[ok]
         return out
+
+    def pixel_lonlat(self):
+        """(lon, lat) of every pixel centre of the crop, arrays [rows, cols] (computed once, cached)."""
+        if getattr(self, "_ll", None) is None:
+            gx, gy = np.meshgrid(self.x, self.y)
+            self._ll = self.nav.lonlat(gx, gy)
+        return self._ll
+
+    def box_fraction(self, lon0, lat0, lon1, lat1):
+        """Pixels whose centre lies in the lon/lat box (west lon0, south lat0, east lon1, north lat1) -> (low, high, valid):
+        low = share of the valid pixels that are low cloud (cloudy, top below LOW_TOP_M); high = share of the valid pixels that are cloudy but
+        not low (top above LOW_TOP_M or no height retrieved: they hide fog from the satellite); valid = share of all pixels in the box that have a
+        cloud mask. (nan, nan, 0.0) when no pixel centre lies in the box. Reads the scan only."""
+        lon, lat = self.pixel_lonlat()
+        m = (lon >= lon0) & (lon <= lon1) & (lat >= lat0) & (lat <= lat1)
+        n = int(m.sum())
+        if n == 0:
+            return float("nan"), float("nan"), 0.0
+        v = np.asarray(self.valid)[m].astype(bool)
+        nv = int(v.sum())
+        if nv == 0:
+            return float("nan"), float("nan"), 0.0
+        low = np.asarray(self.low)[m][v] >= 0.5
+        cloudy = np.asarray(self.cloudy)[m][v] >= 0.5
+        return float(low.mean()), float((cloudy & ~low).mean()), nv / n
 
     def sector_fraction(self, wind_from_deg):
         """Mean low-cloud flag in the upwind sector 2-15 km off the coast reference point, wind-from direction +- 22.5 deg."""
