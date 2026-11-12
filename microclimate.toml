@@ -1,0 +1,30 @@
+[domain]                       # city plus ocean and bay buffer
+south = 37.690
+north = 37.835
+west = -122.545
+east = -122.350
+cell_m = 20
+top_m = 800
+
+[zone.potrero]
+start = [37.7597, -122.4037]   # 20th & Kansas, approximate: M1 snaps it to the OSM intersection
+route = "downhill to the bus stop at the bottom"
+radius_m = 700
+
+[library]
+directions_deg = [202.5, 225, 247.5, 270, 292.5, 315, 337.5, 360]
+ref_speed_ms = 5
+check_speed_ms = 10
+fog_bands_m = [[0, 150], [150, 300], [300, 500], [500, 800]]
+eddy_diffusivity_m2s = 2.0
+fog_loss_per_km = 0.0
+deposition_velocity_ms = 0.02
+
+[replay]
+fog_nights = 7
+dry_nights = 2
+step_min = 10
+fog_frame_min = 30
+
+[viewer]
+max_mb = 10
