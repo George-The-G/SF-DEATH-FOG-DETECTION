@@ -168,7 +168,7 @@ DEFAULT_DIRS = (180.0, 202.5, 225.0, 247.5, 270.0, 292.5, 315.0, 337.5, 360.0)  
 
 
 def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0, refined=None, fog_mode=None, fog_top=None, use_dirs=None,
-             tracer_dirs=None, dirs_deg=None, forcing_fn=None, lag_block_h=None, out_every=1, keep_lit=True):
+             tracer_dirs=None, dirs_deg=None, forcing_fn=None, lag_block_h=None, out_every=1, keep_lit=True, s_series=None):
     """Run one window. pts: dict(x, svf, porous, tracer, wind_ratio, horizon [N,72] or None, band-selected tracer; for the
     'profile' mode also y, z). ser: weather.series / night_series dict (scalar series: coast forcing, fog source, fog top).
     Overrides: tracer / svf arrays (ablations); fog_mode ('band0' | 'profile', default FOG_HEIGHT_MODE); fog_top forces the fog
@@ -181,6 +181,7 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
       lag_block_h  hours; the front lag uses the mean flow direction and wind of each block of that length (default: one value
                    for the whole window).
       out_every    keep W only every k-th step (frames 0, k, 2k, ...): memory for long windows.
+      s_series     [n] fog source s(t) used instead of fog_inflow(ser) (live: coast series corrected by GOES / KHAF observations).
       keep_lit     keep the per-step direct-sun mask in diag['lit'] (replay validation needs it; live does not).
     Returns (W [n_out, N] float32, diag)."""
     n = len(ser["temperature_2m"])
@@ -203,6 +204,8 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     refined = USE_REFINED if refined is None else refined
     wr = pts.get("wind_ratio", 1.0) * (pts["rel_wind"] if refined and "rel_wind" in pts else 1.0)  # local wind / 10 m wind
     s = fog_inflow(ser["temperature_2m"], ser["dew_point_2m"], ser["cloud_cover_low"], ser["wind_dir"])
+    if s_series is not None:
+        s = np.asarray(s_series, float)
     wdir = np.asarray(ser["wind_dir"], float)
     wspd = np.asarray(ser["wind_speed_10m"], float)
     wmean = float(np.mean(wspd))
