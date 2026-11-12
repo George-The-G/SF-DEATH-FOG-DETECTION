@@ -104,9 +104,12 @@ def night_meta(night, data_dir=None):
         if len(dd) > 1:  # validated direction library: approximate only when no validated direction lies within MAX_GAP_DEG
             approx = bool(dirlib.gap_deg(mdir, dd) > dirlib.MAX_GAP_DEG)
             dirs_used = dd
-    return dict(mean_dir=float(mdir), dev_from_270=float(dev), approx_direction=approx, dir_library=dirs_used,
+    meta = dict(mean_dir=float(mdir), dev_from_270=float(dev), approx_direction=approx,
                 offshore_pct=float(100 * (ons == 0).mean()), mean_wind_ms=float(np.mean(ser["wind_speed_10m"])),
                 mean_inflow=float(s.mean()), tier=night["tier"])
+    if dirs_used is not None:  # key only present when the library is on (keeps the shipped index.json byte-identical when off)
+        meta["dir_library"] = dirs_used
+    return meta
 
 
 def city_tracer_80m(data_dir, direction=270):

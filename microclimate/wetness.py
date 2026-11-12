@@ -48,7 +48,7 @@ K_DIFF = 10.0        # per 1000 W/m2 shortwave, everywhere
 LAG_MAX_H = 3.0
 WIND_LAG_MIN = 1.5
 X_WEST = 540100.0    # grid west edge, m (EPSG:32610)
-DIR_LIBRARY = os.environ.get("DEATHFOG_DIR_LIBRARY", "1") != "0"  # use validated non-270 fields when present (profile mode only)
+DIR_LIBRARY = os.environ.get("DEATHFOG_DIR_LIBRARY", "0") != "0"  # replay writer: validated non-270 fields OFF by default (user decision pending); set DEATHFOG_DIR_LIBRARY=1 to enable. The live path always passes use_dirs=True.
 USE_REFINED = True   # apply the nested 5 m wind correction (street_features.refine_corr) after normalisation
 REFINE_NORM = 0.91   # raw refine_corr is over-damped (median 0.26, p95 0.91): divide by its p95 ...
 REFINE_MIN = 0.25    # ... and clip to [REFINE_MIN, 1]; NaN (no patch) -> 1.0. Absolute magnitudes stay uncalibrated.
@@ -70,7 +70,7 @@ INV_DT = 0.0                  # degC: T increase between consecutive pressure le
 ELEV_WIND_GAIN = 0.10         # profile mode: fog-deposition wind factor grows by this fraction per 100 m street elevation above 30 m
 ELEV_WIND_REF_M = 30.0
 
-CONSTANTS = {k: v for k, v in dict(globals()).items() if k.isupper() and isinstance(v, (int, float))}
+CONSTANTS = {k: v for k, v in dict(globals()).items() if k.isupper() and isinstance(v, (int, float)) and k != "DIR_LIBRARY"}  # DIR_LIBRARY is a run switch, not a model constant (keeps the shipped index.json unchanged)
 
 
 def magnus_rh(t, td):
@@ -164,7 +164,7 @@ def sun_position(times_utc, lat=37.76, lon=-122.40):
     return sp["azimuth"].to_numpy(), sp["apparent_elevation"].to_numpy()
 
 
-def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0, refined=None, fog_mode=None, fog_top=None):
+def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0, refined=None, fog_mode=None, fog_top=None, use_dirs=None):
     """Run one night. pts: dict(x, svf, porous, tracer, wind_ratio, horizon [N,72] or None, band-selected tracer; for the
     'profile' mode also y, z). ser: weather.night_series dict. Overrides: tracer / svf arrays (ablations); fog_mode
     ('band0' | 'profile', default FOG_HEIGHT_MODE); fog_top forces the fog top in profile mode. Returns (W [n,N] float32, diag)."""
@@ -190,7 +190,7 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     wmean = float(np.mean(ser["wind_speed_10m"]))
     mdir = mean_flow_dir(s, ser["wind_dir"])
     dirs = Wt = E = None
-    if prof and tracer is None and DIR_LIBRARY:  # validated non-270 fields: per-direction tracer, blended per time step
+    if prof and tracer is None and (DIR_LIBRARY if use_dirs is None else use_dirs):  # validated non-270 fields: per-direction tracer, blended per time step
         from . import dirlib
         dd = dirlib.available(Path(DATA_DIR or Path.home() / "deathfog-data") / "library")
         if len(dd) > 1:

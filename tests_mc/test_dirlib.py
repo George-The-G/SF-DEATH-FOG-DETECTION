@@ -35,9 +35,11 @@ def test_rotate_roundtrip_identity_270_and_permutation_180():
     rng = np.random.default_rng(0)
     solid = rng.random((40, 30, 6)) < 0.1
     sr, fr = windrot.rotate_solid(solid, 270)
-    assert np.array_equal(sr[fr["pad"]:], solid) or sr[fr["pad"]:].shape == solid.shape
+    # axis-aligned frames carry real-terrain padding (AXIS_PAD) up/down-wind and laterally: the core must be the original box
+    core = sr[fr["pad"]:fr["pad"] + fr["nxr"], fr["padlat"]:fr["padlat"] + fr["nyr"]]
+    assert core.shape == solid.shape and np.array_equal(core, solid)
     sr180, fr180 = windrot.rotate_solid(solid, 180)
-    core = sr180[fr180["pad"]:]
+    core = sr180[fr180["pad"]:fr180["pad"] + fr180["nxr"], fr180["padlat"]:fr180["padlat"] + fr180["nyr"]]
     assert core.shape == (30, 40, 6)
 
 
