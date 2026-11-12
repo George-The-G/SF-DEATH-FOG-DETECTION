@@ -120,7 +120,7 @@
    },
    "streets_r": "2026-11-10/streets_r.u8",
    "ribbons": "data/ribbons.bin",
-   "ribbons_n": 4718
+   "ribbons_n": 8267
   },
   {
    "id": "2026-10-08",
@@ -189,7 +189,7 @@
    },
    "streets_r": "2026-10-08/streets_r.u8",
    "ribbons": "data/ribbons.bin",
-   "ribbons_n": 4718
+   "ribbons_n": 8267
   },
   {
    "id": "2026-10-01",
@@ -258,7 +258,7 @@
    },
    "streets_r": "2026-10-01/streets_r.u8",
    "ribbons": "data/ribbons.bin",
-   "ribbons_n": 4718
+   "ribbons_n": 8267
   },
   {
    "id": "2026-09-30",
@@ -327,7 +327,7 @@
    },
    "streets_r": "2026-09-30/streets_r.u8",
    "ribbons": "data/ribbons.bin",
-   "ribbons_n": 4718
+   "ribbons_n": 8267
   },
   {
    "id": "2026-09-24",
@@ -396,7 +396,7 @@
    },
    "streets_r": "2026-09-24/streets_r.u8",
    "ribbons": "data/ribbons.bin",
-   "ribbons_n": 4718
+   "ribbons_n": 8267
   },
   {
    "id": "2026-09-22",
@@ -465,7 +465,7 @@
    },
    "streets_r": "2026-09-22/streets_r.u8",
    "ribbons": "data/ribbons.bin",
-   "ribbons_n": 4718
+   "ribbons_n": 8267
   },
   {
    "id": "2026-09-20",
@@ -534,7 +534,7 @@
    },
    "streets_r": "2026-09-20/streets_r.u8",
    "ribbons": "data/ribbons.bin",
-   "ribbons_n": 4718
+   "ribbons_n": 8267
   },
   {
    "id": "2026-10-16",
@@ -603,7 +603,7 @@
    },
    "streets_r": "2026-10-16/streets_r.u8",
    "ribbons": "data/ribbons.bin",
-   "ribbons_n": 4718
+   "ribbons_n": 8267
   },
   {
    "id": "2026-10-03",
@@ -672,7 +672,7 @@
    },
    "streets_r": "2026-10-03/streets_r.u8",
    "ribbons": "data/ribbons.bin",
-   "ribbons_n": 4718
+   "ribbons_n": 8267
   }
  ],
  "schema": 2

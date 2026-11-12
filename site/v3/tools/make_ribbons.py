@@ -7,7 +7,7 @@ right lanes can differ because of sun and shadow).
 Outputs (site/v3/data): ribbons.bin (RIB1, version 1), ribbons_meta.json; grids/zone/routes/ribbons_<zone>.png overlays.
 
 ribbons.bin, little endian, every section padded to a multiple of 4 bytes, in this order:
-  header  u32 magic 0x31424952 ('RIB1'), u32 S, u32 nStrips, u32 nIdx, f32 widthM, u32 version(=1)      24 bytes
+  header  u32 magic 0x31424952 ('RIB1'), u32 S, u32 nStrips, u32 nIdx, f32 widthM, u32 version(=2)      24 bytes
   f32 pos[S,3]      x east from meta.x0, y = DEM elevation (NOT lifted), z = -(north - meta.y0)   (scene metres)
   f32 nrm[S,2]      unit direction in the xz plane pointing OUT of the street (away from the street centre line, towards
                     this lane's side) with the mitre scale 1/cos(half angle) folded into its length, clamped to 2.0.
@@ -21,6 +21,10 @@ ribbons.bin, little endian, every section padded to a multiple of 4 bytes, in th
   u32 stripStart[nStrips+1]   sample index of each strip start
   f32 bsphere[nStrips,4]      centre xyz (scene) and radius, includes the ribbon half width
   u32 idx[nIdx]     triangles over the 2S vertices, 6*(n-1) per strip: (v, v+1, v+2), (v+1, v+3, v+2), v = 2*(start+i)
+  u8  depth[S]      (version 2) 1 for route samples and for the first side block out of a route intersection; 2 and 3 for the
+                    next blocks along the same branch (no U-turns, same 250 m cap measured along the branch from the route node)
+Strips are ordered by depth (all depth-1 strips first, in the version-1 order, then depth 2, then depth 3), so the first S1
+samples / streets_r columns are identical to the version-1 file.
 Sample order = vertex order = column order of streets_r.u8.
 """
 import csv
@@ -40,12 +44,12 @@ OUT = ROOT / "site" / "v3" / "data"
 
 # One street block ("edge": the chain of OSM segments between two consecutive intersection nodes) is drawn out of every
 # intersection node of a route. Deliberately a constant, not a config knob (user decision); a block is cut at CAP_M.
-SIDE_EDGE_STEPS = 1
+SIDE_EDGE_STEPS = 3   # blocks per branch emitted: depth 1 = the block at the route intersection (the original 1x data), 2 and 3 continue it
 CAP_M = 250.0          # side blocks longer than this are cut (measured from the route node) and faded out
 FADE_M = 30.0          # fade length at a cut end
 SPLIT_M = 25.0         # a lane is split when consecutive samples are further apart than this (points are 10-20 m apart)
 MAX_SCALE = 2.0        # mitre scale clamp; sharper corners split the strip (bevel)
-VERSION = 1
+VERSION = 2          # v2 appends u8 depth[S] after idx (v1 readers ignore trailing data)
 DEFAULT_HIGHWAYS = ["residential", "tertiary", "secondary", "primary", "unclassified", "living_street", "trunk"]
 
 
@@ -90,6 +94,9 @@ class ZoneGraph:
     def d(self, a, b):
         return math.hypot(self.xy[a][0] - self.xy[b][0], self.xy[a][1] - self.xy[b][1])
 
+    def d_chain(self, nodes):
+        return sum(self.d(a, b) for a, b in zip(nodes, nodes[1:]))
+
     def walk(self, n0, n1):
         """Chain of nodes from intersection n0 through n1 along degree-2 nodes up to the next intersection / dead end."""
         nodes = [n0, n1]
@@ -104,6 +111,29 @@ class ZoneGraph:
 def select_zone(G, zroutes):
     """-> (segment table {pair: {route, side, edge}}, side edges {key: {...}}). zroutes: resolved route dicts of this zone."""
     seg, edges = {}, {}
+
+    def add_edge(nodes, anchor, offset, depth, bit, rid):
+        key = min(tuple(nodes), tuple(nodes[::-1]))
+        e = edges.setdefault(key, {"nodes": list(key), "anchors": {}, "mask": 0, "routes": set(), "depth": depth})
+        e["anchors"][anchor] = min(offset, e["anchors"].get(anchor, 1e18))   # node -> metres along the branch from the route node
+        e["depth"] = min(e["depth"], depth)
+        e["mask"] |= bit
+        e["routes"].add(rid)
+
+    def expand(nodes, depth, offset, bit, rid, rsegs):
+        """Continue a side block through its far intersection (never back the way it came), up to SIDE_EDGE_STEPS blocks / CAP_M."""
+        far = nodes[-1]
+        if depth >= SIDE_EDGE_STEPS or offset >= CAP_M or G.deg(far) < 3:
+            return
+        for m in sorted(G.adj[far]):
+            if m == nodes[-2]:
+                continue
+            nn = G.walk(far, m)
+            if any(pair(a, b) in rsegs for a, b in zip(nn, nn[1:])):
+                continue
+            add_edge(nn, far, offset, depth + 1, bit, rid)
+            expand(nn, depth + 1, offset + G.d_chain(nn), bit, rid, rsegs)
+
     for r in zroutes:
         bit = 1 << r["index"]
         for a, b in zip(r["path"], r["path"][1:]):
@@ -120,11 +150,8 @@ def select_zone(G, zroutes):
                 nodes = G.walk(n, m)
                 if any(pair(a, b) in rsegs for a, b in zip(nodes, nodes[1:])):
                     continue
-                key = min(tuple(nodes), tuple(nodes[::-1]))
-                e = edges.setdefault(key, {"nodes": list(key), "anchors": set(), "mask": 0, "routes": set()})
-                e["anchors"].add(n)
-                e["mask"] |= bit
-                e["routes"].add(r["id"])
+                add_edge(nodes, n, 0.0, 1, bit, r["id"])
+                expand(nodes, 1, G.d_chain(nodes), bit, r["id"], rsegs)
     for key, e in edges.items():
         nodes = e["nodes"]
         e["cum"] = [0.0]
@@ -136,6 +163,7 @@ def select_zone(G, zroutes):
             s["side"] |= e["mask"]
             if s["route"] == 0:
                 s["edge"] = (key, i)
+                s["depth"] = min(s.get("depth", 9), e["depth"])
     return seg, edges
 
 
@@ -196,8 +224,9 @@ def build(write=True, verbose=True):
                 bx, by = G.xy[nodes[i + 1]]
                 t = min(1.0, max(0.0, proj_t(x, y, ax, ay, bx, by)))
                 s = e["cum"][i] + t * L
-                if e["length"] > CAP_M:
-                    dist = min(([s] if nodes[0] in e["anchors"] else []) + ([e["length"] - s] if nodes[-1] in e["anchors"] else []))
+                if min(e["anchors"].values()) + e["length"] > CAP_M:
+                    dist = min(([e["anchors"][nodes[0]] + s] if nodes[0] in e["anchors"] else []) +
+                               ([e["anchors"][nodes[-1]] + e["length"] - s] if nodes[-1] in e["anchors"] else []))
                     if dist > CAP_M:
                         continue
                     fade = int(round(255 * min(1.0, max(0.0, (CAP_M - dist) / FADE_M))))
@@ -208,7 +237,7 @@ def build(write=True, verbose=True):
                     edges[info["edge"][0]]["length"] > CAP_M:
                 continue
             if G.d(*pr) >= 1.0 and len(have.get(pr, ())) < 2:
-                stats["missing"].append({"zone": zid, "pair": list(pr), "have": sorted(have.get(pr, ()))})
+                stats["missing"].append({"zone": zid, "pair": list(pr), "have": sorted(have.get(pr, ())), "depth": info.get("depth", 0), "m": round(G.d(*pr))})
 
         # ---- lanes
         groups = defaultdict(list)
@@ -226,8 +255,8 @@ def build(write=True, verbose=True):
                                       float(rows[it[0]]["y"]) - float(rows[p[0]]["y"])) > SPLIT_M)
                     if not brk and it[2] != p[2] and G.deg(it[1]["nodes"][it[2]]) >= 3:
                         brk = True
-                    ck = (it[5]["route"] != 0, it[5]["route"] | it[5]["side"])
-                    pk = (p[5]["route"] != 0, p[5]["route"] | p[5]["side"])
+                    ck = (it[5]["route"] != 0, it[5]["route"] | it[5]["side"], it[5].get("depth", 1))
+                    pk = (p[5]["route"] != 0, p[5]["route"] | p[5]["side"], p[5].get("depth", 1))
                     if brk or ck != pk:
                         lanes.append(cur)
                         cur = []
@@ -236,6 +265,7 @@ def build(write=True, verbose=True):
                 lanes.append(cur)
         lanes = [{"its": ln, "way": ln[0][1], "side": 0 if rows[ln[0][0]]["side"] == "left" else 1,
                   "cls": 0 if ln[0][5]["route"] else 1, "mask": ln[0][5]["route"] | ln[0][5]["side"],
+                  "depth": 1 if ln[0][5]["route"] else ln[0][5].get("depth", 1),
                   "name": ln[0][1]["tags"].get("name", "") or "(unnamed)"} for ln in lanes]
         for ln in lanes:
             w, its = ln["way"], ln["its"]
@@ -379,10 +409,10 @@ def build(write=True, verbose=True):
                         streets.append(nm)
                     samples.append({"x": v[0] - meta["x0"], "y": v[2], "z": -(v[1] - meta["y0"]), "nx": nx_ * sc, "nz": -ny_ * sc,
                                     "src": v[3], "st": sidx[nm], "mask": L0["mask"], "side": 0 if r["side"] == "left" else 1,
-                                    "cls": L0["cls"], "fade": v[4]})
+                                    "cls": L0["cls"], "fade": v[4], "depth": L0["depth"]})
                     pxy.setdefault(len(strips), []).append((v[0], v[1]))
                 strips.append({"way": L0["way"]["id"], "side": L0["side"], "street": sidx[L0["name"]] if L0["name"] in sidx else None,
-                               "name": L0["name"], "cls": L0["cls"], "route_mask": L0["mask"], "start": start, "count": n,
+                               "name": L0["name"], "cls": L0["cls"], "route_mask": L0["mask"], "start": start, "count": n, "depth": L0["depth"],
                                "zone": zid})
         overlay[zid] = (G, zr, edges, [(strips[i]["cls"], np.array(p)) for i, p in pxy.items() if strips[i]["zone"] == zid])
 
@@ -393,6 +423,15 @@ def build(write=True, verbose=True):
             sidx[nm] = len(streets)
             streets.append(nm)
         s["street"] = sidx[nm]
+    # order strips by depth (stable): the depth-1 prefix is identical to the version-1 file
+    order = sorted(range(len(strips)), key=lambda i: (strips[i]["depth"], i))
+    new_samples, new_strips = [], []
+    for i in order:
+        s = strips[i]
+        a = len(new_samples)
+        new_samples.extend(samples[s["start"]:s["start"] + s["count"]])
+        new_strips.append(dict(s, start=a))
+    samples, strips = new_samples, new_strips
     S, nS = len(samples), len(strips)
     pos = np.array([[s["x"], s["y"], s["z"]] for s in samples], np.float32)
     nrm = np.array([[s["nx"], s["nz"]] for s in samples], np.float32)
@@ -402,6 +441,7 @@ def build(write=True, verbose=True):
     side = np.array([s["side"] for s in samples], np.uint8)
     cls = np.array([s["cls"] for s in samples], np.uint8)
     fade = np.array([s["fade"] for s in samples], np.uint8)
+    depth = np.array([s["depth"] for s in samples], np.uint8)
     stripStart = np.array([s["start"] for s in strips] + [S], np.uint32)
     bs = np.zeros((nS, 4), np.float32)
     idx = []
@@ -419,11 +459,11 @@ def build(write=True, verbose=True):
     def pad(buf):
         return buf + b"\0" * (-len(buf) % 4)
     blob = struct.pack("<IIIIfI", 0x31424952, S, nS, len(idx), width_m, VERSION)
-    for a in (pos, nrm, src, st, mask, side, cls, fade, stripStart, bs, idx):
+    for a in (pos, nrm, src, st, mask, side, cls, fade, stripStart, bs, idx, depth):
         blob += pad(a.tobytes())
     route_len = {r["id"]: r["length_m"] for r in resolved}
     metaj = {"S": S, "nStrips": nS, "widthM": width_m, "version": VERSION, "streets": streets, "strips":
-             [{k: s[k] for k in ("way", "side", "street", "cls", "route_mask", "start", "count")} for s in strips],
+             [{k: s[k] for k in ("way", "side", "street", "cls", "route_mask", "start", "count", "depth")} for s in strips],
              "route_lengths_m": route_len, "side_block_counts": {k: v["side_edges"] for k, v in stats["routes"].items()},
              "side_block_m": {k: v["side_m"] for k, v in stats["routes"].items()}}
     if write:
