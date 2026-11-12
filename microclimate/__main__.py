@@ -23,8 +23,23 @@ def main(argv):
         from . import wind
         order = [270, 247.5, 292.5, 225, 315, 202.5, 337.5, 360]
         wind.build(cfg, DATA / "grids", DATA / "library", directions=order)
+    elif cmd == "refine":
+        import argparse
+        ap = argparse.ArgumentParser(prog="microclimate refine")
+        ap.add_argument("--direction", type=float, required=True)
+        ap.add_argument("--zone", default="potrero", choices=["potrero", "all"])
+        ap.add_argument("--dx", type=float, default=5.0)
+        ap.add_argument("--steps", type=int, default=20000)
+        ap.add_argument("--avg-steps", type=int, default=5000)
+        ap.add_argument("--max", type=int, default=None)
+        ap.add_argument("--omega", type=float, default=1.95)
+        ap.add_argument("--force", action="store_true")
+        a = ap.parse_args(argv[1:])
+        from . import refine
+        d = refine.refine(cfg, a.direction, a.zone, a.dx, a.steps, a.avg_steps, a.max, a.force, log=lambda s: print(s, flush=True), omega=a.omega)
+        print(json.dumps({k: v for k, v in d.items() if k != "patches"}, indent=1))
     else:
-        print("commands: geometry, zone, meshes, wind")
+        print("commands: geometry, zone, meshes, wind, refine")
 
 
 if __name__ == "__main__":
