@@ -23,6 +23,17 @@ def idx_list(mask):
     return [tuple(a.tolist()) for a in i]
 
 
+def near_ground_mean(speed, solid, layers_above=2):
+    """Mean speed ratio on the cell `layers_above` above the highest solid cell of each column (k=1 is the wall-adjacent layer
+    and carries no information), over columns with enough headroom."""
+    nz = solid.shape[2]
+    top = nz - 1 - np.argmax(solid[:, :, ::-1], axis=2)  # highest solid k per column (floor k=0 is always solid)
+    kk = top + layers_above
+    ok = kk < nz - 6
+    ii, jj = np.nonzero(ok)
+    return float(speed[ii, jj, kk[ii, jj]].mean())
+
+
 def run(solid, direction_deg, steps=40000, avg_steps=8000, avg_every=100, omega=1.95, log=print, check_every=1000):
     """Returns mean velocity ratio field u/U_in as float16 [3, nx, ny, nz] (x east, y north, z up) and diagnostics."""
     nx, ny, nz = solid.shape
@@ -30,6 +41,10 @@ def run(solid, direction_deg, steps=40000, avg_steps=8000, avg_every=100, omega=
     be = ComputeBackend.WARP
     vs = xlb.velocity_set.D3Q19(precision_policy=prec, compute_backend=be)
     xlb.init(velocity_set=vs, default_backend=be, default_precision_policy=prec)
+    # XLB keeps BC ids in a process-global registry; a second run() in the same process otherwise gets ids 6+ and silently
+    # produces an all-zero flow field. Reset it so every run starts at id 1.
+    from xlb.operator.boundary_condition.boundary_condition_registry import boundary_condition_registry
+    boundary_condition_registry.__init__()
     grid = grid_factory((nx, ny, nz), compute_backend=be)
     th = math.radians(direction_deg)
     ux, uy = -math.sin(th) * U_LAT, -math.cos(th) * U_LAT  # wind FROM direction -> flow vector
@@ -86,6 +101,7 @@ def run(solid, direction_deg, steps=40000, avg_steps=8000, avg_every=100, omega=
     rho_f = grid.create_field(cardinality=1, dtype=prec.store_precision)
     u_f = grid.create_field(cardinality=3, dtype=prec.store_precision)
     acc, n_acc, t0 = None, 0, time.time()
+    rho_lo, rho_hi = 1e9, -1e9
     for s in range(steps):
         f0, f1 = stepper(f0, f1, bc_mask, missing, omega, s)
         f0, f1 = f1, f0
@@ -99,20 +115,26 @@ def run(solid, direction_deg, steps=40000, avg_steps=8000, avg_every=100, omega=
             macro(f0, rho_f, u_f)
             wp.synchronize()
             uu = u_f.numpy()
-            if not np.isfinite(uu).all():
-                log(f"step {s}: NaN/inf in velocity field, aborting")
+            sp_ = np.sqrt((np.nan_to_num(uu, nan=1e9, posinf=1e9, neginf=1e9) ** 2).sum(0))
+            if not np.isfinite(uu).all() or sp_.max() > 0.5:
+                at = np.unravel_index(int(np.argmax(sp_)), sp_.shape)
+                log(f"step {s}: NaN/inf or |u|>0.5 in velocity field (max at cell {tuple(int(a) for a in at)}, bc id {int(bc_mask.numpy()[(0,) + at])}), aborting")
                 return None, {"direction_deg": direction_deg, "steps": s, "aborted_at": s, "seconds": round(time.time() - t0),
-                              "nan": True, "max_speed_ratio": 0.0, "mean_speed_ratio_at_10m_agl_sea": 0.0}
+                              "nan": True, "max_speed_ratio": 0.0, "mean_speed_ratio_near_ground": 0.0}
             umax = float(np.sqrt((uu ** 2).sum(0)).max())
             del uu
+            rr = rho_f.numpy()
+            rho_lo, rho_hi = min(rho_lo, float(rr.min())), max(rho_hi, float(rr.max()))
+            del rr
             if s % 2000 == 0:
-                log(f"step {s}/{steps} {time.time() - t0:.0f}s max|u|={umax:.4f}")
+                log(f"step {s}/{steps} {time.time() - t0:.0f}s max|u|={umax:.4f} rho[{rho_lo:.3f},{rho_hi:.3f}]")
     mean = (acc / n_acc) / U_LAT
     mean[:, solid] = 0.0
     speed = np.sqrt((mean ** 2).sum(0))
     diag = {"direction_deg": direction_deg, "steps": steps, "seconds": round(time.time() - t0),
             "nan": bool(np.isnan(mean).any()), "max_speed_ratio": float(np.nanmax(speed)),
-            "mean_speed_ratio_at_10m_agl_sea": float(speed[:, :, 1][~solid[:, :, 1]].mean())}
+            "mean_speed_ratio_near_ground": near_ground_mean(speed, solid),
+            "rho_min": rho_lo, "rho_max": rho_hi}
     return mean.astype(np.float16), diag
 
 
