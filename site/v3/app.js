@@ -863,7 +863,7 @@ const goNight = (v) => { // the Night list switches between live and a past nigh
   const s = q.toString(); location.href = location.pathname + (s ? '?' + s : '');
 };
 function liveNightList() { // live first; the past nights are added once their index has loaded
-  const sel = $('night'); sel.innerHTML = '<option value="live">Live (beta): tonight + 2 days</option>';
+  const sel = $('night'); sel.innerHTML = '<option value="live">Live (beta)</option>';
   loadIndex().then(([ri]) => {
     sel.insertAdjacentHTML('beforeend', '<optgroup label="Past nights">' + ri.nights.map((n) => `<option value="r:${n.id}">${nightLabel(n)}${n.approx_direction ? ' *' : ''}</option>`).join('') + '</optgroup>');
     sel.value = 'live';
@@ -1059,7 +1059,7 @@ if (UI2) ui2Build();
       return;
     }
     index = idx; base = dir; $('badge').hidden = !idx.mock; if (idx.mock) $('badge').textContent = 'Mock data';
-    $('night').innerHTML = (UI2 ? '<option value="live">Live (beta): tonight + 2 days</option>' : '') + idx.nights.map((n, i) => `<option value="${i}">${nightLabel(n)}${n.approx_direction ? ' *' : ''}</option>`).join('');
+    $('night').innerHTML = (UI2 ? '<option value="live">Live (beta)</option>' : '') + idx.nights.map((n, i) => `<option value="${i}">${nightLabel(n)}${n.approx_direction ? ' *' : ''}</option>`).join('');
     const qn = new URLSearchParams(location.search).get('night');
     let firstFog = idx.nights.findIndex((n) => n.id === qn);
     if (firstFog < 0) { // default: strongest fog night
