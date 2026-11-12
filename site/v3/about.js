@@ -42,6 +42,9 @@ const CSS = `
   .ab-root{align-items:center;padding:16px}
   .ab-card{height:auto;max-height:70vh;max-height:70dvh;border-radius:18px}
 }
+/* attached mode: hangs flush under the page header (#top), ends above the bottom stack */
+.ab-root.ab-att{align-items:flex-start;padding:0 max(8px,env(safe-area-inset-left,0px)) 0 max(8px,env(safe-area-inset-right,0px))}
+.ab-root.ab-att .ab-card{height:var(--ab-h,60dvh);max-height:none;border-radius:0 0 18px 18px;border-top-color:transparent;animation:none}
 @media (prefers-reduced-motion:reduce){.ab-root,.ab-card{animation:none}}
 @keyframes ab-fade{from{opacity:0}to{opacity:1}}
 @keyframes ab-up{from{transform:translateY(14px);opacity:.6}to{transform:none;opacity:1}}
@@ -105,7 +108,7 @@ async function loadHtml() {
     state.html = await r.text();
   } catch (err) {
     console.warn('[about] could not load about.html', err);
-    return '<p class="ab-msg">The write-up could not be loaded right now. In short: this is a proof-of-concept 20 m simulation of overnight street wetness from fog, dew, rain, sun and shade. It is not a forecast. Details are in MVP_REPORT.md at <a href="https://github.com/George-The-G/SF-DEATH-FOG-DETECTION" target="_blank" rel="noopener noreferrer">github.com/George-The-G/SF-DEATH-FOG-DETECTION</a>.</p>';
+    return '<p class="ab-msg">The write-up could not be loaded right now. In short: this is a proof-of-concept simulation (20 m city wind, 5 m street-level detail) of overnight street wetness from fog, dew, rain, sun and shade. It is not a forecast. Details are in MVP_REPORT.md at <a href="https://github.com/George-The-G/SF-DEATH-FOG-DETECTION" target="_blank" rel="noopener noreferrer">github.com/George-The-G/SF-DEATH-FOG-DETECTION</a>.</p>';
   }
   return state.html;
 }
@@ -146,6 +149,18 @@ export async function openAbout() {
   document.documentElement.style.overflow = 'hidden';
   document.body.style.overflow = 'hidden';
   document.body.appendChild(root);
+  const place = () => {
+    const tp = document.getElementById('top'), bt = document.getElementById('controls');
+    if (!tp) { root.classList.remove('ab-att'); root.style.top = ''; return; }
+    const top = Math.max(0, Math.round(tp.getBoundingClientRect().bottom) - 1);
+    const bot = bt ? Math.round(bt.getBoundingClientRect().top) - 6 : innerHeight - 8;
+    root.classList.add('ab-att');
+    root.style.top = top + 'px';
+    root.style.setProperty('--ab-h', Math.max(160, bot - top) + 'px');
+  };
+  place();
+  state.onResize = place;
+  addEventListener('resize', place);
   close.focus({ preventScroll: true });
   if (state.trigger) state.trigger.setAttribute('aria-expanded', 'true');
 
@@ -158,6 +173,7 @@ export function closeAbout() {
   if (!root) return;
   root.remove();
   state.root = null;
+  if (state.onResize) { removeEventListener('resize', state.onResize); state.onResize = null; }
   if (state.prevOverflow) {
     document.documentElement.style.overflow = state.prevOverflow[0];
     document.body.style.overflow = state.prevOverflow[1];
