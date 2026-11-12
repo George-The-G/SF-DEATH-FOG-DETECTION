@@ -421,7 +421,8 @@ def refine(cfg, direction, zone="potrero", dx=5.0, steps=15000, avg_steps=4000, 
     if not wind_ok(lib, direction):
         raise SystemExit(f"wind_{int(direction * 10):04d}.npz missing or marked nan: not refining direction {direction}")
     tag = f"{int(direction * 10):04d}"
-    pdir = out / "patches" / f"d{tag}_dx{dx:g}"
+    dxs = f"{dx:g}".replace(".", "p")
+    pdir = out / "patches" / f"d{tag}_dx{dxs}"
     pdir.mkdir(parents=True, exist_ok=True)
     spec, ter, mean_h, solid_c = load_grids(grids)
     u_c = np.load(lib / f"wind_{tag}.npz")["u"]
@@ -466,7 +467,7 @@ def merge(spec, patches, pdir, out, direction, dx):
             arr[k][sl] = d[k]
         pid[sl] = len(plist)
         plist.append({**pp, "seconds": j["seconds"], "rho_min": j["rho_min"], "rho_max": j["rho_max"], "shape": j["shape"]})
-    tag = f"{int(direction * 10):04d}"
+    tag = f"{int(direction * 10):04d}" + ("" if dx == 5 else "_dx" + f"{dx:g}".replace(".", "p"))  # 5 m keeps the plain name
     np.savez_compressed(Path(out) / f"patch_corr_{tag}.npz", patch_id=pid, **arr)
     cs = arr["corr_street"]
     diag = {"direction_deg": direction, "fine_dx_m": dx, "grid_shape": [nx, ny], "n_patches": len(plist), "patches": plist,
