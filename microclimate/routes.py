@@ -312,7 +312,9 @@ def build_points(rt, graphs, resolved, grids_dir):
             G = graphs[zid]
             dpts = np.vstack([densify(G, r["path"]) for r in zr])
             tree = cKDTree(dpts)
-            cm = float(zc.get("corridor_m", 250))
+            # district_m (>= corridor_m): every street segment within this distance of any route of the zone gets simulation
+            # points (the viewer draws all of them as the district gradient); default = corridor_m (old behaviour)
+            cm = float(zc.get("district_m", zc.get("corridor_m", 250)))
             keep = lambda x, y: tree.query([x, y])[0] <= cm  # noqa: E731
             union = set().union(*[route_edges(r["path"]) for r in zr])
             sets = [set() for _ in range(nR)]

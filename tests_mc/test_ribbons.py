@@ -65,8 +65,8 @@ class TestRibbonData(unittest.TestCase):
     def test_header_and_sizes(self):
         rib = self.rib
         S = rib["S"]
-        self.assertEqual(rib["version"], 1)
-        self.assertTrue(0 < S < 20000)
+        self.assertEqual(rib["version"], 2)
+        self.assertTrue(0 < S < 40000)
         self.assertEqual(int(rib["stripStart"][-1]), S)
         self.assertEqual(rib["nIdx"], sum(6 * (b - a - 1) for a, b in self.strips))
         meta = json.load(open(V3 / "data" / "ribbons_meta.json"))
@@ -80,7 +80,7 @@ class TestRibbonData(unittest.TestCase):
             self.assertGreaterEqual(b - a, 2)
             d = np.hypot(*np.diff(P[a:b], axis=0).T)
             # points are L/floor(L/10) apart, i.e. 10-20 m on single-point segments (the 12 m target only holds for L >= 20 m)
-            self.assertLessEqual(d.max(), 22.0, (a, b, d.max()))
+            self.assertLessEqual(d.max(), 22.0 if self.rib["cls"][a] == 0 else 46.0, (a, b, d.max()))
 
     def test_every_route_point_included_and_src_unique(self):
         src, pts = self.rib["src"], self.pts
@@ -88,10 +88,12 @@ class TestRibbonData(unittest.TestCase):
         route_rows = {int(r["id"]) for r in pts if int(r["route_mask"]) != 0}
         self.assertTrue(route_rows <= set(int(s) for s in src), "route points missing from ribbons")
         seen, dups = {}, []
+        cl = self.rib["cls"]
         for i, s in enumerate(src.tolist()):
-            if s in seen:
-                dups.append((seen[s], i))
-            seen[s] = i
+            key = (s, int(cl[i]))     # a route street is drawn twice: route strip (cls 0) and, underneath, its district strip (cls 1)
+            if key in seen:
+                dups.append((seen[key], i))
+            seen[key] = i
         ends = set()
         for a, b in self.strips:
             ends |= {a, a + 1, b - 2, b - 1}
@@ -100,17 +102,17 @@ class TestRibbonData(unittest.TestCase):
             if self.rib["cls"][i] == 0:
                 self.assertNotEqual(int(pts[int(src[i])]["route_mask"]), 0)
 
-    def test_side_blocks_short_and_touch_route(self):
+    def test_district_streets(self):
+        """Version 3 data: every street of the zones is a ribbon (cls 1): no mask bits, no fade, roughly 20 m sample spacing."""
         P, cls = self.rib["pos"][:, [0, 2]], self.rib["cls"]
-        route_xy = P[cls == 0]
+        self.assertGreater(int((cls == 1).sum()), 3 * int((cls == 0).sum()), "district streets should dominate the sample count")
+        self.assertTrue((self.rib["mask"][cls == 1] == 0).all())
+        self.assertTrue((self.rib["fade"][cls == 1] == 255).all())
         for a, b in self.strips:
-            if cls[a] != 1:
-                continue
-            L = np.hypot(*np.diff(P[a:b], axis=0).T).sum()
-            self.assertLessEqual(L, 262.0)
-            d0 = np.min(np.hypot(*(route_xy - P[a]).T))
-            d1 = np.min(np.hypot(*(route_xy - P[b - 1]).T))
-            self.assertLessEqual(min(d0, d1), 30.0, (a, d0, d1))
+            if cls[a] == 1:
+                d = np.hypot(*np.diff(P[a:b], axis=0).T)
+                self.assertLessEqual(d.max(), 46.0, (a, d.max()))
+        self.assertTrue(json.load(open(V3 / "data" / "ribbons_meta.json")).get("district"))
 
     def test_fade_and_normals(self):
         self.assertEqual(int(self.rib["fade"].max()), 255)

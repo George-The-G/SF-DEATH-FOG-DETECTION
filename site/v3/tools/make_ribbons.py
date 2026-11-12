@@ -1,6 +1,10 @@
 """Continuous street-ribbon geometry for the 3-D viewer (data side).
 
-Draws every route plus ONE street block ("edge") out of every intersection node the route passes through, as ribbon strips
+DISTRICT MODE (current): draws every route (cls 0) plus EVERY street of each zone that has simulation points and a class in
+routes.toml [ribbons].highways (cls 1, mask 0, fade 255, depth 1; sampled every 2nd point = ~20 m). Route streets also get a cls 1
+copy so the not-selected (dashed) routes still sit on a gradient street. cls 1 strips come first in the file (drawn underneath).
+The old "route + side blocks" selection (depth 1-3, fades) is only kept in the stats; the file layout is unchanged (version 2).
+Older description: ONE street block ("edge") out of every intersection node the route passes through, as ribbon strips
 over the existing street sample points (grids/zone/points.csv; one ribbon per lane, i.e. per (way, side), so the left and
 right lanes can differ because of sun and shadow).
 
@@ -49,6 +53,7 @@ CAP_M = 250.0          # side blocks longer than this are cut (measured from the
 FADE_M = 30.0          # fade length at a cut end
 SPLIT_M = 25.0         # a lane is split when consecutive samples are further apart than this (points are 10-20 m apart)
 MAX_SCALE = 2.0        # mitre scale clamp; sharper corners split the strip (bevel)
+DISTRICT_STRIDE = 2    # version 3 data: every drivable street of the zone is a ribbon (cls 1, mask 0, fade 255, depth 1), sampled every 2nd point
 VERSION = 2          # v2 appends u8 depth[S] after idx (v1 readers ignore trailing data)
 DEFAULT_HIGHWAYS = ["residential", "tertiary", "secondary", "primary", "unclassified", "living_street", "trunk"]
 
@@ -211,27 +216,18 @@ def build(write=True, verbose=True):
             si = int(r["seg"])
             a, b = w["nodes"][si], w["nodes"][si + 1]
             info = seg.get(pair(a, b))
-            if info is None:
-                continue
-            x, y = float(r["x"]), float(r["y"])
+            if info is None or info["route"] == 0:
+                # district street (version 3): every street of the zone that has simulation points and a ribbon class
+                if w["tags"].get("highway") not in classes:
+                    continue
+                info = {"route": 0, "side": 0, "edge": None, "depth": 1}
             fade = 255
-            if info["route"] == 0:
-                key, i = info["edge"]
-                e = edges[key]
-                nodes = e["nodes"]
-                L = e["cum"][i + 1] - e["cum"][i]
-                ax, ay = G.xy[nodes[i]]
-                bx, by = G.xy[nodes[i + 1]]
-                t = min(1.0, max(0.0, proj_t(x, y, ax, ay, bx, by)))
-                s = e["cum"][i] + t * L
-                if min(e["anchors"].values()) + e["length"] > CAP_M:
-                    dist = min(([e["anchors"][nodes[0]] + s] if nodes[0] in e["anchors"] else []) +
-                               ([e["anchors"][nodes[-1]] + e["length"] - s] if nodes[-1] in e["anchors"] else []))
-                    if dist > CAP_M:
-                        continue
-                    fade = int(round(255 * min(1.0, max(0.0, (CAP_M - dist) / FADE_M))))
             have[pair(a, b)].add(r["side"])
             sel.append((k, w, si, a, b, info, fade))
+            if info["route"] != 0 and w["tags"].get("highway") in classes:
+                # a route street also gets its district gradient (cls 1, drawn first, i.e. underneath): the not-selected routes are only a
+                # thin dashed line, the street itself must still read as part of the district
+                sel.append((k, w, si, a, b, {"route": 0, "side": 0, "edge": None, "depth": 1, "dup": 1}, fade))
         for pr, info in seg.items():
             if info["route"] == 0 and info["edge"] is not None and info["edge"][0] and \
                     edges[info["edge"][0]]["length"] > CAP_M:
@@ -242,9 +238,9 @@ def build(write=True, verbose=True):
         # ---- lanes
         groups = defaultdict(list)
         for it in sel:
-            groups[(it[1]["id"], rows[it[0]]["side"])].append(it)
+            groups[(it[1]["id"], rows[it[0]]["side"], it[5].get("dup", 0))].append(it)
         lanes = []
-        for (wid, sd), its in groups.items():
+        for (wid, sd, _dup), its in groups.items():
             its.sort(key=lambda t: t[0])
             cur = []
             for it in its:
@@ -364,6 +360,17 @@ def build(write=True, verbose=True):
                 if math.hypot(v[0] - clean[-1][0], v[1] - clean[-1][1]) > 0.05:
                     clean.append(v)
             verts = clean
+            if L0["cls"] == 1 and len(verts) > 3:
+                # district streets: ~20 m sample spacing (every second 10 m point; both strip ends kept) to keep the page light
+                keepi = list(range(0, len(verts), DISTRICT_STRIDE))
+                if keepi[-1] != len(verts) - 1:
+                    keepi.append(len(verts) - 1)
+                verts = [verts[i] for i in keepi]
+                clean = [verts[0]]
+                for v in verts[1:]:
+                    if math.hypot(v[0] - clean[-1][0], v[1] - clean[-1][1]) > 0.05:
+                        clean.append(v)
+                verts = clean
             if len(verts) < 2:
                 continue
             # split at sharp corners (beyond the mitre clamp)
@@ -424,7 +431,8 @@ def build(write=True, verbose=True):
             streets.append(nm)
         s["street"] = sidx[nm]
     # order strips by depth (stable): the depth-1 prefix is identical to the version-1 file
-    order = sorted(range(len(strips)), key=lambda i: (strips[i]["depth"], i))
+    # district strips (cls 1) first so they are drawn underneath the route strips (cls 0): blending follows index order (no depth writes)
+    order = sorted(range(len(strips)), key=lambda i: (0 if strips[i]["cls"] == 1 else 1, strips[i]["depth"], i))
     new_samples, new_strips = [], []
     for i in order:
         s = strips[i]
@@ -462,8 +470,8 @@ def build(write=True, verbose=True):
     for a in (pos, nrm, src, st, mask, side, cls, fade, stripStart, bs, idx, depth):
         blob += pad(a.tobytes())
     route_len = {r["id"]: r["length_m"] for r in resolved}
-    metaj = {"S": S, "nStrips": nS, "widthM": width_m, "version": VERSION, "streets": streets, "strips":
-             [{k: s[k] for k in ("way", "side", "street", "cls", "route_mask", "start", "count", "depth")} for s in strips],
+    metaj = {"S": S, "nStrips": nS, "widthM": width_m, "version": VERSION, "district": True, "streets": streets, "strips":
+             [[s["start"], s["count"], s["cls"], s["street"]] for s in strips],   # [start, count, cls, street] (compact)
              "route_lengths_m": route_len, "side_block_counts": {k: v["side_edges"] for k, v in stats["routes"].items()},
              "side_block_m": {k: v["side_m"] for k, v in stats["routes"].items()}}
     if write:

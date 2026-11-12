@@ -524,11 +524,11 @@
   {
    "check": "zone_ggh_info",
    "status": "INFO",
-   "detail": "Golden Gate Heights (7094 points): 09:00 mean W over 7 fog nights E-W 42.8 vs N-S 46.2; shadier side wetter on 70 % of 3912 E-W segments with >=20 min sun difference; max dry-night p95 0.0. Per-route [mean, p95] of W at 09:00 per fog night in validation.json.",
-   "ew_0900": 42.78261184692383,
-   "ns_0900": 46.216583251953125,
-   "shadier_wetter_frac": 0.6958077709611452,
-   "n_segments": 3912,
+   "detail": "Golden Gate Heights (14902 points): 09:00 mean W over 7 fog nights E-W 45.9 vs N-S 49.1; shadier side wetter on 70 % of 9368 E-W segments with >=20 min sun difference; max dry-night p95 0.0. Per-route [mean, p95] of W at 09:00 per fog night in validation.json.",
+   "ew_0900": 45.863365173339844,
+   "ns_0900": 49.12965774536133,
+   "shadier_wetter_frac": 0.7045260461144321,
+   "n_segments": 9368,
    "dry_p95": 0.0,
    "routes_by_night": {
     "ggh-yellow": {
@@ -571,11 +571,11 @@
       36.9
      ],
      "2026-10-01": [
-      71.0,
+      70.9,
       99.5
      ],
      "2026-09-30": [
-      48.9,
+      48.8,
       79.6
      ],
      "2026-09-24": [
@@ -609,7 +609,7 @@
       75.0
      ],
      "2026-09-24": [
-      40.6,
+      40.7,
       47.7
      ],
      "2026-09-22": [
