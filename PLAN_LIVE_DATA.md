@@ -74,7 +74,7 @@ Done when: tests pass; `python -m microclimate routes --only replay` regenerates
 2.3 Sun horizons: sun.py currently computes a 2 m surface only around ZONE_CENTER. Generalise: tile the city into 1.5 km tiles, build fine_surface per tile with a 700 m apron, cast the 72 rays (3 km) through fine surface then the 20 m surface. Benchmark one tile first; if the projected total is > 6 h, use a 4 m surface for tiles without district points and report.
 2.4 Static live table `live_static.npz` (float16 where possible) with per point: x, y, z, svf, porous, wind_ratio, rel_wind (from refine_corr), horizon [N,72] uint8, zone id, and the precomputed profile-mode tracer per direction: tracer [9, N] = fogtop.points_tracer(pts, data_dir, d) for each validated direction (this removes the need to ship the 100 MB library fields). Also the 80 m city tracer per direction for fog sheets: tr80 [9, H, W] (replay.city_tracer_80m).
 2.5 Publish live_static.npz as a GitHub Release asset (tag live-static-v1); the live job downloads it. Do not commit it to git.
-Done when: N_city and file size are reported; a run of wetness.simulate on the static table for one replay night reproduces the shipped district values (max abs diff <= 1 on the 0-100 scale) for the first 21,210 + 7,792 district rows.
+Done when: N_city and file size are reported; a run of wetness.simulate on the static table for one replay night reproduces the shipped district values (max abs diff <= 1 on the 0-100 scale) for the 29,018 existing district rows (Potrero 14,116 + Golden Gate Heights 14,902).
 
 ### Step 3. Make the wetness core live-ready (about 2 days)
 Edit microclimate/wetness.py and fogtop.py; keep the replay path behaviour identical (regression test from step 2).
