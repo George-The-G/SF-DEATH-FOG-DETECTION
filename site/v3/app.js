@@ -67,13 +67,13 @@ controls.enableDamping = true; controls.dampingFactor = 0.08;
 controls.maxPolarAngle = 1.48; controls.minDistance = 60; controls.maxDistance = 32000;
 controls.screenSpacePanning = false;
 
-scene.add(new THREE.HemisphereLight(0x6f8fc9, 0x1a1f2e, 1.15));
-const moon = new THREE.DirectionalLight(0xb8c8ff, 1.5);
+scene.add(new THREE.HemisphereLight(0x8fa8d8, 0x2a3348, 1.6));
+const moon = new THREE.DirectionalLight(0xc8d4ff, 2.2);
 moon.position.set(-6000, 9000, 5000); scene.add(moon);
 scene.add(new THREE.AmbientLight(0x202840, 0.8));
 
 let meta = null, pts = null, terrainH = null, T = null;
-const CITY = { target: new THREE.Vector3(8300, 0, -8000), pos: new THREE.Vector3(1500, 13500, 16000) };
+const CITY = { target: new THREE.Vector3(8300, 0, -8000), pos: new THREE.Vector3(3900, 8800, 7600) };
 camera.position.copy(CITY.pos); controls.target.copy(CITY.target);
 
 function resize() {
@@ -112,8 +112,8 @@ async function loadMeshes() {
     gl.scene.traverse((o) => {
       if (!o.isMesh) return;
       const g = o.geometry; if (!g.attributes.normal) g.computeVertexNormals();
-      const p = g.attributes.position, col = new Float32Array(p.count * 3), lo = new THREE.Color('#14202e'), hi = new THREE.Color('#3b4a47'), c = new THREE.Color();
-      for (let k = 0; k < p.count; k++) { c.copy(lo).lerp(hi, clamp(p.getY(k) / 260, 0, 1)); if (p.getY(k) < 0.6) c.set('#0c1626'); col.set([c.r, c.g, c.b], k * 3); }
+      const p = g.attributes.position, col = new Float32Array(p.count * 3), lo = new THREE.Color('#25405a'), hi = new THREE.Color('#5f7563'), c = new THREE.Color();
+      for (let k = 0; k < p.count; k++) { c.copy(lo).lerp(hi, clamp(p.getY(k) / 260, 0, 1)); if (p.getY(k) < 0.6) c.set('#10263f'); col.set([c.r, c.g, c.b], k * 3); }
       g.setAttribute('color', new THREE.BufferAttribute(col, 3));
       o.material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
       terrainH = buildHeightGrid(g, meta.cell_m * 3);
@@ -237,8 +237,8 @@ function buildFog(png, g) {
               float a = floor(uFrame), t = uFrame - a;
               float v = mix(tile(a, vUv), tile(a + 1., vUv), t);
               float e = smoothstep(0., .04, min(min(vUv.x, 1. - vUv.x), min(vUv.y, 1. - vUv.y)));
-              float al = smoothstep(.05, .75, v) * .62 * uLayer * e;
-              gl_FragColor = vec4(mix(vec3(.62,.72,.86), vec3(.93,.96,1.), v), al);
+              float al = smoothstep(.05, .75, v) * .5 * uLayer * e;
+              gl_FragColor = vec4(mix(vec3(.62,.72,.86), vec3(.82,.88,.97), v), al);
             }`,
         });
         const m = new THREE.Mesh(geo, mat); m.renderOrder = 1; m.frustumCulled = false; scene.add(m); fogLayers.push(m);
@@ -336,7 +336,7 @@ $('btn-city').onclick = () => flyTo(CITY.pos, CITY.target, 2200);
 $('btn-route').onclick = () => {
   if (!ROUTE.start) { toast('Route not available'); return; }
   const m = ROUTE.mid;
-  flyTo(new THREE.Vector3(m.x + 520, m.y + 430, m.z + 560), new THREE.Vector3(m.x, m.y - 20, m.z - 40), 2800);
+  const k = innerWidth < innerHeight ? 1.9 : 1; flyTo(new THREE.Vector3(m.x + 520 * k, m.y + 430 * k, m.z + 560 * k), new THREE.Vector3(m.x, m.y - 20, m.z - 40), 2800);
 };
 const ease = (t) => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
@@ -395,7 +395,7 @@ function frame(ts) {
   controls.update();
   const dist = camera.position.distanceTo(controls.target);
   if (pointMat) pointMat.uniforms.uScale.value = clamp(dist / 450, 1, 12);
-  const bs = clamp(dist / 160, 1, 45); beacons.forEach((b) => b.scale.set(bs * 1.5, 1, bs * 1.5));
+  const bs = clamp(dist / 450, 1, 80); beacons.forEach((b) => b.scale.set(bs * 1.5, 1, bs * 1.5));
   const showLbl = dist < 3500;
   for (const L of labelEls) {
     v3.copy(L.p).project(camera);

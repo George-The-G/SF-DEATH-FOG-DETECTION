@@ -82,7 +82,7 @@ button, select, input { font: inherit; color: inherit; }
   .poc { order: 3; flex-basis: 100%; text-align: left; font-size: 10.5px; }
   #weather { top: 82px; left: 12px; right: 12px; flex-direction: row; justify-content: space-between; gap: 6px; padding: 6px 10px; min-width: 0; }
   .wx { flex-direction: column; gap: 0; } .wx .k { font-size: 9.5px; } .wx .v { font-size: 12px; }
-  #badge { top: auto; bottom: calc(var(--ctl-h) + 112px); }
+  #badge { top: 128px; left: 12px; transform: none; }
   #clock { font-size: 20px; }
   .chk { font-size: 12px; }
 }

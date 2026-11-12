@@ -56,3 +56,8 @@ Commands (from repo root, PYTHONPATH=repo): `python -m microclimate street`, `py
 ## M4 + M6: wetness, replay, validation (2026-11-11)
 Commands: python -m microclimate replay (writes site/v3/replay/), python -m microclimate validate (PASS/FAIL, validation.json, overview.png). Tests: tests_mc/test_wetness.py. Nine nights replayed (7 fog, 2 dry), refined wind applied after normalisation (USE_REFINED). Validation: a,b,c,d1,d2 PASS; d3 FAIL (tracer bands 2-3 not converged); f skipped. Full write-up in MVP_REPORT.md. Replay is 13.6 MB raw, 4.2 MB gzipped.
 
+
+## M5: 3-D viewer (site/v3/): DONE (mock data)
+- site/v3/index.html + app.js + style.css (three.js 0.160.0 via jsdelivr importmap). Preview: python -m http.server 8000 --directory site/v3 then open http://localhost:8000/ (?src=mock forces mock data). Tries replay/ then replay_mock/.
+- Replay contract as in the brief; fog.png tile row 0 = SOUTH unless fog_grid.row0=='north'; streets.u8 size must equal n_frames*14116. Packed street points: data/points.bin + points.json (tools/make_points.py reads ~/deathfog-data/grids/zone/potrero_points.csv). Mock: tools/make_mock_replay.py -> replay_mock/.
+- Note: site/ is in .gitignore, so site/v3 files are added with git add -f.
