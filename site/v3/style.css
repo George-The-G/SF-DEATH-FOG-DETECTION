@@ -121,3 +121,5 @@ button, select, input { font: inherit; color: inherit; }
   #rbtn { max-width: 190px; padding: 5px 10px; }
   .rc-top { font-size: 12.5px; }
 }
+
+.ribonly { display: none; } body.ribbons .ribonly { display: inline-flex; }

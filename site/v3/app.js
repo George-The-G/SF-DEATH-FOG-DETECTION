@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createFog } from './fog.js';
+import { createRibbons } from './ribbons.js';
 
 /* ------------------------------------------------------------------ config */
-const SRC_DIRS = new URLSearchParams(location.search).get('src') === 'mock' ? ['replay_mock/'] : ['replay/', 'replay_mock/'];
+const SRC_Q = new URLSearchParams(location.search).get('src');
+const SRC_DIRS = SRC_Q === 'mock' ? ['replay_mock/'] : SRC_Q === 'synth' ? ['replay_synth/'] : ['replay/', 'replay_mock/']; // synth = tools/make_synthetic_ribbons.py fixture
 const RAMP = [[0, '#3a8696'], [18, '#6fb09f'], [24, '#f4e04d'], [50, '#f2c230'], [65, '#ee8a2c'], [80, '#d9531e'], [90, '#b3202f'], [100, '#7a0f3b']];
 const CATS = ['dry', 'damp', 'slick', 'wet', 'icy-fog'];
 const $ = (id) => document.getElementById(id);
@@ -209,11 +211,16 @@ function buildBuildings(buf) {
 
 /* ------------------------------------------------------------------ street points */
 let wetAttr = null, pointsMesh = null, pointMat = null, elevY = null, wetNow = null, routeAttr = null, routeBuf = null;
-function buildPoints(bin, info) {
+let PB = null, PJ = null; // raw points.bin / points.json, kept so the quad renderer can be built lazily (old path, ?ribbons=0)
+function parsePts(bin, info) {
   const N = info.n;
   const f = new Float32Array(bin, 0, N * 4), side = new Uint8Array(bin, N * 16, N), route = new Uint8Array(bin, N * 17, N), st = new Uint16Array(bin, N * 18, N);
   const mask = new Uint16Array(bin, N * 20, N), zone = new Uint8Array(bin, N * 22, N); // bit i of mask = on route i (routes.json index)
   pts = { N, f, side, route, st, mask, zone, streets: info.streets, zones: info.zones };
+}
+function buildPoints() {
+  if (pointsMesh) return;
+  const { N, f, side, route } = pts;
   elevY = new Float32Array(N);
   const iPos = new Float32Array(N * 3), iBear = new Float32Array(N), iSide = new Float32Array(N), iRoute = new Float32Array(N);
   for (let k = 0; k < N; k++) {
@@ -303,8 +310,8 @@ let ZONES = [];
 
 function setRouteHighlight(i) {
   const R = ROUTES[i], ri = R.def.index;
-  for (let k = 0; k < pts.N; k++) routeBuf[k] = (pts.mask[k] >> ri) & 1;
-  routeAttr.needsUpdate = true; pointMat.uniforms.uRouteCol.value.set(R.def.color);
+  if (rib) rib.setRoute(ri, R.def.color);
+  if (routeBuf) { for (let k = 0; k < pts.N; k++) routeBuf[k] = (pts.mask[k] >> ri) & 1; routeAttr.needsUpdate = true; pointMat.uniforms.uRouteCol.value.set(R.def.color); }
 }
 
 function selectRoute(i, flyCam = true) {
@@ -363,9 +370,9 @@ function stopFly() { if (!fly) return; fly = null; controls.enabled = true; cont
 function routeBins(R) {
   if (R.bins) return R.bins;
   const ri = R.def.index, p = R.def.poly, s = R.def.s, bins = new Map();
-  for (let k = 0; k < pts.N; k++) {
-    if (!((pts.mask[k] >> ri) & 1)) continue;
-    const x = pts.f[k * 4], z = pts.f[k * 4 + 2]; let best = 1e18, bs = 0;
+  for (let k = 0; k < G.n; k++) {
+    if (!((G.mask[k] >> ri) & 1) || G.cls[k]) continue;
+    const x = G.x[k], z = G.z[k]; let best = 1e18, bs = 0;
     for (let i = 0; i + 1 < p.length; i++) {
       const ax = p[i][0], az = p[i][2], bx = p[i + 1][0] - ax, bz = p[i + 1][2] - az, L2 = bx * bx + bz * bz || 1;
       const t = clamp(((x - ax) * bx + (z - az) * bz) / L2, 0, 1), dx = x - ax - t * bx, dz = z - az - t * bz, d2 = dx * dx + dz * dz;
@@ -379,6 +386,7 @@ function flyReadout(s) {
   const R = fly.R, d = R.def; let lo = 0, hi = d.s.length - 1;
   while (hi - lo > 1) { const m = (lo + hi) >> 1; if (d.s[m] <= s) lo = m; else hi = m; }
   const street = d.streets[d.st[lo]] || '';
+  ensureWet();
   const bins = routeBins(R), b0 = Math.floor(s / 20); let sum = 0, n = 0;
   for (let b = b0 - 1; b <= b0 + 1; b++) for (const k of bins.get(b) || []) if (wetNow[k] >= 0) { sum += wetNow[k]; n++; }
   const w = n ? Math.round(sum / n) : null;
@@ -438,15 +446,69 @@ async function loadIndex() {
   throw lastErr || new Error('no replay data');
 }
 
+/* ---- street renderer mode: continuous ribbons (default when the night has streets_r + ribbons) or the old instanced quads (?ribbons=0).
+   G is the renderer-neutral sample table used by picking, route binning and the fly readout. */
+let rib = null, ribPath = '', ribMeta = null, useRib = false, wetDirty = true, curF = 0;
+let G = { n: 0, x: null, y: null, z: null, mask: null, cls: null, st: null, side: null, names: [] };
+async function ensureRibbons(n) {
+  if (rib && ribPath === n.ribbons) return;
+  const mp = n.ribbons.replace(/\.bin$/, '_meta.json');
+  const [buf, m] = await Promise.all([withTimeout(getBuf(n.ribbons), 60000, 'ribbons'), getJSON(mp)]);
+  const r = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch });
+  r.build(buf, m);
+  if (rib) rib.dispose();
+  rib = r; ribMeta = m; ribPath = n.ribbons; r.setSideVisible($('sidetoggle').checked);
+}
+function setMode(r) {
+  useRib = r;
+  if (r) {
+    if (pointsMesh) pointsMesh.visible = false;
+    rib.setVisible(true);
+    const S = rib.samples, x = new Float32Array(S.S), y = new Float32Array(S.S), z = new Float32Array(S.S);
+    for (let k = 0; k < S.S; k++) { x[k] = S.pos[k * 3]; y[k] = S.pos[k * 3 + 1]; z[k] = S.pos[k * 3 + 2]; }
+    G = { n: S.S, x, y, z, mask: S.mask, cls: S.cls, st: S.st, side: S.side, names: ribMeta.streets };
+    wetNow = new Float32Array(S.S).fill(-1);
+  } else {
+    buildPoints(); pointsMesh.visible = true; if (rib) rib.setVisible(false);
+    const N = pts.N, x = new Float32Array(N), z = new Float32Array(N);
+    for (let k = 0; k < N; k++) { x[k] = pts.f[k * 4]; z[k] = pts.f[k * 4 + 2]; }
+    G = { n: N, x, y: elevY, z, mask: pts.mask, cls: new Uint8Array(N), st: pts.st, side: pts.side, names: pts.streets };
+    wetNow = wetAttr.array;
+  }
+  ROUTES.forEach((R, k) => { R.bins = null; if (!r) { R.hi.visible = k === selRoute; R.dim.visible = k !== selRoute; } });
+  if (selRoute >= 0) setRouteHighlight(selRoute);
+  wetDirty = true; document.body.classList.toggle('ribbons', r);
+}
+function ensureWet() { if (useRib && wetDirty) { rib.fillWet(wetNow, curF); wetDirty = false; } }
+
 async function selectNight(i) {
   const n = index.nights[i]; setStatus(`Loading ${n.label}…`); overlay.classList.remove('hide');
-  const rows = (n.n_frames), want = rows * pts.N;
-  const [sb, wx] = await Promise.all([
-    withTimeout(getBuf(base + n.streets), 60000, 'street data'),
-    getJSON(base + n.weather).catch(() => null),
-  ]);
-  if (sb.byteLength !== want) throw new Error(`streets.u8 has ${sb.byteLength} bytes, expected ${want}`);
-  night = n; streets = new Uint8Array(sb); weather = wx; fogGrid = n.fog_grid;
+  const flag = new URLSearchParams(location.search).get('ribbons');
+  let useR = flag !== '0' && !!(n.streets_r && n.ribbons);
+  if (flag === '1' && !useR) toast('No ribbon data for this night: using the old street quads');
+  let sb = null, wx = null, ru8 = null;
+  if (useR) { // continuous ribbons: ribbons.bin/meta once, streets_r.u8 per night
+    try {
+      await ensureRibbons(n);
+      const [rb, w2] = await Promise.all([withTimeout(getBuf(base + n.streets_r), 60000, 'ribbon street data'), getJSON(base + n.weather).catch(() => null)]);
+      if (rb.byteLength !== n.n_frames * rib.samples.S) throw new Error(`streets_r.u8 has ${rb.byteLength} bytes, expected ${n.n_frames * rib.samples.S}`);
+      ru8 = new Uint8Array(rb); wx = w2;
+    } catch (e) {
+      console.warn(e); if (!n.streets) throw e;
+      toast('Ribbons unavailable (' + e.message + '): using the old street quads'); useR = false;
+    }
+  }
+  if (!useR) {
+    const want = n.n_frames * pts.N;
+    let w2;
+    [sb, w2] = await Promise.all([withTimeout(getBuf(base + n.streets), 60000, 'street data'), getJSON(base + n.weather).catch(() => null)]);
+    if (sb.byteLength !== want) throw new Error(`streets.u8 has ${sb.byteLength} bytes, expected ${want}`);
+    wx = w2;
+  }
+  setMode(useR);
+  night = n; streets = sb ? new Uint8Array(sb) : null; weather = wx; fogGrid = n.fog_grid;
+  if (useR) rib.setNight(ru8, n.n_frames);
+  wetDirty = true;
   $('slider').max = n.n_frames - 1; $('wx-note').hidden = !n.approx_direction;
   const ok = n.fog && fogGrid ? await fog.build(base + n.fog, fogGrid) : false;
   $('fogtoggle').disabled = !ok; $('fogdens').disabled = !ok; if (!ok) $('fogtoggle').checked = false;
@@ -471,10 +533,16 @@ function applyTime(force) {
   $('clock').textContent = w.time; $('clock-sub').textContent = w.day + ' ' + tzName(night.start_iso);
   if (document.activeElement !== $('slider') || force) $('slider').value = f;
   const key = Math.round(f * 20);
+  curF = f;
+  if (useRib) rib.setFrame(f); // three uniform writes, nothing else
   if (force || key !== lastFrameKey) {
-    lastFrameKey = key; const N = pts.N, A = a * N, B = b * N;
-    for (let k = 0; k < N; k++) wetNow[k] = (streets[A + k] * (1 - u) + streets[B + k] * u) / 100 * 100;
-    wetAttr.needsUpdate = true;
+    lastFrameKey = key;
+    if (useRib) wetDirty = true;
+    else {
+      const N = pts.N, A = a * N, B = b * N;
+      for (let k = 0; k < N; k++) wetNow[k] = (streets[A + k] * (1 - u) + streets[B + k] * u) / 100 * 100;
+      wetAttr.needsUpdate = true;
+    }
     if (weather) {
       const i = Math.round(f), g = (arr, d = 0) => (arr && arr[i] != null ? arr[i].toFixed(d) : '--');
       const gF = (arr) => (arr && arr[i] != null ? (arr[i] * 9 / 5 + 32).toFixed(0) : '--'); // deg C to deg F
@@ -501,6 +569,7 @@ $('speed').addEventListener('click', (e) => {
 $('night').addEventListener('change', async (e) => { setPlaying(false); try { await selectNight(+e.target.value); } catch (err) { setStatus('Could not load this night: ' + err.message, true); } });
 $('fogtoggle').addEventListener('change', (e) => fog.setVisible(e.target.checked));
 $('fogdens').addEventListener('input', (e) => fog.setDensity(+e.target.value / 100));
+$('sidetoggle').addEventListener('change', (e) => { if (rib) rib.setSideVisible(e.target.checked); });
 $('bldtoggle').addEventListener('change', (e) => { if (buildingsMesh) buildingsMesh.visible = e.target.checked; });
 
 /* camera flights */
@@ -515,12 +584,14 @@ const ease = (t) => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const tip = $('tip'); let hoverIdx = -1, hoverXY = [0, 0];
 const v3 = new THREE.Vector3();
 function pick(cx, cy, maxPx) {
-  if (!pts || !night) return -1;
+  if (!G.n || !night) return -1;
   if (camera.position.distanceTo(controls.target) > 9000) return -1;
   camera.updateMatrixWorld(); const m = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements;
   const W = innerWidth, H = innerHeight; let best = -1, bd = maxPx * maxPx;
-  for (let k = 0; k < pts.N; k++) {
-    const x = pts.f[k * 4], y = elevY[k], z = pts.f[k * 4 + 2];
+  const skipSide = useRib && (!rib.uniforms.uSideVis.value || rib.uniforms.uSideFade.value < 0.3); // hidden side blocks are not pickable
+  for (let k = 0; k < G.n; k++) {
+    if (skipSide && G.cls[k]) continue;
+    const x = G.x[k], y = G.y[k], z = G.z[k];
     const w = m[3] * x + m[7] * y + m[11] * z + m[15]; if (w <= 0) continue;
     const sx = ((m[0] * x + m[4] * y + m[8] * z + m[12]) / w * .5 + .5) * W, sy = (1 - ((m[1] * x + m[5] * y + m[9] * z + m[13]) / w * .5 + .5)) * H;
     const d = (sx - cx) ** 2 + (sy - cy) ** 2; if (d < bd) { bd = d; best = k; }
@@ -528,8 +599,10 @@ function pick(cx, cy, maxPx) {
   return best;
 }
 function showTip(k, xy) {
+  ensureWet();
   const v = wetNow[k], cat = CATS[v < 20 ? 0 : v < 50 ? 1 : v < 80 ? 2 : v < 95 ? 3 : 4];
-  tip.innerHTML = `<span class="sw" style="background:${rgbCss(rampColor(v))}"></span><b>${Math.round(v)}</b> · ${cat}<br>${pts.streets[pts.st[k]]}, ${pts.side[k] ? 'right' : 'left'} side${selRoute >= 0 && ((pts.mask[k] >> ROUTES[selRoute].def.index) & 1) ? ' · on route' : ''}`;
+  const when = night ? wall(night.start_iso, curF * night.step_min).time : '';
+  tip.innerHTML = v < 0 ? `no data<br>${G.names[G.st[k]]}` : `<span class="sw" style="background:${rgbCss(rampColor(v))}"></span><b>${Math.round(v)}</b> · ${cat}${useRib ? ' (modelled)' : ''}<br>${G.names[G.st[k]]}, ${G.side[k] ? 'right' : 'left'} side${selRoute >= 0 && ((G.mask[k] >> ROUTES[selRoute].def.index) & 1) ? ' · on route' : G.cls[k] ? ' · side street' : ''} · ${when}`;
   tip.hidden = false;
   tip.style.left = clamp(xy[0], 125, innerWidth - 125) + 'px'; tip.style.top = Math.max(xy[1], 90) + 'px';
 }
@@ -567,7 +640,12 @@ function frame(ts) {
   controls.update();
   const dist = camera.position.distanceTo(controls.target);
   fog.update(camera, dist, ts / 1000);
-  if (pointMat) pointMat.uniforms.uScale.value = clamp(dist / 450, 1, 12);
+  if (pointMat && !useRib) pointMat.uniforms.uScale.value = clamp(dist / 450, 1, 12);
+  if (useRib) {
+    rib.setLod(dist);
+    // route tubes would hide the ribbons (the ribbon outline carries the route colour); keep them only for the far view
+    const tubes = dist > 2200; ROUTES.forEach((r, k) => { r.hi.visible = tubes && k === selRoute; r.dim.visible = tubes && k !== selRoute; });
+  }
   const bs = clamp(dist / 450, 1, 80); beacons.forEach((b) => b.scale.set(bs * 1.5, 1, bs * 1.5));
   const showLbl = dist < 3500;
   const edge = innerWidth < innerHeight ? 0.9 : 1.1;
@@ -588,7 +666,7 @@ function frame(ts) {
     const [pb, pj] = await Promise.all([withTimeout(getBuf('data/points.bin'), 30000, 'points'), getJSON('data/points.json')]);
     setStatus('Loading terrain and buildings…');
     await loadMeshes();
-    buildPoints(pb, pj); await initRoutes();
+    PB = pb; PJ = pj; parsePts(pb, pj); await initRoutes();
     requestAnimationFrame(frame);
     setStatus('Loading replay…');
     let idx, dir;
@@ -614,4 +692,4 @@ function frame(ts) {
   }
 })();
 
-window.__dbg = { camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
+window.__dbg = { stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
