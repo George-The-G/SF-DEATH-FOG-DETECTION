@@ -150,7 +150,7 @@ def build(write=True, verbose=True):
     zdir = DATA / "grids" / "zone"
     zones = json.load(open(zdir / "zones.json"))["zones"]
     resolved = json.load(open(zdir / "routes_resolved.json"))
-    rows = list(csv.DictReader(open(zdir / "points.csv", newline="")))
+    rows = list(csv.DictReader(open(zdir / "points.csv", newline="", encoding="utf-8")))
     R = {k: [] for k in ("x", "y", "z")}
     streets, sidx = [], {}
     samples = []          # dict per sample

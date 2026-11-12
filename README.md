@@ -82,6 +82,10 @@ Everything per-route lives in `routes.toml` (zones, route ids, names, colours, w
    `site/v3/data/{points.bin,points.json,routes.json}` and `site/v3/replay/`. Unchanged steps are
    skipped (mtime); use `--force`, `--from <step>` or `--only <step>` to override, `--no-validate` to skip checks.
    Overlay PNGs for eyeballing the match are written to `grids/zone/routes/<id>.png`.
+   The last step regenerates the street ribbons automatically (`site/v3/data/ribbons.bin`,
+   `ribbons_meta.json` and `replay/<night>/streets_r.u8`): each route plus one street block out of every
+   junction it passes through, nothing to configure per route (optional global `[ribbons]` table:
+   `width_m`, `highways`). Overlays: `grids/zone/routes/ribbons_<zone>.png`.
 3. Look at the overlays, then commit. `site/v3` is gitignored, so use `git add -f site/v3/data site/v3/replay`.
 
 Route bits are assigned in `routes.toml` order, so append new routes at the end. The Potrero route

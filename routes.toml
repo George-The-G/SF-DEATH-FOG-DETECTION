@@ -18,6 +18,15 @@
 #   drawn        (optional) key of the hand-drawn line in routes_drawn.json, only used for the comparison overlay PNG
 #   start_label / end_label   optional text on the beacons (default: the first / last waypoint)
 
+# [ribbons]  global, optional: the street ribbons the 3-D viewer draws (each route plus ONE street block out of every junction the
+# route passes through; regenerated automatically by `python -m microclimate routes`, no per-route settings).
+#   width_m     ribbon width in metres (default 6.5)
+#   highways    OSM highway classes that count as streets for the side blocks (default: residential, tertiary, secondary, primary,
+#               unclassified, living_street, trunk; never service roads, alleys, steps, footways or *_link)
+[ribbons]
+width_m = 6.5
+highways = ["residential", "tertiary", "secondary", "primary", "unclassified", "living_street", "trunk"]
+
 [zone.potrero]
 name = "Potrero Hill"
 builder = "disc"

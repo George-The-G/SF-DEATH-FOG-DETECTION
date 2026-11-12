@@ -1,6 +1,7 @@
 """Multi-route support: routes.toml -> resolved street routes -> combined street-point table -> the rest of the pipeline.
 
-`python -m microclimate routes` runs: geometry (resolve routes, zone points) -> street -> sun -> replay -> viewer data -> validate,
+`python -m microclimate routes` runs: geometry (resolve routes, zone points) -> street -> sun -> replay -> viewer data -> validate -> ribbons
+(site/v3/data/ribbons.bin + ribbons_meta.json, replay/<night>/streets_r.u8: each route plus one street block out of every junction),
 skipping steps whose outputs are newer than their inputs (`--force` reruns everything, `--from STEP` reruns from a step on).
 
 Outputs (deathfog-data/grids/zone/): points.csv (all zones; the Potrero rows are byte-identical to potrero_points.csv plus two
@@ -500,7 +501,14 @@ def fresh(outputs, inputs):
     return min(_mt(outputs)) >= max(_mt(inputs) or [0])
 
 
-STEPS = ["geometry", "street", "sun", "replay", "viewer", "validate"]
+STEPS = ["geometry", "street", "sun", "replay", "viewer", "validate", "ribbons"]
+
+
+def step_ribbons():
+    """Street ribbons for the viewer: ribbons.bin + ribbons_meta.json (make_ribbons.py), streets_r.u8 per night (reslice_replay.py)."""
+    tools = ROOT / "site" / "v3" / "tools"
+    subprocess.run([sys.executable, str(tools / "make_ribbons.py")], check=True, cwd=ROOT)
+    subprocess.run([sys.executable, str(tools / "reslice_replay.py")], check=True, cwd=ROOT)
 
 
 def run(cfg, data, argv):
@@ -529,6 +537,14 @@ def run(cfg, data, argv):
                    [z / "points.csv", z / "routes_resolved.json", ROOT / "site" / "v3" / "tools" / "make_points.py", src / "routes.py"]),
         "validate": ([rep / "validation.json"], [rep / "index.json", src / "validate.py"]),
     }
+    vdata, tools = ROOT / "site" / "v3" / "data", ROOT / "site" / "v3" / "tools"
+    nights = []
+    if (rep / "index.json").exists():
+        nights = [n["id"] for n in json.load(open(rep / "index.json", encoding="utf-8"))["nights"]]
+    plan["ribbons"] = ([vdata / "ribbons.bin", vdata / "ribbons_meta.json"] + [rep / d / "streets_r.u8" for d in nights],
+                       [z / "points.csv", z / "zones.json", z / "routes_resolved.json", ROOT / "routes.toml", vdata / "meta.json",
+                        tools / "make_ribbons.py", tools / "reslice_replay.py", rep / "index.json"]
+                       + [rep / d / "streets.u8" for d in nights] + osm_files)
     rerun = force
     graphs = resolved = zones = None
     for st in STEPS:
@@ -566,5 +582,7 @@ def run(cfg, data, argv):
             ok = validate.run(cfg, data, rep)
             validate.overview(cfg, data, rep)
             print("  validation", "PASS" if ok else "FAIL", flush=True)
+        elif st == "ribbons":
+            step_ribbons()
         print(f"[{st}] done in {time.time() - t0:.0f} s", flush=True)
     return 0
