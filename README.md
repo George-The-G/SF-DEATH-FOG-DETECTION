@@ -69,6 +69,24 @@ A detector never sees a provider name; it gets a `WeatherState`. A source never 
 `report` | `import-reports FILE|--url URL` | `verify` | `nws-stations` | `plugins`.
 Needs Python 3.11+, nothing to install. Tests: `python3 -m unittest discover -s tests`.
 
+## Adding a route
+
+Everything per-route lives in `routes.toml` (zones, route ids, names, colours, waypoints).
+
+1. Edit `routes.toml`. Add a `[[route]]` with `id`, `name` ("Zone: Street (colour)"), `zone`, `color`
+   and `waypoints`: a list of intersections such as `"9th Ave & Judah St"` or `"lat,lon"` strings,
+   listed from the top of the hill down (the flag end should be the low end). A new area needs a
+   `[zone.<id>]` table with `builder = "corridor"`, `corridor_m` and `osm_bbox`.
+2. Run `python -m microclimate routes`. It resolves the waypoints on OSM streets, rebuilds
+   `grids/zone/points.csv`, street features, sun windows, the replay and validation, and regenerates
+   `site/v3/data/{points.bin,points.json,routes.json}` and `site/v3/replay/`. Unchanged steps are
+   skipped (mtime); use `--force`, `--from <step>` or `--only <step>` to override, `--no-validate` to skip checks.
+   Overlay PNGs for eyeballing the match are written to `grids/zone/routes/<id>.png`.
+3. Look at the overlays, then commit. `site/v3` is gitignored, so use `git add -f site/v3/data site/v3/replay`.
+
+Route bits are assigned in `routes.toml` order, so append new routes at the end. The Potrero route
+(route 1) is regression-checked against `tests_mc/baseline_potrero.json`.
+
 ## Know the limits
 
 * Free model data is ~3 km at best. It can't see shade, trees or parked cars, so `susceptibility` per zone and your

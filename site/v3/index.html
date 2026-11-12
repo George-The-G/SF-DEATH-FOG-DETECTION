@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#070b14">
 <title>Death Fog 3D</title>
-<meta name="description" content="Overnight wet-street replay of San Francisco's Potrero Hill: a 20 m proof-of-concept simulation.">
+<meta name="description" content="Overnight wet-street replay for skate routes in San Francisco (Potrero Hill, Golden Gate Heights): a 20 m proof-of-concept simulation.">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 { "imports": {
@@ -22,9 +22,23 @@
   <div class="poc">Proof of concept: 20 m simulation, not a forecast</div>
   <div class="views">
     <button id="btn-city" type="button">City</button>
-    <button id="btn-route" type="button" class="accent">Potrero route</button>
+    <button id="rbtn" type="button" class="accent" aria-haspopup="listbox" aria-expanded="false" aria-controls="rpop"><span class="sw" id="rsw"></span><span id="rlabel">Routes</span><span class="car">&#9662;</span></button>
   </div>
 </header>
+
+<div id="rpop" role="dialog" aria-label="Choose a skate route" hidden><div id="rlist" role="listbox"></div></div>
+
+<section id="routecard" aria-label="Selected route" hidden>
+  <div class="rc-top"><span class="sw" id="rcsw"></span><b id="rcname"></b></div>
+  <div class="rc-stats" id="rcstats"></div>
+  <div class="rc-btns">
+    <button id="fly" type="button" class="accent">Fly the route</button>
+    <button id="flypause" type="button" aria-label="Pause" hidden>&#10074;&#10074;</button>
+    <button id="flystop" type="button" aria-label="Stop" hidden>&#9632;</button>
+    <div class="seg" id="flyspeed" role="group" aria-label="Fly speed" hidden><button type="button" data-s="1" class="on">1x</button><button type="button" data-s="2">2x</button></div>
+  </div>
+  <div class="rc-info" id="rcinfo" hidden></div>
+</section>
 
 <aside id="weather" aria-label="Weather readout">
   <div class="wx"><span class="k">Temp</span><span class="v" id="wx-temp">--</span></div>

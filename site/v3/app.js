@@ -208,16 +208,17 @@ function buildBuildings(buf) {
 }
 
 /* ------------------------------------------------------------------ street points */
-let wetAttr = null, pointsMesh = null, pointMat = null, elevY = null, wetNow = null;
+let wetAttr = null, pointsMesh = null, pointMat = null, elevY = null, wetNow = null, routeAttr = null, routeBuf = null;
 function buildPoints(bin, info) {
   const N = info.n;
   const f = new Float32Array(bin, 0, N * 4), side = new Uint8Array(bin, N * 16, N), route = new Uint8Array(bin, N * 17, N), st = new Uint16Array(bin, N * 18, N);
-  pts = { N, f, side, route, st, streets: info.streets };
+  const mask = new Uint16Array(bin, N * 20, N), zone = new Uint8Array(bin, N * 22, N); // bit i of mask = on route i (routes.json index)
+  pts = { N, f, side, route, st, mask, zone, streets: info.streets, zones: info.zones };
   elevY = new Float32Array(N);
   const iPos = new Float32Array(N * 3), iBear = new Float32Array(N), iSide = new Float32Array(N), iRoute = new Float32Array(N);
   for (let k = 0; k < N; k++) {
     const x = f[k * 4], z = f[k * 4 + 2], y = Math.max(f[k * 4 + 1] * EX, terrainH ? terrainH.at(x, z) : 0) + 1.5;
-    elevY[k] = y; iPos.set([x, y, z], k * 3); iBear[k] = f[k * 4 + 3]; iSide[k] = side[k]; iRoute[k] = route[k];
+    elevY[k] = y; iPos.set([x, y, z], k * 3); iBear[k] = f[k * 4 + 3]; iSide[k] = side[k]; iRoute[k] = 0;
   }
   const q = new THREE.InstancedBufferGeometry();
   q.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-.5, 0, -.5, .5, 0, -.5, .5, 0, .5, -.5, 0, .5]), 3));
@@ -225,12 +226,12 @@ function buildPoints(bin, info) {
   q.setAttribute('iPos', new THREE.InstancedBufferAttribute(iPos, 3));
   q.setAttribute('iBear', new THREE.InstancedBufferAttribute(iBear, 1));
   q.setAttribute('iSide', new THREE.InstancedBufferAttribute(iSide, 1));
-  q.setAttribute('iRoute', new THREE.InstancedBufferAttribute(iRoute, 1));
+  routeAttr = new THREE.InstancedBufferAttribute(iRoute, 1); routeAttr.setUsage(THREE.DynamicDrawUsage); routeBuf = iRoute; q.setAttribute('iRoute', routeAttr);
   wetNow = new Float32Array(N).fill(-1);
   wetAttr = new THREE.InstancedBufferAttribute(wetNow, 1); wetAttr.setUsage(THREE.DynamicDrawUsage);
   q.setAttribute('iWet', wetAttr);
   pointMat = new THREE.ShaderMaterial({
-    uniforms: { uScale: { value: 1 } },
+    uniforms: { uScale: { value: 1 }, uRouteCol: { value: new THREE.Color(0x5ef2ff) } },
     vertexShader: `
       attribute vec3 iPos; attribute float iBear, iSide, iWet, iRoute;
       uniform float uScale; varying float vWet, vRoute; varying vec2 vUv;
@@ -242,11 +243,11 @@ function buildPoints(bin, info) {
         gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.);
       }`,
     fragmentShader: `
-      precision highp float; varying float vWet, vRoute; varying vec2 vUv;
+      precision highp float; varying float vWet, vRoute; varying vec2 vUv; uniform vec3 uRouteCol;
       ${glslRamp}
       void main(){
         vec3 c = vWet < 0. ? vec3(.25,.28,.34) : ramp(vWet);
-        if (vRoute > .5) { vec2 e = abs(vUv - .5); if (max(e.x * 1.0, e.y * .5) > .4 && e.x > .36) c = mix(c, vec3(.37,.95,1.), .9); }
+        if (vRoute > .5) { vec2 e = abs(vUv - .5); if (max(e.x * 1.0, e.y * .5) > .4 && e.x > .36) c = mix(c, uRouteCol, .9); }
         gl_FragColor = vec4(c, 1.);
       }`,
     side: THREE.DoubleSide, transparent: true, // transparent pass so it sorts after the fog sheets (alpha stays 1)
@@ -255,26 +256,167 @@ function buildPoints(bin, info) {
   scene.add(pointsMesh);
 }
 
-/* ------------------------------------------------------------------ route + beacons */
-const ROUTE = { mid: new THREE.Vector3(), start: null, bus: null };
+/* ------------------------------------------------------------------ routes: picker, beacons, fly-along
+   data/routes.json (written by `python -m microclimate routes`): per route poly [x,y,z] scene metres, s = cumulative metres,
+   st = street index per vertex into streets, start/end {label, p}. All routes show as thin dim lines; the selected one is bright. */
+let ROUTES = [], selRoute = -1, fly = null, flySpeed = 1;
 const labelEls = [];
 const beacons = [];
-function buildRoute(info) {
-  if (!info.route || info.route.length < 2) return;
-  const lift = (p) => new THREE.Vector3(p[0], Math.max(p[1] * EX, terrainH ? terrainH.at(p[0], p[2]) : 0) + 3, p[2]);
-  const rp = info.route.map(lift);
-  const curve = new THREE.CatmullRomCurve3(rp, false, 'catmullrom', 0.1);
-  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 300, 2.4, 6, false), new THREE.MeshBasicMaterial({ color: 0x5ef2ff }));
-  tube.renderOrder = 3; scene.add(tube);
-  ROUTE.mid.copy(rp[Math.floor(rp.length / 2)]);
-  ROUTE.start = rp[0]; ROUTE.bus = info.bus_stop ? lift(info.bus_stop) : rp[rp.length - 1];
-  const mk = (p, text, col) => {
+const mi = (m) => (m / 1609.344).toFixed(2), ft = (m) => Math.round(m * 3.28084).toLocaleString('en-US');
+const lift = (p) => new THREE.Vector3(p[0], Math.max(p[1] * EX, terrainH ? terrainH.at(p[0], p[2]) : 0) + 3, p[2]);
+const shortName = (r, zones) => r.name.replace((zones.find((z) => z.id === r.zone) || {}).name + ': ', '');
+
+function buildRoutes(rj) {
+  ROUTES = rj.routes.map((def) => {
+    const p3 = def.poly.map(lift), curve = new THREE.CatmullRomCurve3(p3, false, 'catmullrom', 0.1), segs = Math.min(1200, p3.length * 3);
+    const mat = (op) => new THREE.MeshBasicMaterial({ color: def.color, transparent: op < 1, opacity: op });
+    const dim = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 3.2, 5, false), mat(0.5));
+    const hi = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 5.5, 6, false), mat(1));
+    dim.renderOrder = hi.renderOrder = 3; hi.visible = false; scene.add(dim, hi);
+    const xs = p3.map((p) => p.x), zs = p3.map((p) => p.z), ys = p3.map((p) => p.y);
+    const ext = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs), 500);
+    return { def, p3, curve, dim, hi, len: def.s[def.s.length - 1], bins: null,
+      bb: { cx: (Math.min(...xs) + Math.max(...xs)) / 2, cz: (Math.min(...zs) + Math.max(...zs)) / 2, cy: ys.reduce((a, b) => a + b, 0) / ys.length, ext } };
+  });
+  for (const col of [0x5ef2ff, 0xf2c230]) {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 700, 14, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    m.position.set(p.x, p.y + 350, p.z); scene.add(m); beacons.push(m);
-    const el = document.createElement('div'); el.className = 'lbl'; el.textContent = text; $('labels').appendChild(el); labelEls.push({ el, p: p.clone().add(new THREE.Vector3(0, 30, 0)) });
-  };
-  mk(ROUTE.start, 'Start: 20th & Kansas', 0x5ef2ff);
-  mk(ROUTE.bus, 'Bus stop: 15th & Rhode Island', 0xf2c230);
+    m.visible = false; scene.add(m); beacons.push(m);
+    const el = document.createElement('div'); el.className = 'lbl'; el.style.display = 'none'; $('labels').appendChild(el); labelEls.push({ el, p: new THREE.Vector3(), on: false });
+  }
+  // picker: grouped by zone, colour swatch per route
+  const list = $('rlist'); list.innerHTML = '';
+  for (const z of rj.zones) {
+    const rs = ROUTES.map((r, i) => [r, i]).filter(([r]) => r.def.zone === z.id);
+    if (!rs.length) continue;
+    const h = document.createElement('div'); h.className = 'rzone'; h.textContent = z.name; list.appendChild(h);
+    for (const [r, i] of rs) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'ritem'; b.dataset.i = i; b.setAttribute('role', 'option');
+      b.innerHTML = `<span class="sw" style="background:${r.def.color}"></span><span class="rn"></span><span class="rm">${mi(r.len)} mi · ${ft(r.def.drop_m)} ft drop</span>`;
+      b.querySelector('.rn').textContent = shortName(r.def, rj.zones);
+      list.appendChild(b);
+    }
+  }
+  ZONES = rj.zones;
+  $('rbtn').disabled = !ROUTES.length;
+}
+let ZONES = [];
+
+function setRouteHighlight(i) {
+  const R = ROUTES[i], ri = R.def.index;
+  for (let k = 0; k < pts.N; k++) routeBuf[k] = (pts.mask[k] >> ri) & 1;
+  routeAttr.needsUpdate = true; pointMat.uniforms.uRouteCol.value.set(R.def.color);
+}
+
+function selectRoute(i, flyCam = true) {
+  const R = ROUTES[i]; if (!R) return;
+  stopFly(); selRoute = i;
+  ROUTES.forEach((r, k) => { r.hi.visible = k === i; r.dim.visible = k !== i; });
+  setRouteHighlight(i);
+  [R.def.start, R.def.end].forEach((e, j) => {
+    const p = lift(e.p); beacons[j].position.set(p.x, p.y + 350, p.z); beacons[j].visible = true;
+    labelEls[j].p.copy(p).add(new THREE.Vector3(0, 30, 0)); labelEls[j].el.textContent = e.label; labelEls[j].on = true;
+  });
+  $('rsw').style.background = R.def.color; $('rlabel').textContent = shortName(R.def, ZONES);
+  $('rcsw').style.background = R.def.color; $('rcname').textContent = R.def.name;
+  $('rcstats').textContent = `${mi(R.len)} mi · drops ${ft(R.def.drop_m)} ft` + (R.def.climb_m >= 3 ? ` · ${ft(R.def.climb_m)} ft of climbing` : '');
+  $('routecard').hidden = false;
+  [...$('rlist').querySelectorAll('.ritem')].forEach((b) => b.classList.toggle('on', +b.dataset.i === i));
+  flyUI(); closePicker();
+  if (flyCam) flyToRoute(R);
+}
+
+function flyToRoute(R) {
+  const por = innerWidth < innerHeight, b = R.bb, E = b.ext;
+  const tgt = new THREE.Vector3(b.cx, b.cy - 10, b.cz);
+  const dir = por ? new THREE.Vector3(0.3, 0, 0.95) : new THREE.Vector3(0.86, 0, 0.5), d = E * (por ? 1.25 : 0.95);
+  const pos = new THREE.Vector3(b.cx + dir.x * d, b.cy + d * 0.55 + 80, b.cz + dir.z * d);
+  if (terrainH) pos.y = Math.max(pos.y, terrainH.at(pos.x, pos.z) + 60);
+  flyTo(pos, tgt, 2800);
+}
+
+/* picker popover */
+function closePicker() { $('rpop').hidden = true; $('rbtn').setAttribute('aria-expanded', 'false'); }
+$('rbtn').onclick = () => { const o = $('rpop').hidden; $('rpop').hidden = !o; $('rbtn').setAttribute('aria-expanded', String(o)); };
+$('rlist').addEventListener('click', (e) => { const b = e.target.closest('.ritem'); if (b) selectRoute(+b.dataset.i, true); });
+document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#rpop, #rbtn')) closePicker(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePicker(); stopFly(); } });
+
+/* fly-along: chase camera that looks ahead along the route polyline */
+const FLY = { back: 150, ahead: 130, up: 62 };
+function flyUI() {
+  const on = !!fly;
+  $('fly').hidden = on; $('flypause').hidden = !on; $('flystop').hidden = !on; $('flyspeed').hidden = !on; $('rcinfo').hidden = !on;
+  if (on) {
+    const paused = fly.paused;
+    $('flypause').innerHTML = fly.done ? '&#8635;' : paused ? '&#9654;' : '&#10074;&#10074;';
+    $('flypause').setAttribute('aria-label', fly.done ? 'Replay' : paused ? 'Resume' : 'Pause');
+  }
+  [...$('flyspeed').children].forEach((c) => c.classList.toggle('on', +c.dataset.s === flySpeed));
+}
+function startFly() {
+  const R = ROUTES[selRoute]; if (!R) { toast('Pick a route first'); return; }
+  flight = null; hideTip(); controls.enabled = false;
+  fly = { R, u: 0, paused: false, done: false, last: 0, cam: camera.position.clone(), tgt: controls.target.clone(), txt: '' };
+  flyUI();
+}
+function stopFly() { if (!fly) return; fly = null; controls.enabled = true; controls.update(); flyUI(); }
+function routeBins(R) {
+  if (R.bins) return R.bins;
+  const ri = R.def.index, p = R.def.poly, s = R.def.s, bins = new Map();
+  for (let k = 0; k < pts.N; k++) {
+    if (!((pts.mask[k] >> ri) & 1)) continue;
+    const x = pts.f[k * 4], z = pts.f[k * 4 + 2]; let best = 1e18, bs = 0;
+    for (let i = 0; i + 1 < p.length; i++) {
+      const ax = p[i][0], az = p[i][2], bx = p[i + 1][0] - ax, bz = p[i + 1][2] - az, L2 = bx * bx + bz * bz || 1;
+      const t = clamp(((x - ax) * bx + (z - az) * bz) / L2, 0, 1), dx = x - ax - t * bx, dz = z - az - t * bz, d2 = dx * dx + dz * dz;
+      if (d2 < best) { best = d2; bs = s[i] + t * (s[i + 1] - s[i]); }
+    }
+    const b = Math.floor(bs / 20); if (!bins.has(b)) bins.set(b, []); bins.get(b).push(k);
+  }
+  return (R.bins = bins);
+}
+function flyReadout(s) {
+  const R = fly.R, d = R.def; let lo = 0, hi = d.s.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (d.s[m] <= s) lo = m; else hi = m; }
+  const street = d.streets[d.st[lo]] || '';
+  const bins = routeBins(R), b0 = Math.floor(s / 20); let sum = 0, n = 0;
+  for (let b = b0 - 1; b <= b0 + 1; b++) for (const k of bins.get(b) || []) if (wetNow[k] >= 0) { sum += wetNow[k]; n++; }
+  const w = n ? Math.round(sum / n) : null;
+  const txt = `${street}|${w}`;
+  if (txt !== fly.txt) {
+    fly.txt = txt;
+    $('rcinfo').innerHTML = `<span class="rc-st"></span>` + (w == null ? '' : ` <span class="sw" style="background:${rgbCss(rampColor(w))}"></span><b>${w}</b> wetness`);
+    $('rcinfo').querySelector('.rc-st').textContent = street;
+  }
+}
+function flyStep(ts) {
+  if (!fly) return;
+  const dt = fly.last ? Math.min(0.1, (ts - fly.last) / 1000) : 0; fly.last = ts;
+  const R = fly.R, dur = clamp(R.len / 80, 15, 25);
+  if (!fly.paused) { fly.u = Math.min(1, fly.u + dt * flySpeed / dur); if (fly.u >= 1) { fly.done = true; fly.paused = true; flyUI(); } }
+  const u = fly.u, p = 0.5 * u + 0.5 * u * u * (3 - 2 * u), s = p * R.len;
+  const at = (m) => R.curve.getPointAt(clamp(m / R.len, 0, 1));
+  const c = at(s - FLY.back), t = at(s + FLY.ahead);
+  c.y = Math.max(c.y, terrainH ? terrainH.at(c.x, c.z) : c.y) + FLY.up; t.y += 6;
+  const k = fly.last && dt ? 1 - Math.exp(-dt * 3.5) : 0;
+  fly.cam.lerp(c, k); fly.tgt.lerp(t, k);
+  camera.position.copy(fly.cam); controls.target.copy(fly.tgt);
+  flyReadout(s);
+}
+$('fly').onclick = startFly;
+$('flystop').onclick = stopFly;
+$('flypause').onclick = () => { if (!fly) return; if (fly.done) { fly.u = 0; fly.done = false; fly.paused = false; } else fly.paused = !fly.paused; flyUI(); };
+$('flyspeed').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; flySpeed = +b.dataset.s; flyUI(); });
+
+async function initRoutes() {
+  try { buildRoutes(await withTimeout(getJSON('data/routes.json'), 15000, 'routes')); } catch (e) { console.warn(e); toast('Routes failed to load'); $('rbtn').disabled = true; }
+}
+function applyUrlRoute() { // ?route=<id> selects and flies to it, &fly=1 starts the fly-along at once
+  if (!ROUTES.length) return;
+  const q = new URLSearchParams(location.search), id = q.get('route'), i = Math.max(0, ROUTES.findIndex((r) => r.def.id === id));
+  selectRoute(i, false);
+  if (id) { flyToRoute(ROUTES[i]); if (flight) flight.dur = 1; }
+  if (q.get('fly')) startFly();
 }
 
 /* ------------------------------------------------------------------ fog layer (see fog.js) */
@@ -335,8 +477,9 @@ function applyTime(force) {
     wetAttr.needsUpdate = true;
     if (weather) {
       const i = Math.round(f), g = (arr, d = 0) => (arr && arr[i] != null ? arr[i].toFixed(d) : '--');
-      $('wx-temp').textContent = g(weather.temp_c, 1) + ' °C'; $('wx-dew').textContent = g(weather.dewpoint_c, 1) + ' °C';
-      $('wx-wind').textContent = g(weather.wind_ms, 1) + ' m/s ' + (weather.wind_dir ? compass(weather.wind_dir[i]) : '');
+      const gF = (arr) => (arr && arr[i] != null ? (arr[i] * 9 / 5 + 32).toFixed(0) : '--'); // deg C to deg F
+      $('wx-temp').textContent = gF(weather.temp_c) + ' °F'; $('wx-dew').textContent = gF(weather.dewpoint_c) + ' °F';
+      $('wx-wind').textContent = (weather.wind_ms && weather.wind_ms[i] != null ? (weather.wind_ms[i] * 2.23694).toFixed(0) : '--') + ' mph ' + (weather.wind_dir ? compass(weather.wind_dir[i]) : '');
       $('wx-cloud').textContent = g(weather.cloud_low_pct, 0) + ' %';
       const s = weather.sun_el ? weather.sun_el[i] : null; $('wx-sun').textContent = s == null ? '--' : (s > 0 ? 'up ' : 'down ') + s.toFixed(0) + '°';
     }
@@ -366,11 +509,6 @@ function flyTo(pos, tgt, dur = 2600) {
   flight = { t0: performance.now(), dur, p0: camera.position.clone(), t0v: controls.target.clone(), p1: pos.clone(), t1: tgt.clone() };
 }
 $('btn-city').onclick = () => flyTo(CITY.pos, CITY.target, 2200);
-$('btn-route').onclick = () => {
-  if (!ROUTE.start) { toast('Route not available'); return; }
-  const m = ROUTE.mid;
-  const por = innerWidth < innerHeight, k = por ? 2.6 : 1; flyTo(new THREE.Vector3(m.x + 520 * k, m.y + 430 * k, m.z + 560 * k), new THREE.Vector3(m.x, m.y - 20, m.z - 40), 2800);
-};
 const ease = (t) => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
 /* ------------------------------------------------------------------ picking */
@@ -391,13 +529,13 @@ function pick(cx, cy, maxPx) {
 }
 function showTip(k, xy) {
   const v = wetNow[k], cat = CATS[v < 20 ? 0 : v < 50 ? 1 : v < 80 ? 2 : v < 95 ? 3 : 4];
-  tip.innerHTML = `<span class="sw" style="background:${rgbCss(rampColor(v))}"></span><b>${Math.round(v)}</b> · ${cat}<br>${pts.streets[pts.st[k]]}, ${pts.side[k] ? 'right' : 'left'} side${pts.route[k] ? ' · on route' : ''}`;
+  tip.innerHTML = `<span class="sw" style="background:${rgbCss(rampColor(v))}"></span><b>${Math.round(v)}</b> · ${cat}<br>${pts.streets[pts.st[k]]}, ${pts.side[k] ? 'right' : 'left'} side${selRoute >= 0 && ((pts.mask[k] >> ROUTES[selRoute].def.index) & 1) ? ' · on route' : ''}`;
   tip.hidden = false;
   tip.style.left = clamp(xy[0], 125, innerWidth - 125) + 'px'; tip.style.top = Math.max(xy[1], 90) + 'px';
 }
 function hideTip() { hoverIdx = -1; tip.hidden = true; }
 let down = null;
-canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (e.pointerType === 'touch') hideTip(); });
+canvas.addEventListener('pointerdown', (e) => { if (fly) stopFly(); down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (e.pointerType === 'touch') hideTip(); });
 canvas.addEventListener('pointerup', (e) => {
   if (!down) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = performance.now() - down.t; down = null;
   if (moved < 8 && dt < 500 && e.pointerType !== 'mouse') {
@@ -425,6 +563,7 @@ function frame(ts) {
     camera.position.lerpVectors(flight.p0, flight.p1, e); controls.target.lerpVectors(flight.t0v, flight.t1, e);
     if (t >= 1) flight = null;
   }
+  flyStep(ts);
   controls.update();
   const dist = camera.position.distanceTo(controls.target);
   fog.update(camera, dist, ts / 1000);
@@ -434,7 +573,7 @@ function frame(ts) {
   const edge = innerWidth < innerHeight ? 0.9 : 1.1;
   for (const L of labelEls) {
     v3.copy(L.p).project(camera);
-    const vis = showLbl && v3.z < 1 && Math.abs(v3.x) < edge && Math.abs(v3.y) < 1.1;
+    const vis = L.on && showLbl && v3.z < 1 && Math.abs(v3.x) < edge && Math.abs(v3.y) < 1.1;
     L.el.style.display = vis ? '' : 'none';
     if (vis) L.el.style.transform = `translate(-50%,-100%) translate(${clamp((v3.x * .5 + .5) * innerWidth, 70, innerWidth - 70)}px, ${(1 - (v3.y * .5 + .5)) * innerHeight}px)`;
   }
@@ -449,7 +588,7 @@ function frame(ts) {
     const [pb, pj] = await Promise.all([withTimeout(getBuf('data/points.bin'), 30000, 'points'), getJSON('data/points.json')]);
     setStatus('Loading terrain and buildings…');
     await loadMeshes();
-    buildPoints(pb, pj); buildRoute(pj);
+    buildPoints(pb, pj); await initRoutes();
     requestAnimationFrame(frame);
     setStatus('Loading replay…');
     let idx, dir;
@@ -468,10 +607,11 @@ function frame(ts) {
     } $('night').value = firstFog;
     tNow = Math.min(60, idx.nights[firstFog].n_frames - 1);
     await selectNight(firstFog);
+    applyUrlRoute();
     window.__ready = true;
   } catch (e) {
     console.error(e); setStatus('Could not load the 3-D data: ' + e.message, true);
   }
 })();
 
-window.__dbg = { camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick };
+window.__dbg = { camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };

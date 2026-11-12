@@ -47,61 +47,61 @@
   {
    "check": "a_ew_vs_ns",
    "status": "PASS",
-   "detail": "expected E-W drier at 09:00 (morning sun runs along the street). Mean W at 09:00 over 7 fog nights: E-W 37.3 vs N-S 39.1 (diff -1.8, 0.06 pooled SD); at 10:00 E-W 27.6 vs N-S 28.9. n points E-W 4696, N-S 8498.",
-   "ew_0900": 37.26292037963867,
-   "ns_0900": 39.10370635986328,
-   "ew_1000": 27.560047149658203,
-   "ns_1000": 28.885080337524414
+   "detail": "expected E-W drier at 09:00 (morning sun runs along the street). Mean W at 09:00 over 7 fog nights: E-W 37.9 vs N-S 40.0 (diff -2.2, 0.07 pooled SD); at 10:00 E-W 27.9 vs N-S 29.4. n points E-W 4696, N-S 8498.",
+   "ew_0900": 37.860694885253906,
+   "ns_0900": 40.01682662963867,
+   "ew_1000": 27.893524169921875,
+   "ns_1000": 29.423994064331055
   },
   {
    "check": "b_less_sun_side_wetter",
    "status": "PASS",
-   "detail": "on 10405 E-W segments with a >=20 min sun difference (ties excluded: 396) the shadier side is wetter at 09:00 on 76.1 % (threshold 70 %). Note the model has this built in via the sun term; sun-minutes accumulated 18:00-09:00.",
-   "frac": 0.7614608361364729,
-   "n": 10405,
-   "ties": 396,
+   "detail": "on 10449 E-W segments with a >=20 min sun difference (ties excluded: 352) the shadier side is wetter at 09:00 on 75.4 % (threshold 70 %). Note the model has this built in via the sun term; sun-minutes accumulated 18:00-09:00.",
+   "frac": 0.7539477461958082,
+   "n": 10449,
+   "ties": 352,
    "per_night": [
     {
      "night": "2026-11-10",
      "segments": 1037,
-     "n_decided": 1010,
-     "frac": 0.800990099009901
+     "n_decided": 1029,
+     "frac": 0.7900874635568513
     },
     {
      "night": "2026-10-08",
      "segments": 1662,
-     "n_decided": 1639,
-     "frac": 0.7413056741915802
+     "n_decided": 1636,
+     "frac": 0.7163814180929096
     },
     {
      "night": "2026-10-01",
      "segments": 1709,
-     "n_decided": 1701,
-     "frac": 0.6466784244562023
+     "n_decided": 1698,
+     "frac": 0.64075382803298
     },
     {
      "night": "2026-09-30",
      "segments": 1672,
      "n_decided": 1672,
-     "frac": 0.7069377990430622
+     "frac": 0.6991626794258373
     },
     {
      "night": "2026-09-24",
      "segments": 1588,
-     "n_decided": 1540,
-     "frac": 0.8246753246753247
+     "n_decided": 1569,
+     "frac": 0.822817080943276
     },
     {
      "night": "2026-09-22",
      "segments": 1571,
-     "n_decided": 1487,
-     "frac": 0.8338937457969066
+     "n_decided": 1504,
+     "frac": 0.831781914893617
     },
     {
      "night": "2026-09-20",
      "segments": 1562,
-     "n_decided": 1356,
-     "frac": 0.8163716814159292
+     "n_decided": 1341,
+     "frac": 0.8158090976882924
     }
    ]
   },
@@ -117,15 +117,15 @@
   {
    "check": "d1_fog_deposition_follows_tracer",
    "status": "PASS",
-   "detail": "fog deposition at the top-20 % tracer points over the bottom-20 %: x7.1 (min x7.0); corr(deposition, tracer) mean 0.91 (this is largely by construction).",
+   "detail": "fog deposition at the top-20 % tracer points over the bottom-20 %: x7.5 (min x7.2); corr(deposition, tracer) mean 0.93 (this is largely by construction).",
    "ratios": [
-    7.019061983735751,
-    7.334782507842948,
-    7.074464581360717,
-    7.020603527798082,
-    7.513604054385299,
-    6.9656341720350055,
-    7.071834289635679
+    7.282499526653688,
+    7.827553177440387,
+    7.368418529635753,
+    7.267880839326399,
+    8.201744318895429,
+    7.176621795106668,
+    7.350464616804289
    ]
   },
   {
@@ -169,7 +169,7 @@
   {
    "check": "g1_wetness_vs_elevation",
    "status": "PASS",
-   "detail": "mean W at 09:00 over 7 fog nights, band0 -> profile, by street elevation: z 0-10 m (n=3362): 49.8 -> 50.6; z 10-20 m (n=5244): 32.6 -> 32.6; z 20-30 m (n=1724): 39.3 -> 39.6; z 30-45 m (n=1076): 35.5 -> 35.7; z 45-60 m (n=1162): 34.6 -> 34.9; z 60-80 m (n=1044): 29.7 -> 34.2; z >80 m (n=504): 28.7 -> 41.1. Change for streets < 30 m: +0.3 W, for streets > 60 m: +7.0 W.",
+   "detail": "mean W at 09:00 over 7 fog nights, band0 -> profile, by street elevation: z 0-10 m (n=3362): 49.7 -> 50.5; z 10-20 m (n=5244): 34.3 -> 34.3; z 20-30 m (n=1724): 39.5 -> 39.8; z 30-45 m (n=1076): 36.6 -> 36.8; z 45-60 m (n=1162): 35.5 -> 35.8; z 60-80 m (n=1044): 29.7 -> 34.2; z >80 m (n=504): 28.7 -> 41.1. Change for streets < 30 m: +0.3 W, for streets > 60 m: +7.0 W.",
    "labels": [
     "0-10",
     "10-20",
@@ -189,36 +189,36 @@
     504
    ],
    "band0": [
-    49.83924102783203,
-    32.614627838134766,
-    39.278045654296875,
-    35.45558547973633,
-    34.57117462158203,
+    49.73441696166992,
+    34.29231643676758,
+    39.48768997192383,
+    36.61226272583008,
+    35.50560760498047,
     29.723180770874023,
     28.684186935424805
    ],
    "profile": [
-    50.58182907104492,
-    32.649723052978516,
-    39.617679595947266,
-    35.729942321777344,
-    34.89818572998047,
+    50.46686935424805,
+    34.325157165527344,
+    39.80802536010742,
+    36.839805603027344,
+    35.78097915649414,
     34.18705368041992,
     41.07160568237305
    ],
-   "d_low": 0.31618037819862366,
+   "d_low": 0.3085212707519531,
    "d_high": 7.043630123138428
   },
   {
    "check": "g2_low_fog_top_dries_high_streets",
    "status": "PASS",
-   "detail": "controlled test, same 7 fog nights with the fog top forced to 90 m vs 700 m: mean W at 09:00 of streets > 60 m 33.1 (shallow) vs 40.1 (deep), +7.0 W; streets < 20 m 39.7 vs 39.7 (+0.0 W). Potrero streets span only 3-99 m, i.e. mostly below any estimated top, so the real nights differ little. Real nights: 2026-11-10: inflow-weighted fog top 155 m (range 84-175), W low(<20 m) 23.7 vs high(>60 m) 26.4 (band0: 23.6 vs 21.8); 2026-10-08: inflow-weighted fog top 141 m (range 84-295), W low(<20 m) 33.0 vs high(>60 m) 16.6 (band0: 32.5 vs 14.8); 2026-10-01: inflow-weighted fog top 98 m (range 84-114), W low(<20 m) 81.8 vs high(>60 m) 85.0 (band0: 81.7 vs 78.2); 2026-09-30: inflow-weighted fog top 87 m (range 84-101), W low(<20 m) 62.5 vs high(>60 m) 57.8 (band0: 62.2 vs 56.0); 2026-09-24: inflow-weighted fog top 458 m (range 84-790), W low(<20 m) 21.0 vs high(>60 m) 21.9 (band0: 20.8 vs 17.6); 2026-09-22: inflow-weighted fog top 197 m (range 109-329), W low(<20 m) 21.4 vs high(>60 m) 18.8 (band0: 21.0 vs 8.1); 2026-09-20: inflow-weighted fog top 400 m (range 223-555), W low(<20 m) 34.2 vs high(>60 m) 28.6 (band0: 33.6 vs 9.2).",
+   "detail": "controlled test, same 7 fog nights with the fog top forced to 90 m vs 700 m: mean W at 09:00 of streets > 60 m 33.1 (shallow) vs 40.1 (deep), +7.0 W; streets < 20 m 40.6 vs 40.6 (+0.0 W). Potrero streets span only 3-99 m, i.e. mostly below any estimated top, so the real nights differ little. Real nights: 2026-11-10: inflow-weighted fog top 155 m (range 84-175), W low(<20 m) 26.5 vs high(>60 m) 26.4 (band0: 26.4 vs 21.8); 2026-10-08: inflow-weighted fog top 141 m (range 84-295), W low(<20 m) 31.6 vs high(>60 m) 16.6 (band0: 31.1 vs 14.8); 2026-10-01: inflow-weighted fog top 98 m (range 84-114), W low(<20 m) 85.3 vs high(>60 m) 85.0 (band0: 85.2 vs 78.2); 2026-09-30: inflow-weighted fog top 87 m (range 84-101), W low(<20 m) 65.6 vs high(>60 m) 57.8 (band0: 65.3 vs 56.0); 2026-09-24: inflow-weighted fog top 458 m (range 84-790), W low(<20 m) 22.1 vs high(>60 m) 21.9 (band0: 21.9 vs 17.6); 2026-09-22: inflow-weighted fog top 197 m (range 109-329), W low(<20 m) 20.9 vs high(>60 m) 18.8 (band0: 20.5 vs 8.1); 2026-09-20: inflow-weighted fog top 400 m (range 223-555), W low(<20 m) 32.4 vs high(>60 m) 28.6 (band0: 31.8 vs 9.2).",
    "shallow_m": 90.0,
    "deep_m": 700.0,
    "high_shallow": 33.057411193847656,
    "high_deep": 40.09960174560547,
-   "low_shallow": 39.65503692626953,
-   "low_deep": 39.65503692626953,
+   "low_shallow": 40.631046295166016,
+   "low_deep": 40.631046295166016,
    "per_night": [
     {
      "night": "2026-11-10",
@@ -227,9 +227,9 @@
      "fog_top_min": 84.0,
      "fog_top_median": 155.33333333333334,
      "fog_top_max": 175.0,
-     "W_low_b0": 23.577836990356445,
+     "W_low_b0": 26.394535064697266,
      "W_high_b0": 21.810396194458008,
-     "W_low": 23.724885940551758,
+     "W_low": 26.5422306060791,
      "W_high": 26.35063362121582
     },
     {
@@ -239,9 +239,9 @@
      "fog_top_min": 84.0,
      "fog_top_median": 84.0,
      "fog_top_max": 295.0,
-     "W_low_b0": 32.505409240722656,
+     "W_low_b0": 31.139171600341797,
      "W_high_b0": 14.808991432189941,
-     "W_low": 32.97433853149414,
+     "W_low": 31.59765625,
      "W_high": 16.60740852355957
     },
     {
@@ -251,9 +251,9 @@
      "fog_top_min": 84.0,
      "fog_top_median": 99.33333333333333,
      "fog_top_max": 114.0,
-     "W_low_b0": 81.7004165649414,
+     "W_low_b0": 85.20972442626953,
      "W_high_b0": 78.22503662109375,
-     "W_low": 81.83251190185547,
+     "W_low": 85.34255981445312,
      "W_high": 84.97930908203125
     },
     {
@@ -263,9 +263,9 @@
      "fog_top_min": 84.0,
      "fog_top_median": 85.33333333333333,
      "fog_top_max": 101.0,
-     "W_low_b0": 62.206993103027344,
+     "W_low_b0": 65.29720306396484,
      "W_high_b0": 55.99544906616211,
-     "W_low": 62.53639221191406,
+     "W_low": 65.6163558959961,
      "W_high": 57.82069778442383
     },
     {
@@ -275,9 +275,9 @@
      "fog_top_min": 84.0,
      "fog_top_median": 84.0,
      "fog_top_max": 790.0,
-     "W_low_b0": 20.811695098876953,
+     "W_low_b0": 21.924644470214844,
      "W_high_b0": 17.555147171020508,
-     "W_low": 20.96887969970703,
+     "W_low": 22.0771427154541,
      "W_high": 21.90802574157715
     },
     {
@@ -287,9 +287,9 @@
      "fog_top_min": 109.33333333333333,
      "fog_top_median": 114.0,
      "fog_top_max": 329.0,
-     "W_low_b0": 21.035755157470703,
+     "W_low_b0": 20.507137298583984,
      "W_high_b0": 8.121163368225098,
-     "W_low": 21.387104034423828,
+     "W_low": 20.855424880981445,
      "W_high": 18.773422241210938
     },
     {
@@ -299,9 +299,9 @@
      "fog_top_min": 223.3529411764706,
      "fog_top_median": 332.6666666666667,
      "fog_top_max": 555.0,
-     "W_low_b0": 33.566776275634766,
+     "W_low_b0": 31.80183219909668,
      "W_high_b0": 9.178141593933105,
-     "W_low": 34.16115188598633,
+     "W_low": 32.38593292236328,
      "W_high": 28.56024169921875
     },
     {
@@ -472,52 +472,214 @@
   {
    "check": "e_ablations",
    "status": "INFO",
-   "detail": "street-level W pattern at 09:00 (mean over 7 fog nights): baseline: std 20.0, corr 1.00, mean|dW| 0.0; sun_term_off: std 20.4, corr 0.96, mean|dW| 4.3; svf_median: std 18.8, corr 0.88, mean|dW| 4.9; tracer_uniform: std 9.7, corr 0.50, mean|dW| 14.7; refined_wind_off: std 23.2, corr 0.85, mean|dW| 11.1; all_four_off: std 1.7, corr -0.05, mean|dW| 18.9; streets whose 09:00 W changes most when refined wind is OFF (mean dW, W units): York Street -12.4, Folsom Street -12.2, Dr. David Sanchez Way -11.7, 21st Street -11.1, Potrero Avenue -10.5, Blair Terrace -10.2, 23rd Street -10.0, Littlefield Terrace -9.5",
+   "detail": "street-level W pattern at 09:00 (mean over 7 fog nights): baseline: std 18.4, corr 1.00, mean|dW| 0.0; sun_term_off: std 18.7, corr 0.96, mean|dW| 4.3; svf_median: std 16.7, corr 0.83, mean|dW| 5.4; tracer_uniform: std 9.0, corr 0.52, mean|dW| 13.6; refined_wind_off: std 23.2, corr 0.85, mean|dW| 13.0; all_four_off: std 1.7, corr -0.04, mean|dW| 18.2; streets whose 09:00 W changes most when refined wind is OFF (mean dW, W units): Folsom Street -15.9, York Street -12.4, 24th Street -12.0, Harrison Street -11.8, Dr. David Sanchez Way -11.7, 21st Street -11.7, 25th Street -11.5, Dakota Street -10.6",
    "table": {
     "baseline": {
-     "std": 20.047475814819336,
+     "std": 18.387523651123047,
      "corr_with_baseline": 1.0,
      "mean_abs_diff": 0.0
     },
     "sun_term_off": {
-     "std": 20.411073684692383,
-     "corr_with_baseline": 0.9641477006234741,
-     "mean_abs_diff": 4.322760581970215
+     "std": 18.656675338745117,
+     "corr_with_baseline": 0.9560201495120442,
+     "mean_abs_diff": 4.3492021560668945
     },
     "svf_median": {
-     "std": 18.773006439208984,
-     "corr_with_baseline": 0.8798106912082194,
-     "mean_abs_diff": 4.922672748565674
+     "std": 16.696575164794922,
+     "corr_with_baseline": 0.8310789316960394,
+     "mean_abs_diff": 5.361638069152832
     },
     "tracer_uniform": {
-     "std": 9.694175720214844,
-     "corr_with_baseline": 0.5019406947106171,
-     "mean_abs_diff": 14.7260103225708
+     "std": 9.011022567749023,
+     "corr_with_baseline": 0.5215402660666681,
+     "mean_abs_diff": 13.610527992248535
     },
     "refined_wind_off": {
      "std": 23.155393600463867,
-     "corr_with_baseline": 0.8454432687022603,
-     "mean_abs_diff": 11.13294506072998,
+     "corr_with_baseline": 0.8483032035407957,
+     "mean_abs_diff": 12.996058464050293,
      "streets_most_changed": {
+      "Folsom Street": -15.9,
       "York Street": -12.4,
-      "Folsom Street": -12.2,
+      "24th Street": -12.0,
+      "Harrison Street": -11.8,
       "Dr. David Sanchez Way": -11.7,
-      "21st Street": -11.1,
-      "Potrero Avenue": -10.5,
-      "Blair Terrace": -10.2,
-      "23rd Street": -10.0,
-      "Littlefield Terrace": -9.5
+      "21st Street": -11.7,
+      "25th Street": -11.5,
+      "Dakota Street": -10.6
      },
      "rel_wind_pct": [
       0.25,
-      0.4015384614467621,
-      1.0
+      0.32351648807525635,
+      0.943379133939743
      ]
     },
     "all_four_off": {
      "std": 1.7427005767822266,
-     "corr_with_baseline": -0.04664419067294053,
-     "mean_abs_diff": 18.904966354370117
+     "corr_with_baseline": -0.0384554269808864,
+     "mean_abs_diff": 18.245756149291992
+    }
+   }
+  },
+  {
+   "check": "zone_ggh_info",
+   "status": "INFO",
+   "detail": "Golden Gate Heights (7094 points): 09:00 mean W over 7 fog nights E-W 42.8 vs N-S 46.2; shadier side wetter on 70 % of 3912 E-W segments with >=20 min sun difference; max dry-night p95 0.0. Per-route [mean, p95] of W at 09:00 per fog night in validation.json.",
+   "ew_0900": 42.78261184692383,
+   "ns_0900": 46.216583251953125,
+   "shadier_wetter_frac": 0.6958077709611452,
+   "n_segments": 3912,
+   "dry_p95": 0.0,
+   "routes_by_night": {
+    "ggh-yellow": {
+     "2026-11-10": [
+      25.3,
+      49.9
+     ],
+     "2026-10-08": [
+      12.7,
+      36.4
+     ],
+     "2026-10-01": [
+      63.3,
+      99.5
+     ],
+     "2026-09-30": [
+      42.8,
+      79.3
+     ],
+     "2026-09-24": [
+      37.7,
+      47.0
+     ],
+     "2026-09-22": [
+      26.2,
+      44.5
+     ],
+     "2026-09-20": [
+      85.8,
+      100.0
+     ]
+    },
+    "ggh-orange": {
+     "2026-11-10": [
+      27.5,
+      50.4
+     ],
+     "2026-10-08": [
+      13.6,
+      36.9
+     ],
+     "2026-10-01": [
+      71.0,
+      99.5
+     ],
+     "2026-09-30": [
+      48.9,
+      79.6
+     ],
+     "2026-09-24": [
+      38.6,
+      47.1
+     ],
+     "2026-09-22": [
+      27.0,
+      44.6
+     ],
+     "2026-09-20": [
+      84.0,
+      99.8
+     ]
+    },
+    "ggh-green": {
+     "2026-11-10": [
+      34.7,
+      50.1
+     ],
+     "2026-10-08": [
+      13.1,
+      32.5
+     ],
+     "2026-10-01": [
+      77.7,
+      99.5
+     ],
+     "2026-09-30": [
+      53.7,
+      75.0
+     ],
+     "2026-09-24": [
+      40.6,
+      47.7
+     ],
+     "2026-09-22": [
+      27.3,
+      43.5
+     ],
+     "2026-09-20": [
+      81.3,
+      98.7
+     ]
+    },
+    "ggh-red": {
+     "2026-11-10": [
+      34.4,
+      50.9
+     ],
+     "2026-10-08": [
+      10.6,
+      25.2
+     ],
+     "2026-10-01": [
+      75.5,
+      99.5
+     ],
+     "2026-09-30": [
+      51.2,
+      70.6
+     ],
+     "2026-09-24": [
+      40.2,
+      47.3
+     ],
+     "2026-09-22": [
+      26.3,
+      41.6
+     ],
+     "2026-09-20": [
+      82.5,
+      99.6
+     ]
+    },
+    "ggh-purple": {
+     "2026-11-10": [
+      33.3,
+      48.8
+     ],
+     "2026-10-08": [
+      9.9,
+      24.4
+     ],
+     "2026-10-01": [
+      72.5,
+      99.5
+     ],
+     "2026-09-30": [
+      48.7,
+      67.5
+     ],
+     "2026-09-24": [
+      39.5,
+      46.0
+     ],
+     "2026-09-22": [
+      26.0,
+      41.4
+     ],
+     "2026-09-20": [
+      83.9,
+      99.6
+     ]
     }
    }
   },

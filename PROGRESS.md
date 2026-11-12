@@ -70,3 +70,13 @@ Commands: python -m microclimate replay (writes site/v3/replay/), python -m micr
 - Fog top (m ASL) = max(grid elev + 50 m, min(RH < 80 % crossing, first temperature inversion)) from Open-Meteo 1000-900 hPa levels (weather.fetch_extra caches <weather>_prof.json; missing data -> 300 m). Street wet weight = smoothstep ramp +/-40 m around the top; tracer = 4 band fields sampled at street z + 10 m and interpolated between band centres (fogtop.sample_bands works for any point table with x, y, z: pass data_dir or set wetness.DATA_DIR).
 - Fog bands 2 and 3 (270 deg) rerun with 6 transits: drift 0.0018 and 0.0090 (was 0.054, 0.127); validate d3 now PASS (band 3 marginal). Old fields kept as library/fog_2700_[23].bak.npz (not committed). fog.rebuild_bands / fog.converge_band do the rerun.
 - validate g1 (W vs elevation, band0 vs profile), g2 (fog top forced 90 vs 700 m), g3 (Twin Peaks / Mt Davidson dry on shallow, wet on deep fog nights; by construction) all PASS. Nothing calibrated; v2 observed fog nights not compared.
+
+## Multi-zone routes (routes.toml)
+
+- `routes.toml` is the single source for zones and routes. `python -m microclimate routes` runs geometry, street, sun, replay, viewer data and validate, skipping steps whose inputs are unchanged.
+- Zones: Potrero keeps the legacy disc builder (rows byte-identical, hashes in `tests_mc/baseline_potrero.json`); Golden Gate Heights uses a 250 m corridor around its routes (no service roads). Combined `points.csv` has 21,210 rows (Potrero 14,116 + GGH 7,094). Sun windows are per zone (1700 m / 2100 m half-width) and the surface nearest-way lookup is per zone, so adding a zone never changes another zone's rows.
+- points.bin layout (supersedes the earlier note): float32[N,4] at 0, side u8 at 16N, on_route u8 at 17N, street u16 at 18N, route_mask u16 at 20N, zone u8 at 22N. `streets.u8` size is n_frames * N (now 21,210).
+- Five Golden Gate Heights routes were map-matched from a hand-drawn screenshot (waypoints are intersections, listed top of hill first so every route runs downhill; the first attempt had them reversed).
+- Viewer: route picker grouped by zone, camera fly-to, highlighted route, "Fly the route" chase camera with pause/stop and 1x/2x, readout of street and wetness. `?route=<id>&fly=1` deep-links.
+- Per-route dawn wetness is in `replay/validation.json` and `index.json` (`w_dawn_by_route`); gated validation checks still run on the Potrero subset only.
+- Known: `sun --check` criterion (c) fails on an upper bound for the median SVF (0.884 vs 0.8); the Potrero SVF is unchanged by this work (regression confirms), so this is a stale threshold, not a regression.
