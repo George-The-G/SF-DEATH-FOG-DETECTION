@@ -192,7 +192,7 @@ def check_roundtrip(D, d):
     I, J = windrot._coords_rot_to_geo(fr, nx, ny)
     fx, fy = fr["f"]
     nxn, nyn = fr["n"]
-    ur = np.zeros((3, fr["nxr"] + fr["pad"], fr["nyr"], nz), np.float32)
+    ur = np.zeros((3,) + I.shape + (nz,), np.float32)
     for k in range(nz):
         c = [map_coordinates(u270[a][:, :, k].astype(np.float32), [I, J], order=1, mode="nearest") for a in range(3)]
         ur[0][:, :, k] = c[0] * fx + c[1] * fy
@@ -247,7 +247,7 @@ def run(D, dirs, out=None, png=True):
     for k, r in outd.items():
         if k != "270":
             (prev.add if r["pass"] else prev.discard)(float(k))
-    json.dump({"validated": sorted(prev), "criteria": "validate_dirs.py a-f"}, open(mf, "w"))
+    json.dump({"validated": sorted(prev), "criteria": "validate_dirs.py a-h"}, open(mf, "w"))
     return outd
 
 
