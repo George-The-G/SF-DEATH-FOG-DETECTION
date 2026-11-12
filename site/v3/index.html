@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#070b14">
+<meta name="theme-color" content="#0b1020">
 <title>Death Fog 3D</title>
 <meta name="description" content="Overnight wet-street replay for skate routes in San Francisco (Potrero Hill, Golden Gate Heights): a 20 m proof-of-concept simulation.">
 <link rel="stylesheet" href="style.css">
@@ -15,74 +15,96 @@
 </script>
 </head>
 <body>
-<canvas id="gl" aria-label="3-D view of San Francisco terrain, buildings and street wetness"></canvas>
-
 <header id="top">
-  <div class="brand"><span class="dot"></span><b>Death Fog</b> <span class="sub">3-D replay</span></div>
-  <div class="poc">Proof of concept: 20 m simulation, not a forecast</div>
-  <div class="views">
-    <button id="btn-city" type="button">City</button>
-    <button id="rbtn" type="button" class="accent" aria-haspopup="listbox" aria-expanded="false" aria-controls="rpop"><span class="sw" id="rsw"></span><span id="rlabel">Routes</span><span class="car">&#9662;</span></button>
-  </div>
+  <div class="brand" id="brand"><span class="dot"></span><b>Death Fog</b></div>
+  <div class="poc"><span>Proof of concept &middot; 20 m sim &middot; not a forecast</span></div>
+  <button id="rbtn" type="button" class="chip accent" aria-haspopup="listbox" aria-expanded="false" aria-controls="rpop"><span class="sw" id="rsw"></span><span id="rlabel">Routes</span><span class="car">&#9662;</span></button>
+  <button id="menubtn" type="button" class="ib" aria-label="Menu" aria-expanded="false" aria-controls="sheet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
 </header>
 
-<div id="rpop" role="dialog" aria-label="Choose a skate route" hidden><div id="rlist" role="listbox"></div></div>
+<main id="mid">
+  <div id="stage">
+    <canvas id="gl" aria-label="3-D view of San Francisco terrain, buildings and street wetness"></canvas>
+    <div id="labels"></div>
+    <div id="badge" hidden>Mock data</div>
+    <button id="sheettab" type="button" aria-label="Show or hide the panel" aria-expanded="true"><span aria-hidden="true">&#9656;</span></button>
 
-<section id="routecard" aria-label="Selected route" hidden>
-  <div class="rc-top"><span class="sw" id="rcsw"></span><b id="rcname"></b></div>
-  <div class="rc-stats" id="rcstats"></div>
-  <div class="rc-btns">
-    <button id="fly" type="button" class="accent">Fly the route</button>
-    <button id="flypause" type="button" aria-label="Pause" hidden>&#10074;&#10074;</button>
-    <button id="flystop" type="button" aria-label="Stop" hidden>&#9632;</button>
-    <div class="seg" id="flyspeed" role="group" aria-label="Fly speed" hidden><button type="button" data-s="1" class="on">1x</button><button type="button" data-s="2">2x</button></div>
+    <div id="rpop" role="dialog" aria-label="Choose a skate route" hidden>
+      <div id="rlist" role="listbox"></div>
+      <div id="rcfoot">
+        <span class="sw" id="rcsw"></span>
+        <div class="rcm"><b id="rcname"></b><div id="rcstats"></div></div>
+        <button id="fly" type="button" class="chip accent">Fly the route</button>
+      </div>
+    </div>
   </div>
-  <div class="rc-info" id="rcinfo" hidden></div>
-</section>
 
-<aside id="weather" aria-label="Weather readout">
-  <div class="wx"><span class="k">Temp</span><span class="v" id="wx-temp">--</span></div>
-  <div class="wx"><span class="k">Dew pt</span><span class="v" id="wx-dew">--</span></div>
-  <div class="wx"><span class="k">Wind</span><span class="v" id="wx-wind">--</span></div>
-  <div class="wx"><span class="k">Low cloud</span><span class="v" id="wx-cloud">--</span></div>
-  <div class="wx"><span class="k">Sun</span><span class="v" id="wx-sun">--</span></div>
-  <div class="note" id="wx-note" hidden>* approx. wind direction</div>
-</aside>
-
-<section id="legend" aria-label="Legend">
-  <div class="lg-title">Death fog chance <span class="lg-sub">street wetness index</span></div>
-  <div class="ramp" id="ramp"></div>
-  <div class="ticks"><span>0</span><span>20</span><span>50</span><span>80</span><span>100</span></div>
-  <div class="cats"><span>dry</span><span>damp</span><span>slick</span><span>wet</span><span>icy-fog</span></div>
-</section>
-
-<div id="tip" role="status" hidden></div>
-<div id="labels"></div>
+  <aside id="sheet" aria-label="Menu" hidden>
+    <div class="grab" aria-hidden="true"></div>
+    <div class="two sec">
+      <div><h4>Night</h4><select id="night" aria-label="Night"></select></div>
+      <div><h4>Speed</h4><div class="seg" id="speed" role="group" aria-label="Speed"><button type="button" data-s="1" class="on">1x</button><button type="button" data-s="4">4x</button><button type="button" data-s="16">16x</button></div></div>
+    </div>
+    <div class="sec">
+      <h4>Layers</h4>
+      <div class="tgs">
+        <label><input type="checkbox" id="fogtoggle" checked><span>Fog</span></label>
+        <label><input type="checkbox" id="bldtoggle" checked><span>Buildings</span></label>
+        <label class="ribonly"><input type="checkbox" id="sidetoggle" checked><span>Side streets</span></label>
+      </div>
+      <div class="dens"><label for="fogdens">Fog density</label><input type="range" id="fogdens" min="30" max="200" value="100" aria-label="Fog density"></div>
+    </div>
+    <div class="sec"><h4>View</h4><button id="btn-city" type="button" class="chip">Whole city</button></div>
+    <div class="sec" id="fullleg">
+      <h4>Death fog chance <span class="lg-sub">street wetness index</span></h4>
+      <div class="ramp"></div>
+      <div class="ticks"><span>0</span><span>20</span><span>50</span><span>80</span><span>100</span></div>
+      <div class="cats"><span>dry</span><span>damp</span><span>slick</span><span>wet</span><span>icy-fog</span></div>
+    </div>
+    <p class="pocnote"><span class="poc">Proof of concept</span> 20 m simulation of overnight street wetness. Not a forecast.</p>
+  </aside>
+</main>
 
 <footer id="controls">
-  <div class="row r1">
-    <select id="night" aria-label="Night"></select>
-    <div class="clock"><span id="clock">--:--</span><span id="clock-sub"></span></div>
-  </div>
-  <div class="row r2">
-    <button id="play" type="button" aria-label="Play">&#9654;</button>
-    <input id="slider" type="range" min="0" max="96" step="any" value="0" aria-label="Time">
-  </div>
-  <div class="row r3">
-    <div class="seg" id="speed" role="group" aria-label="Speed">
-      <button type="button" data-s="1" class="on">1x</button>
-      <button type="button" data-s="4">4x</button>
-      <button type="button" data-s="16">16x</button>
+  <div class="inner">
+    <div id="flybar">
+      <div id="routecard" class="card" hidden><div class="rc-info" id="rcinfo" hidden></div></div>
+      <div id="flytr" class="bar">
+        <button id="flystop" type="button" class="fbtn on" aria-label="Stop" hidden>&#9632;</button>
+        <button id="flypause" type="button" class="fbtn" aria-label="Pause" hidden>&#10074;&#10074;</button>
+        <div class="seg" id="flyspeed" role="group" aria-label="Fly speed" hidden><button type="button" data-s="1" class="on">1x</button><button type="button" data-s="2">2x</button></div>
+        <div id="flyprog"><i id="flyfill"></i></div>
+      </div>
     </div>
-    <span class="chk fogg"><label class="chk"><input type="checkbox" id="fogtoggle" checked> Fog</label><input type="range" id="fogdens" min="30" max="200" value="100" aria-label="Fog density" title="Fog density"></span>
-    <label class="chk ribonly"><input type="checkbox" id="sidetoggle" checked> Side streets</label>
-    <label class="chk"><input type="checkbox" id="bldtoggle" checked> Buildings</label>
+    <div id="normal">
+      <section id="weather" aria-label="Weather readout">
+        <button id="wxbtn" type="button" aria-expanded="false" aria-controls="wxgrid"><span id="wxline">--</span><span class="car">&#9662;</span></button>
+        <div id="wxgrid" hidden>
+          <div class="wx"><span class="k">Temp</span><span class="v" id="wx-temp">--</span></div>
+          <div class="wx"><span class="k">Dew pt</span><span class="v" id="wx-dew">--</span></div>
+          <div class="wx"><span class="k">Wind</span><span class="v" id="wx-wind">--</span></div>
+          <div class="wx"><span class="k">Low cloud</span><span class="v" id="wx-cloud">--</span></div>
+          <div class="wx"><span class="k">Sun</span><span class="v" id="wx-sun">--</span></div>
+          <div class="note" id="wx-note" hidden>* approx. wind direction</div>
+        </div>
+      </section>
+      <button id="legend" type="button" aria-label="Legend: street wetness index. Tap for the full legend">
+        <div class="ramp" id="ramp"></div>
+        <div class="ticks"><span>0 dry</span><span>20</span><span>50 slick</span><span>80</span><span>100 icy-fog</span></div>
+      </button>
+      <div id="timebar" class="bar">
+        <button id="play" type="button" aria-label="Play">&#9654;</button>
+        <input id="slider" type="range" min="0" max="96" step="any" value="0" aria-label="Time">
+        <div class="clock"><span id="clock">--:--</span><span id="clock-sub"></span></div>
+      </div>
+    </div>
   </div>
 </footer>
 
+<div id="tip" role="status" hidden></div>
 <div id="overlay"><div class="box"><div class="spin"></div><div id="status">Loading…</div><button id="retry" type="button" hidden>Retry</button></div></div>
-<div id="badge" hidden>Mock data</div>
 
 <script type="module" src="app.js"></script>
+<script type="module" src="about.js"></script>
 </body>
 </html>

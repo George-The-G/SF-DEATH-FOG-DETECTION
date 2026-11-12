@@ -26,7 +26,7 @@ function rampColor(v) {
   return hexRgb(RAMP[RAMP.length - 1][1]);
 }
 const rgbCss = (c) => `rgb(${c.map((x) => Math.round(x * 255)).join(',')})`;
-$('ramp').style.background = `linear-gradient(90deg, ${RAMP.map(([s, c]) => `${c} ${s}%`).join(',')})`;
+document.querySelectorAll('.ramp').forEach((e) => { e.style.background = `linear-gradient(90deg, ${RAMP.map(([s, c]) => `${c} ${s}%`).join(',')})`; });
 const glslRamp = (() => {
   const col = (h) => `vec3(${hexRgb(h).map((x) => x.toFixed(4)).join(',')})`;
   let s = 'vec3 ramp(float v){ v=clamp(v,0.,100.);\n';
@@ -84,9 +84,13 @@ function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h; camera.fov = w < h ? 62 : 50; camera.updateProjectionMatrix();
-  const ch = $('controls').offsetHeight; document.documentElement.style.setProperty('--ctl-h', ch + 'px');
+  setBandVars();
 }
-addEventListener('resize', resize); new ResizeObserver(resize).observe($('controls')); resize();
+function setBandVars() { // heights of the glass stacks, used to place popovers and keep tooltips clear of them
+  const r = document.documentElement.style;
+  r.setProperty('--ctl-h', $('controls').offsetHeight + 'px'); r.setProperty('--top-h', $('top').offsetHeight + 'px');
+}
+addEventListener('resize', resize); { const ro = new ResizeObserver(setBandVars); ro.observe($('controls')); ro.observe($('top')); } resize();
 
 /* ------------------------------------------------------------------ terrain height lookup */
 function buildHeightGrid(geom, step) {
@@ -341,17 +345,40 @@ function flyToRoute(R) {
   flyTo(pos, tgt, 2800);
 }
 
-/* picker popover */
+/* popovers: route list and menu sheet, one open at a time. On desktop the sheet is a pinned side panel (open state persisted). */
+const deskMQ = matchMedia('(min-width: 700px) and (min-height: 501px)');
+const LSK = 'df3.sheetOpen';
+const lsGet = () => { try { return localStorage.getItem(LSK); } catch { return null; } };
+const lsSet = (v) => { try { localStorage.setItem(LSK, v); } catch { /* private mode etc.: state just does not persist */ } };
+function setSheet(open) {
+  $('sheet').hidden = !open; $('menubtn').setAttribute('aria-expanded', String(open)); $('sheettab').setAttribute('aria-expanded', String(open));
+  document.body.classList.toggle('sheet-closed', !open);
+  if (open) closePicker();
+  if (deskMQ.matches) lsSet(open ? '1' : '0');
+}
 function closePicker() { $('rpop').hidden = true; $('rbtn').setAttribute('aria-expanded', 'false'); }
-$('rbtn').onclick = () => { const o = $('rpop').hidden; $('rpop').hidden = !o; $('rbtn').setAttribute('aria-expanded', String(o)); };
+function openPicker(o) { $('rpop').hidden = !o; $('rbtn').setAttribute('aria-expanded', String(o)); if (o && !deskMQ.matches) setSheet(false); }
+$('rbtn').onclick = () => openPicker($('rpop').hidden);
+$('menubtn').onclick = () => setSheet($('sheet').hidden);
+$('sheettab').onclick = () => setSheet($('sheet').hidden);
+$('legend').onclick = () => { setSheet(true); $('fullleg').scrollIntoView({ block: 'nearest' }); };
+$('wxbtn').onclick = () => { const o = $('wxgrid').hidden; $('wxgrid').hidden = !o; $('wxbtn').setAttribute('aria-expanded', String(o)); };
+function initSheet() { // phone: starts closed; desktop: starts open unless the user collapsed it
+  const v = lsGet(); setSheet(deskMQ.matches ? v !== '0' : false);
+  if (deskMQ.matches) lsSet(v === '0' ? '0' : '1');
+}
+deskMQ.addEventListener('change', () => { const v = lsGet(); setSheet(deskMQ.matches ? v !== '0' : false); });
 $('rlist').addEventListener('click', (e) => { const b = e.target.closest('.ritem'); if (b) selectRoute(+b.dataset.i, true); });
-document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#rpop, #rbtn')) closePicker(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePicker(); stopFly(); } });
+document.addEventListener('pointerdown', (e) => {
+  if (!e.target.closest('#rpop, #rbtn')) closePicker();
+  if (!deskMQ.matches && !e.target.closest('#sheet, #menubtn, #legend')) setSheet(false);
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePicker(); if (!deskMQ.matches) setSheet(false); stopFly(); } });
 
 /* fly-along: chase camera that looks ahead along the route polyline */
 const FLY = { back: 150, ahead: 130, up: 62 };
 function flyUI() {
-  const on = !!fly;
+  const on = !!fly; document.body.classList.toggle('flying', on); if (on) { closePicker(); if (!deskMQ.matches) setSheet(false); }
   $('fly').hidden = on; $('flypause').hidden = !on; $('flystop').hidden = !on; $('flyspeed').hidden = !on; $('rcinfo').hidden = !on;
   if (on) {
     const paused = fly.paused;
@@ -402,6 +429,7 @@ function flyStep(ts) {
   const dt = fly.last ? Math.min(0.1, (ts - fly.last) / 1000) : 0; fly.last = ts;
   const R = fly.R, dur = clamp(R.len / 80, 15, 25);
   if (!fly.paused) { fly.u = Math.min(1, fly.u + dt * flySpeed / dur); if (fly.u >= 1) { fly.done = true; fly.paused = true; flyUI(); } }
+  $('flyfill').style.width = (fly.u * 100).toFixed(1) + '%';
   const u = fly.u, p = 0.5 * u + 0.5 * u * u * (3 - 2 * u), s = p * R.len;
   const at = (m) => R.curve.getPointAt(clamp(m / R.len, 0, 1));
   const c = at(s - FLY.back), t = at(s + FLY.ahead);
@@ -550,6 +578,8 @@ function applyTime(force) {
       $('wx-wind').textContent = (weather.wind_ms && weather.wind_ms[i] != null ? (weather.wind_ms[i] * 2.23694).toFixed(0) : '--') + ' mph ' + (weather.wind_dir ? compass(weather.wind_dir[i]) : '');
       $('wx-cloud').textContent = g(weather.cloud_low_pct, 0) + ' %';
       const s = weather.sun_el ? weather.sun_el[i] : null; $('wx-sun').textContent = s == null ? '--' : (s > 0 ? 'up ' : 'down ') + s.toFixed(0) + '°';
+      const t = $('wx-temp').textContent.replace(' ', ''), dp = $('wx-dew').textContent.replace(' °F', '°'), wd = $('wx-wind').textContent.trim() + ($('wx-note').hidden ? '' : '*');
+      $('wxline').textContent = `${t} · dew ${dp} · ${wd} · ${$('wx-cloud').textContent.replace(' ', '')} cloud · sun ${s == null ? '--' : Math.round(s) + '°'}`;
     }
     if (hoverIdx >= 0) showTip(hoverIdx, hoverXY);
   }
@@ -604,7 +634,8 @@ function showTip(k, xy) {
   const when = night ? wall(night.start_iso, curF * night.step_min).time : '';
   tip.innerHTML = v < 0 ? `no data<br>${G.names[G.st[k]]}` : `<span class="sw" style="background:${rgbCss(rampColor(v))}"></span><b>${Math.round(v)}</b> · ${cat}${useRib ? ' (modelled)' : ''}<br>${G.names[G.st[k]]}, ${G.side[k] ? 'right' : 'left'} side${selRoute >= 0 && ((G.mask[k] >> ROUTES[selRoute].def.index) & 1) ? ' · on route' : G.cls[k] ? ' · side street' : ''} · ${when}`;
   tip.hidden = false;
-  tip.style.left = clamp(xy[0], 125, innerWidth - 125) + 'px'; tip.style.top = Math.max(xy[1], 90) + 'px';
+  const topH = $('top').getBoundingClientRect().bottom, botY = $('controls').getBoundingClientRect().top; // keep the tooltip clear of the glass stacks
+  tip.style.left = clamp(xy[0], 125, innerWidth - 125) + 'px'; tip.style.top = clamp(xy[1], topH + 70, botY - 6) + 'px';
 }
 function hideTip() { hoverIdx = -1; tip.hidden = true; }
 let down = null;
@@ -684,6 +715,7 @@ function frame(ts) {
       idx.nights.forEach((n, i) => { const w = n.kind === 'fog' ? (n.w_dawn_mean ?? 1) : -1; if (w > best) { best = w; firstFog = i; } });
     } $('night').value = firstFog;
     tNow = Math.min(60, idx.nights[firstFog].n_frames - 1);
+    initSheet();
     await selectNight(firstFog);
     applyUrlRoute();
     window.__ready = true;
