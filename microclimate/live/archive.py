@@ -123,17 +123,36 @@ def load(path):
 
 
 # ------------------------------------------------------------------ branch helpers (used by refresh.sh)
-def place(repo_dir, files):
-    """Copy run files into repo_dir/yyyy/mm/dd/ (by the date in the file name). -> list of repo-relative paths."""
+def bucket(m, every_h):
+    """Index of the every_h-hour UTC slot a run file name (regex match of NAME) falls in; None when every_h <= 0 (no thinning)."""
+    if not every_h or every_h <= 0:
+        return None
+    day = dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3))).toordinal()
+    return (day * 24 + int(m.group(4)[:2])) // int(every_h)
+
+
+def place(repo_dir, files, every_h=None):
+    """Copy run files into repo_dir/yyyy/mm/dd/ (by the date in the file name). At most one file per every_h UTC hours (default C.ARCHIVE_EVERY_H):
+    a file is skipped when the repo already holds one in the same slot (the predecessor's, or an earlier file of this call). -> list of repo-relative paths placed."""
+    every_h = C.ARCHIVE_EVERY_H if every_h is None else every_h
     out = []
-    for f in files:
-        f = Path(f)
+    taken = set()
+    if every_h and every_h > 0:
+        for g in Path(repo_dir).glob("[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/run_*.npz"):
+            m = NAME.match(g.name)
+            if m:
+                taken.add(bucket(m, every_h))
+    for f in sorted(Path(x) for x in files):
         m = NAME.match(f.name)
         if not m:
             continue
         rel = Path(m.group(1)) / m.group(2) / m.group(3) / f.name
+        b = bucket(m, every_h)
+        if (Path(repo_dir) / rel).exists() or (b is not None and b in taken):
+            continue
         (Path(repo_dir) / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(f, Path(repo_dir) / rel)
+        taken.add(b)
         out.append(rel.as_posix())
     return out
 

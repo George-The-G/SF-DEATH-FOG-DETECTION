@@ -96,6 +96,25 @@ class TestArchive(unittest.TestCase):
             self.assertIsNone(archive.prune(root, 120, dt.date(2026, 11, 15)))      # not due within a week
             self.assertEqual(archive.prune(root, 120, dt.date(2026, 11, 20)), 0)
 
+    def test_one_file_per_utc_hour(self):
+        from microclimate.live import config as C
+        self.assertEqual(C.ARCHIVE_EVERY_H, 1)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as src:
+            root = Path(d)
+
+            def mk(n):
+                (Path(src) / n).write_bytes(b"x")
+                return Path(src) / n
+            self.assertEqual(archive.place(root, [mk("run_20261112T2210.npz")]), ["2026/11/12/run_20261112T2210.npz"])
+            self.assertEqual(archive.place(root, [mk("run_20261112T2240.npz")]), [])                      # same hour as the predecessor: skipped
+            self.assertEqual(archive.place(root, [mk("run_20261112T2310.npz"), mk("run_20261112T2340.npz")]), ["2026/11/12/run_20261112T2310.npz"])   # one per hour within a call too
+            self.assertEqual(archive.place(root, [mk("run_20261113T0010.npz")]), ["2026/11/13/run_20261113T0010.npz"])   # next day, hour 0
+            self.assertEqual(archive.place(root, [mk("run_20261112T2210.npz")]), [])                      # already there
+            self.assertEqual(len(list(root.glob("*/*/*/run_*.npz"))), 3)
+            self.assertEqual(len(archive.place(root, [mk("run_20261112T2250.npz")], every_h=0)), 1)       # 0 = keep every run
+            self.assertEqual(archive.place(root, [mk("run_20261114T0200.npz"), mk("run_20261114T0330.npz")], every_h=2), ["2026/11/14/run_20261114T0200.npz"])
+            self.assertEqual(archive.place(root, [mk("run_20261114T0400.npz")], every_h=2), ["2026/11/14/run_20261114T0400.npz"])
+
 
 if __name__ == "__main__":
     unittest.main()

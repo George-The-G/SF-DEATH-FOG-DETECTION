@@ -8,6 +8,7 @@ RETRIES = 3
 MODEL_VERSION = "live-1"
 CARRY_STATE = False                   # True: a window starts from the saved anchor state (changes what the page shows: needs the user's approval); False: always dry start. Anchors are saved either way.
 ARCHIVE = True                        # write the per-run archive file when the caller gives an archive folder (refresh.sh pushes it to branch live-archive); DEATHFOG_ARCHIVE=false also turns it off
+ARCHIVE_EVERY_H = 1                   # at most one archive file per this many UTC hours on branch live-archive (the first run of the slot is kept; 0 = keep every run)
 PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS) the scheduled job runs with; empty = the public model (guide 01)
 
 # ---- RRFS through Open-Meteo (HRRR on Open-Meteo is discontinued 2026-11-30: do not use it) ----
