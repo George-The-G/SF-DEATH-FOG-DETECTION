@@ -92,7 +92,7 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
   const blank = new THREE.DataTexture(new Uint8Array([SENTINEL]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType);
   blank.needsUpdate = true; uniforms.uWet.value = blank;
 
-  let mesh = null, geom = null, tex = null, S = 0, nF = 0, u8 = null, widthM = 6.5;
+  let mesh = null, geom = null, tex = null, S = 0, nF = 0, u8 = null, widthM = 6.5, c0 = 0, stw = 0;
   const samples = { S: 0, src: null, side: null, st: null, mask: null, cls: null, pos: null };
   const api = { samples, mesh: null, widthM, uniforms, material };
   let selected = false, dist = 1e5;
@@ -146,11 +146,13 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
     return api;
   };
 
-  api.setNight = (data, nFrames) => {
-    if (data.length !== nFrames * S) throw new Error(`streets_r has ${data.length} bytes, expected ${nFrames * S}`);
-    u8 = data; nF = nFrames;
+  /* col0/stride (live preview only): this ribbon set owns columns [col0, col0 + S) of a frame-major array with `stride` columns per frame
+     (district ribbons + city ribbons share one file). Defaults = the replay layout (stride S, col0 0). */
+  api.setNight = (data, nFrames, col0 = 0, stride = S) => {
+    if (data.length !== nFrames * stride) throw new Error(`streets_r has ${data.length} bytes, expected ${nFrames * stride}`);
+    u8 = data; nF = nFrames; c0 = col0; stw = stride;
     const R = Math.ceil(S / TEXW), H = R * nFrames, buf = new Uint8Array(TEXW * H).fill(SENTINEL);
-    for (let f = 0; f < nFrames; f++) buf.set(data.subarray(f * S, (f + 1) * S), f * R * TEXW);
+    for (let f = 0; f < nFrames; f++) buf.set(data.subarray(f * stride + col0, f * stride + col0 + S), f * R * TEXW);
     if (tex) tex.dispose();
     tex = new THREE.DataTexture(buf, TEXW, H, THREE.RedFormat, THREE.UnsignedByteType);
     tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.flipY = false;
@@ -168,7 +170,7 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
   api.fillWet = (out, f) => {
     if (!u8) { out.fill(-1); return out; }
     f = Math.min(Math.max(f, 0), nF - 1);
-    const a = Math.floor(f), b = Math.min(a + 1, nF - 1), u = f - a, A = a * S, B = b * S;
+    const a = Math.floor(f), b = Math.min(a + 1, nF - 1), u = f - a, A = a * stw + c0, B = b * stw + c0;
     for (let k = 0; k < S; k++) {
       const w0 = u8[A + k], w1 = u8[B + k];
       out[k] = w0 === SENTINEL ? (w1 === SENTINEL ? -1 : w1) : w1 === SENTINEL ? w0 : w0 + (w1 - w0) * u;

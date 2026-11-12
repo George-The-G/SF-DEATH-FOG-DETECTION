@@ -183,3 +183,15 @@ h4 { margin: 0 0 8px; font-size: 11px; letter-spacing: .09em; text-transform: up
   #sheettab[aria-expanded="false"] span { display: inline-block; transform: rotate(180deg); }
 }
 #flypause { width: 44px; }
+
+/* ---------------------------------------------------------------- live preview (?live=1 only; see PLAN_LIVE_DATA.md section 9) */
+#livebar { grid-column: 1 / -1; font-size: 11px; line-height: 14px; }
+#livebar .lv-note { color: var(--warn); }
+#livebar .lv-note b { letter-spacing: .04em; }
+#livebar .lv-note span { color: var(--dim); }
+#livebar .lv-row { position: relative; height: 16px; margin-top: 2px; color: var(--dim); }
+#livebar .lv-row span { position: absolute; top: 0; white-space: nowrap; }
+#livebar .lv-obs { text-align: right; }
+#livebar .lv-load { right: 0; color: var(--warn); }
+#timebar { position: relative; }
+#livemark { position: absolute; top: 8px; bottom: 8px; width: 2px; margin-left: -1px; background: var(--warn); border-radius: 1px; pointer-events: none; }

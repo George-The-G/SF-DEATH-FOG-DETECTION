@@ -9,6 +9,7 @@ import { ICON_SKATE_PLAY, ICON_FOG_PLAY, ICON_FOG_PAUSE } from './icons.js';
 /* ------------------------------------------------------------------ config */
 const SRC_Q = new URLSearchParams(location.search).get('src');
 const SRC_DIRS = SRC_Q === 'mock' ? ['replay_mock/'] : SRC_Q === 'synth' ? ['replay_synth/'] : ['replay/', 'replay_mock/']; // synth = tools/make_synthetic_ribbons.py fixture
+const LIVE = new URLSearchParams(location.search).get('live') === '1'; // hidden preview of the live builder snapshot (site/v3/live/); absent = replay, unchanged
 const RAMP = [[0, '#3a8696'], [18, '#6fb09f'], [24, '#f4e04d'], [50, '#f2c230'], [65, '#ee8a2c'], [80, '#d9531e'], [90, '#b3202f'], [100, '#7a0f3b']];
 const CATS = ['dry', 'damp', 'slick', 'wet', 'icy-fog'];
 const $ = (id) => document.getElementById(id);
@@ -562,7 +563,7 @@ function setMode(r) {
   if (selRoute >= 0) setRouteHighlight(selRoute);
   wetDirty = true; document.body.classList.toggle('ribbons', r);
 }
-function ensureWet() { if (useRib && wetDirty) { rib.fillWet(wetNow, curF); wetDirty = false; } }
+function ensureWet() { if (useRib && wetDirty) { rib.fillWet(wetNow, curF); if (rib2) rib2.fillWet(wetNow.subarray(rib.samples.S), curF); wetDirty = false; } }
 
 async function selectNight(i) {
   const n = index.nights[i]; setStatus(`Loading ${nightLabel(n)}…`); overlay.classList.remove('hide');
@@ -619,7 +620,7 @@ function applyTime(force) {
   if (document.activeElement !== $('slider') || force) $('slider').value = f;
   const key = Math.round(f * 20);
   curF = f;
-  if (useRib) rib.setFrame(f); // three uniform writes, nothing else
+  if (useRib) { rib.setFrame(f); if (rib2) rib2.setFrame(f); } // three uniform writes, nothing else
   if (force || key !== lastFrameKey) {
     lastFrameKey = key;
     if (useRib) wetDirty = true;
@@ -732,6 +733,7 @@ function frame(ts) {
   if (pointMat && !useRib) pointMat.uniforms.uScale.value = clamp(dist / 450, 1, 12);
   if (useRib) {
     rib.setLod(dist);
+    if (rib2) { rib2.setLod(dist); rib2.uniforms.uDistFade.value = 1; } // live: city streets stay drawn in the whole-city view
     // the ribbon shader draws every route (dashed unless selected), so the old solid route tubes stay hidden
     ROUTES.forEach((r) => { r.hi.visible = false; r.dim.visible = false; });
   }
@@ -747,6 +749,95 @@ function frame(ts) {
   renderer.render(scene, camera);
 }
 
+/* ------------------------------------------------------------------ live preview (?live=1), see PLAN_LIVE_DATA.md section 9
+   live/index.json + day0..2.u8 (frame-major, columns = data/ribbons.bin samples then live/ribbons_city.bin samples, hourly frames),
+   fog0..2.png, status.json. Day 0 is shown first; days 1-2 load in the background and the bar grows when they arrive. */
+let rib2 = null; // city ribbons (live only)
+const loadImg = (u) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('image ' + u)); i.src = u; });
+const ptFmt = (iso, o) => new Date(iso).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour12: false, ...o });
+let LV = null; // { idx, st, ST, S1, el }
+function liveSetData(u8, nf) { rib.setNight(u8, nf, 0, LV.ST); rib2.setNight(u8, nf, LV.S1, LV.ST); wetDirty = true; }
+function liveExtendG() { // picking / tooltips / route bins see the city samples too (appended after the district+route samples)
+  const a = rib.samples, b = rib2.samples, n = a.S + b.S, off = ribMeta.streets.length;
+  const cat = (T, p, q) => { const o = new T(n); o.set(p); o.set(q, a.S); return o; };
+  const x = new Float32Array(n), y = new Float32Array(n), z = new Float32Array(n), st = new Uint32Array(n);
+  for (let k = 0; k < a.S; k++) { x[k] = a.pos[k * 3]; y[k] = a.pos[k * 3 + 1]; z[k] = a.pos[k * 3 + 2]; st[k] = a.st[k]; }
+  for (let k = 0; k < b.S; k++) { x[a.S + k] = b.pos[k * 3]; y[a.S + k] = b.pos[k * 3 + 1]; z[a.S + k] = b.pos[k * 3 + 2]; st[a.S + k] = b.st[k] + off; }
+  G = { n, x, y, z, mask: cat(Uint16Array, a.mask, b.mask), cls: cat(Uint8Array, a.cls, b.cls), st, side: cat(Uint8Array, a.side, b.side), names: ribMeta.streets.concat(rib2Meta.streets) };
+  wetNow = new Float32Array(n).fill(-1);
+}
+let rib2Meta = null;
+async function composeFog(idx) { // the three day PNGs -> one contiguous tile sheet (frame i = tile i), so the shader can interpolate across day boundaries
+  const g = idx.fog_grid, imgs = await Promise.all(idx.fog_files.map((f) => loadImg(base + f))), rows = Math.ceil(idx.n_frames / g.cols);
+  const cv = document.createElement('canvas'); cv.width = g.cols * g.w; cv.height = rows * g.h;
+  const cx = cv.getContext('2d');
+  idx.frame_ranges.forEach(([a, b], k) => { for (let j = 0; j < b - a; j++) { const gi = a + j; cx.drawImage(imgs[k], (j % g.cols) * g.w, Math.floor(j / g.cols) * g.h, g.w, g.h, (gi % g.cols) * g.w, Math.floor(gi / g.cols) * g.h, g.w, g.h); } });
+  const blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
+  return { url: URL.createObjectURL(blob), grid: { ...g, rows } };
+}
+function livePlaceMarker() {
+  if (!LV) return;
+  const sl = $('slider'), max = +sl.max, fr = LV.idx.observed_until_frame, bar = $('timebar');
+  const mk = LV.el.mark, ob = LV.el.obs, fc = LV.el.fc;
+  if (fr == null || !(max > 0) || !sl.offsetWidth) { mk.hidden = true; ob.hidden = true; fc.textContent = 'forecast only'; fc.style.left = '0px'; return; }
+  const x = sl.offsetLeft + 8 + Math.min(1, fr / max) * (sl.offsetWidth - 16), W = bar.clientWidth;
+  mk.hidden = false; mk.style.left = x + 'px'; ob.hidden = false; ob.style.right = (W - x + 5) + 'px'; fc.style.left = (x + 5) + 'px';
+}
+function liveBar(idx, st) {
+  const bar = document.createElement('div'); bar.id = 'livebar';
+  bar.innerHTML = '<div class="lv-note"><b>PREVIEW SNAPSHOT: not updating</b> <span id="lv-asof"></span></div><div class="lv-row"><span class="lv-obs">observed</span><span class="lv-fc">forecast</span><span class="lv-load" id="lv-load"></span></div>';
+  $('timebar').before(bar);
+  const mk = document.createElement('i'); mk.id = 'livemark'; mk.title = 'Observed until here, forecast after'; $('timebar').appendChild(mk);
+  const asof = st && st.generated_iso ? st.generated_iso : idx.data_as_of;
+  $('lv-asof').textContent = asof ? `· Data as of ${ptFmt(asof, { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).replace(',', '')}` : '';
+  LV.el = { mark: mk, obs: bar.querySelector('.lv-obs'), fc: bar.querySelector('.lv-fc'), load: $('lv-load') };
+  new ResizeObserver(livePlaceMarker).observe($('timebar')); setBandVars();
+}
+async function bootLive() {
+  base = 'live/';
+  const [idx, st] = await Promise.all([withTimeout(getJSON(base + 'index.json'), 15000, 'live index'), getJSON(base + 'status.json').catch(() => null)]);
+  const S1 = idx.ribbons_n, S2 = idx.ribbons_city_n, ST = S1 + S2, nF = idx.n_frames, f0 = idx.frame_ranges[0][1] - idx.frame_ranges[0][0];
+  LV = { idx, st, ST, S1, el: null };
+  index = { nights: [idx] }; $('night').innerHTML = '<option value="0">Live snapshot</option>';
+  setStatus('Loading street geometry…');
+  await ensureRibbons({ ribbons: 'data/ribbons.bin' });
+  if (rib.samples.S !== S1) throw new Error(`live index expects ${S1} district samples, ribbons.bin has ${rib.samples.S}`);
+  const [cb, cm] = await Promise.all([withTimeout(getBuf(base + idx.ribbons_city), 60000, 'city ribbons'), getJSON(base + idx.ribbons_city_meta)]);
+  rib2 = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch }); rib2.build(cb, cm); rib2.mesh.renderOrder = 9; rib2Meta = cm; // under the district/route ribbons
+  setStatus('Loading live street wetness…');
+  const [d0, wx] = await Promise.all([withTimeout(getBuf(base + idx.frame_files[0]), 60000, 'day 0'), getJSON(base + idx.weather).catch(() => null)]);
+  if (d0.byteLength !== f0 * ST) throw new Error(`${idx.frame_files[0]} has ${d0.byteLength} bytes, expected ${f0 * ST}`);
+  setMode(true); liveExtendG();
+  night = { ...idx, label: 'Live snapshot', n_frames: f0 }; weather = wx;
+  liveSetData(new Uint8Array(d0), f0);
+  fogGrid = { ...idx.fog_grid, rows: idx.fog_grid.rows[0] };
+  setStatus('Loading fog…');
+  const ok = await fog.build(base + idx.fog_files[0], fogGrid);
+  $('fogtoggle').disabled = !ok; $('fogdens').disabled = !ok; if (!ok) $('fogtoggle').checked = false;
+  fog.setVisible($('fogtoggle').checked);
+  $('slider').max = f0 - 1; $('wx-note').hidden = true;
+  liveBar(idx, st);
+  const asof = st && st.generated_iso ? Date.parse(st.generated_iso) : Date.now(), t0 = Date.parse(idx.start_iso);
+  tNow = clamp(Math.round((asof - t0) / 3600000), 0, f0 - 1);
+  applyTime(true); livePlaceMarker();
+  overlay.classList.add('hide'); $('status').textContent = '';
+  liveRest(idx, d0, f0, nF, ST); // background: days 1-2 (not awaited)
+}
+async function liveRest(idx, d0, f0, nF, ST) {
+  try {
+    LV.el.load.textContent = 'loading the next days…';
+    const rest = await Promise.all(idx.frame_files.slice(1).map((f) => getBuf(base + f)));
+    const full = new Uint8Array(nF * ST); full.set(new Uint8Array(d0), 0);
+    let o = f0 * ST;
+    rest.forEach((b, i) => { const k = i + 1, nfk = idx.frame_ranges[k][1] - idx.frame_ranges[k][0]; if (b.byteLength !== nfk * ST) throw new Error(`${idx.frame_files[k]} has ${b.byteLength} bytes, expected ${nfk * ST}`); full.set(new Uint8Array(b), o); o += b.byteLength; });
+    const cf = await composeFog(idx);
+    liveSetData(full, nF); night.n_frames = nF;
+    fogGrid = cf.grid; await fog.build(cf.url, fogGrid); fog.setVisible($('fogtoggle').checked);
+    $('slider').max = nF - 1; LV.el.load.textContent = ''; livePlaceMarker(); applyTime(true);
+    window.__liveFull = true;
+  } catch (e) { console.warn(e); LV.el.load.textContent = 'later days unavailable'; }
+}
+
 /* ------------------------------------------------------------------ boot */
 (async function boot() {
   try {
@@ -757,6 +848,7 @@ function frame(ts) {
     await loadMeshes();
     PB = pb; PJ = pj; parsePts(pb, pj); await initRoutes();
     requestAnimationFrame(frame);
+    if (LIVE) { initSheet(); await bootLive(); applyUrlRoute(); window.__ready = true; return; }
     setStatus('Loading replay…');
     let idx, dir;
     try { [idx, dir] = await loadIndex(); } catch (e) {
@@ -782,4 +874,4 @@ function frame(ts) {
   }
 })();
 
-window.__dbg = { get skater() { return skater; }, stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
+window.__dbg = { get skater() { return skater; }, stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get rib2() { return rib2; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
