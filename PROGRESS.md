@@ -38,3 +38,9 @@ Check data sources (DataSF building footprints field name, 3DEP elevation endpoi
 
 ## M1 (part 2 of 2): NEXT
 OSM streets and bus stops for the Potrero zone (Overpass kumi mirror), trace the route from 20th & Kansas downhill to the bus stop, sample street points both sides every 10 m with 2 m terrain, viewer meshes (terrain.glb, buildings.glb), top-down PNG for the user to confirm the route.
+
+## M1 part 2: DONE (2026-11-11)
+- Potrero zone from OSM (Overpass needs a User-Agent header; kumi mirror timed out, overpass-api.de worked): 633 street ways, 14,116 street sample points (every 10 m, both sides, 5 m offset), 180 bus stops nearby. Files in ~/deathfog-data/grids/zone/ (potrero_points.csv, route.geojson, route.png, zone_summary.json); route.geojson, route.png and the summary are also copied to site/v3/data/.
+- ROUTE (please confirm): start = 20th & Kansas OSM intersection (37.75963, -122.40308, 81 m); finds the cheapest downhill street path to bus stops at the bottom, picks the shortest one that reaches the full drop: down 20th to Kansas, down Kansas St through 19th, 18th, 17th to 15th St, ending at the bus stop "Rhode Island Street & 15th Street" (37.76747, -122.40298). 930 m, drop 76.5 m, no climbing. Alternatives within 77 m drop: 100 Hooper St (1,397 m), Division & Townsend St. Spec bug fixed: a name match on "kansas" also matched Arkansas Street, now exact prefix match.
+- Meshes (site/v3/data): terrain.glb 2.7 MB (60 m cells), buildings.glb 1.2 MB (only buildings of 15 m and taller, footprint over 150 m2, simplified 3 m; houses omitted to stay under the size budget; full-detail Potrero buildings can be added later). Added mapbox-earcut to the venv (logged).
+- Next: M2 wind solver (hardest step).
