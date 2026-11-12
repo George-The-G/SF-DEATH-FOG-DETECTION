@@ -1,4 +1,4 @@
-# Guide 04: fog-front lag speed (switch `lag_uniform`)
+# Guide 09: fog-front lag speed (switch `lag_uniform`)
 
 Problem: `lag_for` in `wetness.simulate` divides distance by `wmean * wr`, where `wr` is each street's local wind ratio (down to 0.25). A sheltered street gets the fog up to four times later than the street next to it. The front travels with the wind above the roofs.
 

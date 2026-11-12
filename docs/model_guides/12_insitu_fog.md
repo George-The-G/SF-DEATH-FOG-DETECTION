@@ -1,10 +1,10 @@
-# Guide 07: in-place fog for any wind direction (switch `insitu_fog`; needs guide 03)
+# Guide 12: in-place fog for any wind direction (switch `insitu_fog`; needs guide 08)
 
 Problem: `onshore_weight` is zero for wind from 0-180 degrees, so winter fog from the bay side and fog that forms in place never wet a street.
 
 ## Physics
 Keep the advected term as it is. Add a second fog source that does not use wind direction or the tracer:
-- Saturation at the street: `sat = clip(1 - (T_st - Td_st) / GAP_INSITU, 0, 1)`, `GAP_INSITU = 1.0` K, with the street-level values from guide 03.
+- Saturation at the street: `sat = clip(1 - (T_st - Td_st) / GAP_INSITU, 0, 1)`, `GAP_INSITU = 1.0` K, with the street-level values from guide 08.
 - Fog evidence `ev` in 0..1:
   - Model: RRFS `visibility` (already in `SURFACE_VARS`; grid it like the other variables): `ev_model = clip((5000 - vis_m) / 4000, 0, 1)` per lattice point, interpolated to streets.
   - Observed hours: station evidence from KSFO, KOAK, KHAF visibility, `ev_stn = clip((3 - vis_mi) / 2, 0, 1)`; hourly mean over stations with data; correction `0.5 * (ev_obs - ev_model_at_stations_mean)` added citywide and faded with `C.FOG_E_FOLD_H`. Clip the result to 0..1.

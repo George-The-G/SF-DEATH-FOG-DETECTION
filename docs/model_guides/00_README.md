@@ -1,42 +1,49 @@
-# Model accuracy guides
+# Model accuracy guides (revision 2, 2026-11-12)
 
-Follow-up to `MODEL_REVIEW_PLAN.md` (2026-11-12). One guide per fix that can be built now. Nothing here is built. Each guide needs the user's go-ahead before it is started, and a second one before its switch is turned on for the public live page.
+Follow-up to `MODEL_REVIEW_PLAN.md`. Revised after the user's direction:
+- No field testing for a while. Check the model against free weather stations placed at their real coordinates and against satellite cloud, and show both on the page.
+- Pavement keeps heat from run to run; nothing restarts from "dry and cool" each run.
+- Sunlight is the clear-sky maximum for that street and moment (shadows included), scaled down by current cloudiness, and is shown on the model.
+- Slippery and water depth are tracked separately: a thin film is already fully slippery; the extra water and rain only decide how long drying takes.
+
+One guide per piece of work. Nothing here is built.
 
 ## Rules for every guide
-- Branch `v3-dev`. No force-push. LF, UTF-8 without BOM. Commit trailer as usual.
-- Do guide 01 first: every later change sits behind a named physics switch and is off by default. With all switches off, `wetness.simulate` must give bit-identical results to today (replay nights and live). Tests must prove it.
-- The scheduled live job keeps running the current physics until the user approves a switch. Turning a switch on in `live/config.py` (`PHYSICS`) is its own commit and bumps `MODEL_VERSION`.
-- Each guide ends with: unit tests listed in the guide, full test suite green, and a compare report (guide 01) pasted into the hand-back: mean and 90th-percentile wetness by elevation band and by district, old versus new, for the latest live inputs.
-- All new constants go at the top of `wetness.py` (model) or `live/config.py` (data handling) with a one-line comment and the words "first guess" where there is no measurement behind them. Add them to the About text only when a switch goes live.
-- No ground truth exists yet. "Done" means physically consistent and tested on synthetic cases, not "proven more accurate". Say so in the hand-back.
-- Anything that changes main (workflow, release download) needs a PR and explicit user approval. Guides that need it say so.
+- Branch `v3-dev`. No force-push. LF, UTF-8 without BOM. Usual commit trailer. Do not edit `main`; the live step runs `live_ci/refresh.sh` and `microclimate/` from `v3-dev`, so most work needs no change there. If a guide does need a change on main, stop and ask.
+- The page is live. Every model change sits behind a named physics switch (guide 01) and is off for the public build until the user approves it. With all switches off the output must equal today's, bit for bit.
+- Viewer changes (anything in `site/v3`): show the user a mockup first and wait for two confirmations before building. Guides mark these as "UI (mockup first)". Data files for the viewer can be produced before the UI exists.
+- Each guide ends with: its unit tests, the full suite green (`python -m pytest`), and a compare report (guide 01) in the hand-back.
+- New constants go at the top of `wetness.py` (model) or `live/config.py` (data handling) with a one-line comment; write "first guess" where no measurement backs the value.
+- Without ground truth, "done" means physically consistent, tested on synthetic cases, and checked against stations or satellite where the guide says so. Say this in the hand-back.
+- Run-time budget for the live build: under 3 minutes and under 3 GB on the GitHub runner (today 37 s, 0.7 GB). First-paint download must not grow; new viewer data goes in files loaded on demand.
 
 ## Order
-| # | Guide | Fixes review item | Size | Needs main PR |
-|---|---|---|---|---|
-| 01 | Physics switches and compare report | (tooling) | S | no |
-| 02 | Run archive and scoring | section 5 | S-M | yes (archive step) |
-| 03 | Cloud base and elevation-adjusted temperature | A, part of J | M | no |
-| 04 | Fog-front lag speed | F | S | no |
-| 05 | Evaporation by vapour pressure deficit; total cloud in cooling | E, part of C | S | no |
-| 06 | Drizzle | B | S-M | no |
-| 07 | In-place fog (any wind direction) | D | M | no |
-| 08 | Slope-aware sunlight | G (without trees) | M | yes (extra static file) |
-| 09 | Water film in millimetres | H | M | no |
-| 10 | Dry-spell and humidity grease factors | I (partly) | S | no |
-| 11 | More stations and spatial nudging | K (partly) | M | no |
+| # | Guide | What it gives | Size |
+|---|---|---|---|
+| 01 | Physics switches and compare report | Safe on/off for every change | S |
+| 02 | State carried between runs; run archive | Heat and water memory; history for scoring | M |
+| 03 | Stations at their coordinates, in the model and on the map | Spatial corrections; model-versus-station view | M |
+| 04 | Satellite cloud score | Automatic rating of the model's cloud and fog | M |
+| 05 | Slippery versus water depth, rain tracking | The two outputs the user asked for | M |
+| 06 | Clear-sky sun, shadows, cloudiness; sunlight data for the viewer | Correct and visible sunshine | M |
+| 07 | Pavement temperature with heat memory | Realistic dew and drying | M-L |
+| 08 | Cloud base and street-level temperature | Hills in cloud, flats under it | M |
+| 09 | Fog-front lag speed | Correct fog arrival time in sheltered streets | S |
+| 10 | Evaporation by vapour pressure; total cloud in cooling | Interim fix until 07 is on | S |
+| 11 | Drizzle | Wetting below thick stratus | S-M |
+| 12 | In-place fog for any wind direction | Bay-side and calm-night fog | M |
+| 13 | Dry-spell and humidity grease factors | Extra slipperiness, unverified | S |
 
-03 to 05 are independent of each other. 06 and 07 need 03. 09 should come after 05 and 06. 10 needs 09.
+Dependencies: 01 first. 05 and 07 need 02. 07 needs 06 and 05. 11 and 12 need 08. 13 needs 05. 03 and 04 are independent of the physics guides and can run in parallel with them.
 
-## Not in a guide: the hard ones, why, and what they need
-| Item | Why it is hard | What it would take |
+## Still not in a guide, and why
+| Item | Why | What it needs |
 |---|---|---|
-| Pavement temperature with heat memory (C) | Needs asphalt heat capacity and conductivity, sky longwave, a multi-day spin-up, and it changes dew, frost and drying all at once. With no road-surface temperature measurements it could be confidently wrong. | One or two surface IR temperature loggers for about two weeks, then roughly a week of work for a two-layer scheme checked against them. Guide 05 is the interim fix. |
-| Wind simulation with the inversion (J) | The solver has no temperature, so it needs either a buoyancy term (new solver work and re-validation) or a lid at several heights. Three lid heights x nine directions is 27 citywide runs plus the 5 m patches at about 2 h 20 min per set. | Several GPU days, a decision on lid heights, and wind readings on hills to check the result. |
-| Fog evaporating over warm land (J) | The loss rate depends on land temperature and sunlight along the path, so it cannot be baked into a steady tracer field; needs a rerun or a time-varying decay tuned to something. | GOES fog-edge retreat data to tune against (comes with the nowcast item below). |
-| Calibrating the 5 m wind correction (J) | Needs street-level wind measurements; none are fetched. | A handheld or fixed anemometer at a few street points, or a citizen-station feed (keys below). |
-| Trees and pavement type (G, I) | The street-tree list has positions but not reliable crown sizes; LiDAR canopy is a large download and means recomputing the horizon profiles for 286,000 points (hours). Pavement type is sparse in OpenStreetMap. | LiDAR canopy processing job (about a day of compute), then a drip term; a manual surface survey of the routes for paint, metal and concrete. |
-| Probability from an ensemble (K) | Ensemble access through Open-Meteo is unconfirmed; six or more members multiplies run time inside a 10-minute job; the page needs a new way to show probability. | Source check, run-time budget, and a UI decision. |
-| GOES nowcast for the next 0-6 h (K) | Tracking the fog edge needs cloud-motion estimation, parallax correction and night-time low-cloud detection under higher cloud. | A multi-week project; worth it only after scoring (guide 02) shows forecast-hour timing is the main error. |
-| Ground truth and calibration | Needs hardware, weeks of data and your time on the streets. Webcam wet-road detection is a project of its own. | 3-5 leaf-wetness and T/RH loggers, field reports through the existing form, then fitting once guide 02 has a few weeks of archive. |
-| Station networks that need accounts (PurpleAir, Synoptic) | Need API keys stored as repository secrets, and their terms checked. | You create the accounts; then they slot into guide 11. |
+| Wind simulation with the inversion | Solver has no temperature; a lidded library is 27 citywide runs plus 5 m patches | Several GPU days and hill wind readings to check |
+| Fog evaporating over warm land | Cannot be baked into fixed wind fields | Tuning against the satellite fog edge once guide 04 has history |
+| Calibrating the 5 m wind correction | No street-level wind data | Guide 03 station winds help a little; real fix needs an anemometer |
+| Trees, paint, metal, pavement type | Canopy data means recomputing 286,000 skylines; surface type is sparse in OSM | A day of compute for canopy; a route survey for surfaces |
+| Ensemble probability | Run time times six or more; new display | Source check and a UI decision |
+| Satellite nowcast (0-6 h) | Cloud tracking project | Worth it once guide 04 shows fog timing is the main error |
+| Calibration against real roads | No field data for now | Loggers and reports later; guide 02 keeps the history ready |
+| Networks needing accounts (PurpleAir, Synoptic) | API keys as repo secrets | User creates accounts; they slot into guide 03 |

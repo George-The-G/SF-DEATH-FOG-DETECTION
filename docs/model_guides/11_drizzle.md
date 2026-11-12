@@ -1,4 +1,4 @@
-# Guide 06: drizzle (switch `drizzle`; needs guide 03)
+# Guide 11: drizzle (switch `drizzle`; needs guide 08)
 
 Problem: thick stratus drizzles and wets streets below the cloud base. Model precipitation mostly misses it.
 
@@ -10,7 +10,7 @@ Problem: thick stratus drizzles and wets streets below the cloud base. Model pre
   - at least one station has a ceiling at or below 3000 ft and none reports `DZ`, `RA`, `BR` or `FG`: `D = 0.3 * D`.
   - Express as a correction to the model D and fade it with `C.FOG_E_FOLD_H` like the other corrections.
 - Per street: drizzle reaches streets below the fog top; some evaporates below the base: `D_st = D * fog_top_ramp(top, z) * clip(1 - max(base - z, 0) / 600, 0.2, 1)`.
-- Wetting: `add_drizzle = K_DRIZZLE * D_st * porous`, `K_DRIZZLE = 150` W units per mm (0.05 mm/h adds 7.5 per hour; compare fog at up to 20-30). With guide 09 the rate enters in mm directly.
+- Wetting: `add_drizzle = K_DRIZZLE * D_st * porous`, `K_DRIZZLE = 150` W units per mm (0.05 mm/h adds 7.5 per hour; compare fog at up to 20-30). With guide 05 (water film) the rate enters in mm directly.
 - Do not add drizzle where model precipitation already exceeds it: use `max(precip_term, drizzle_term)` contributions, not the sum.
 
 ## Changes

@@ -1,5 +1,7 @@
 # Model review and accuracy plan
 
+> Revision note (2026-11-12): the work order in section 6 is superseded by `docs/model_guides/00_README.md` (revision 2), which follows the user's direction: stations and satellite as the check while no field testing is possible, state carried between runs, clear-sky sun scaled by cloudiness, slippery tracked separately from water depth, pavement heat memory. The findings in sections 1 to 5 stand.
+
 Status: review and plan only (2026-11-12). Nothing here is built. Based on reading `microclimate/wetness.py`, `fogtop.py`, `live/forcing.py`, `live/config.py`, `fog.py`, `wind.py`, `street.py` on `v3-dev`. Data sources in section 4 are named from knowledge; access, latency and terms need the same kind of source check as PLAN_LIVE_DATA.md step 1 before any is used.
 
 ## 1. Verdict

@@ -1,4 +1,4 @@
-# Guide 03: cloud base and elevation-adjusted temperature (switch `cloud_base`)
+# Guide 08: cloud base and elevation-adjusted temperature (switch `cloud_base`)
 
 Problem: a street counts as in fog whenever it is below the fog top. Streets below the cloud base are under the cloud, not in it.
 
@@ -18,7 +18,7 @@ Problem: a street counts as in fog whenever it is below the fog top. Streets bel
    - hourly `base_offset` as above -> 10-minute series; store `info["cloud_base"] = {offset_last, stations_used, hours_with_ceiling}`.
    - `s_model = wetness.fog_inflow(..., use_gap=False)`.
    - `forcing_fn` returns the adjusted `temp`, `dew` and a new key `cloud_base` ([N], m above sea level). It needs `z` of the points: add a `z` argument to `build` and pass `S["z"]` from `live/build.py`.
-   - Return the coast-level base series as `F["cloud_base_coast"]` (used by guide 06).
+   - Return the coast-level base series as `F["cloud_base_coast"]` (used by guide 11).
 4. `wetness.simulate`: after `f = forcing_fn(i, f)`, `if "cloud_base" in P and "cloud_base" in f: local = local * fogtop.cloud_base_ramp(f["cloud_base"], pts["z"])`. Add `diag["in_cloud_hours"]` (sum of the weight * dt).
 5. Replay path: untouched (switch is live-only for now).
 

@@ -5,7 +5,7 @@ Goal: every later model change can be turned on or off by name, and old versus n
 ## Changes
 1. `microclimate/wetness.py`
    - `simulate(..., physics=None)`: `P = frozenset(physics or ())`. Pass `P` to `step(..., physics=P)`.
-   - `KNOWN_PHYSICS = ("cloud_base", "lag_uniform", "vpd_evap", "total_cloud", "drizzle", "insitu_fog", "sun_slope", "film", "grease")`. Unknown names raise `ValueError`.
+   - `KNOWN_PHYSICS = ("cloud_base", "lag_uniform", "vpd_evap", "total_cloud", "drizzle", "insitu_fog", "sun_clear", "film", "pavement", "grease")`. Unknown names raise `ValueError`.
    - No behaviour change in this guide. Later guides add `if "name" in P:` branches only.
 2. `microclimate/live/config.py`: `PHYSICS = ()` (what the scheduled job runs). `MODEL_VERSION` unchanged.
 3. `microclimate/live/forcing.py`: `build(..., physics=())`, stored as `info["physics"]`.

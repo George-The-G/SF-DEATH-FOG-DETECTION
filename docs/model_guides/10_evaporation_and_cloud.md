@@ -1,4 +1,4 @@
-# Guide 05: evaporation by vapour pressure deficit; total cloud in cooling (switches `vpd_evap`, `total_cloud`)
+# Guide 10: evaporation by vapour pressure deficit; total cloud in cooling (switches `vpd_evap`, `total_cloud`)
 
 ## Part A: `vpd_evap`
 Problem: `evap = (K_EVAP_BASE + K_EVAP_WIND * wind) * (1 - RH)`. At the same RH, warm air dries a surface far faster than cold air.
@@ -7,7 +7,7 @@ Change in `wetness.step`:
 - `es(t) = 0.6108 * exp(17.625 * t / (t + 243.04))` kPa (same Magnus constants as `magnus_rh`). Add as `sat_vp_kpa`.
 - `vpd = max(es(temp) - es(dew), 0)`.
 - `evap = (K_EVAP_BASE + K_EVAP_WIND * wind) * vpd / VPD_REF_KPA`, `VPD_REF_KPA = 1.40` (= es at 12 degC, so the new form equals the old one at 12 degC and the existing constants keep their meaning).
-- When guide 03 is on, `temp` and `dew` are already the street-level values.
+- When guide 08 (cloud base) is on, `temp` and `dew` are already the street-level values.
 
 Tests: at 12 degC / 70 % RH new equals old within 1 %; at 25 degC / 70 % new is 2.2-2.3 times old; at 5 degC / 70 % new is 0.60-0.65 times old; RH 100 % gives 0.
 
@@ -22,3 +22,5 @@ Tests: low 0 / total 100 gives half the clear-sky cooling; low 100 gives none; t
 
 ## Hand-back
 Compare report for each switch separately. Expect slower drying on cold nights and faster drying on warm afternoons from A; slightly less dew under high cloud from B.
+
+Note: once guide 07 (pavement temperature) is on, evaporation and dew come from the surface energy balance and these two switches only affect streets where that model is off.
