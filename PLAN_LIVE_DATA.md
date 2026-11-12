@@ -128,6 +128,9 @@ Done when: the backtest report exists and is summarised in PROGRESS.md.
 - Live data for areas outside the 20 m domain.
 
 ## 9. UI changes needed (document only, build later)
+
+> Superseded for layout and styling by UI_REDESIGN_PLAN.md (approved mockup 2026-11-12, docs/mockups/ui_redesign_v1.html). The live items below stay required.
+
 - Night list: a "Live (beta)" entry first; label "Tonight + 2 days"; later the default selection.
 - Time bar: 72 h with day labels (Tonight / Tomorrow / Day after), a marker at observed_until (left = observed, right = forecast), and hourly stepping. Clock shows weekday + time.
 - Load day files on demand when the scrubber enters day 1/2; show a small loading state on the bar.
