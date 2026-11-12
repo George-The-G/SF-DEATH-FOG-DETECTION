@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createFog } from './fog.js';
 import { createRibbons } from './ribbons.js';
+import { createSkater } from './skater.js';
 
 /* ------------------------------------------------------------------ config */
 const SRC_Q = new URLSearchParams(location.search).get('src');
@@ -75,6 +76,8 @@ scene.add(new THREE.HemisphereLight(0x8fa8d8, 0x2a3348, 1.6));
 const moon = new THREE.DirectionalLight(0xc8d4ff, 2.2);
 moon.position.set(-6000, 9000, 5000); scene.add(moon);
 scene.add(new THREE.AmbientLight(0x202840, 0.8));
+const skater = createSkater({ THREE, reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches }); // shown only during the route flyover
+scene.add(skater.group);
 
 let meta = null, pts = null, terrainH = null, T = null;
 const CITY = { target: new THREE.Vector3(8300, 0, -8000), pos: new THREE.Vector3(3900, 8800, 7600) };
@@ -412,7 +415,7 @@ function startFly() {
   fly = { R, u: 0, paused: false, done: false, last: 0, cam: camera.position.clone(), tgt: controls.target.clone(), txt: '' };
   flyUI();
 }
-function stopFly() { if (!fly) return; fly = null; controls.enabled = true; controls.update(); flyUI(); }
+function stopFly() { skater.setVisible(false); if (!fly) return; fly = null; controls.enabled = true; controls.update(); flyUI(); }
 function routeBins(R) {
   if (R.bins) return R.bins;
   const ri = R.def.index, p = R.def.poly, s = R.def.s, bins = new Map();
@@ -461,6 +464,28 @@ function flyStep(ts) {
   fly.cam.lerp(c, k); fly.tgt.lerp(t, k);
   camera.position.copy(fly.cam); controls.target.copy(fly.tgt);
   flyReadout(s);
+  placeSkater(R, s, dt, c);
+}
+/* The skateboarder rides the street ahead of the chase camera. Its arc position is chosen so that the board sits just above the
+   glass control stack at the bottom of the screen (bisection on the projected height), its size is a fixed share of the screen height
+   (so it reads from 390x844 to 1440x900), and it wobbles with the interpolated wetness at that point of the route. */
+const _sp = new THREE.Vector3(), _sf = new THREE.Vector3();
+function placeSkater(R, s, dt, camGoal) {
+  if (!fly || fly.cam.distanceTo(camGoal) > 90) { skater.setVisible(false); return; } // not while the camera is still flying in
+  camera.lookAt(controls.target); camera.updateMatrixWorld(); // same pose OrbitControls.update() is about to set
+  const H = innerHeight, yT = Math.min(H, $('controls').getBoundingClientRect().top) - 18;
+  const at = (m) => R.curve.getPointAt(clamp(m / R.len, 0, 1));
+  const sy = (m) => { _sp.copy(at(m)); _sp.y -= 1.6; _sp.project(camera); return _sp.z > 1 ? -1e9 : (1 - (_sp.y * .5 + .5)) * H; };
+  let lo = s - FLY.back + 14, hi = s + 40; // lo = near (lower on screen), hi = far
+  let m = lo;
+  if (sy(lo) > yT) { for (let i = 0; i < 12; i++) { m = (lo + hi) / 2; if (sy(m) > yT) lo = m; else hi = m; } m = hi; }
+  m = clamp(m, 0, R.len);
+  const P = at(m).clone(); P.y -= 1.6; // route line sits 3 m above the terrain; the ribbon surface is ~1.3 m
+  _sf.copy(R.curve.getTangentAt(clamp(m / R.len, 0, 1))).normalize();
+  const d = camera.position.distanceTo(P), hView = 2 * d * Math.tan(camera.fov * Math.PI / 360), px = clamp(0.13 * H, 64, 128);
+  const scale = (px / H * hView) / 1.75;
+  skater.setVisible(true);
+  skater.update({ pos: P, forward: _sf, scale, w: routeWetAt(R, m), dt });
 }
 $('fly').onclick = startFly;
 $('flyhdr').onclick = () => { if (fly) stopFly(); else startFly(); };
@@ -751,4 +776,4 @@ function frame(ts) {
   }
 })();
 
-window.__dbg = { stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
+window.__dbg = { get skater() { return skater; }, stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
