@@ -1,0 +1,72 @@
+{
+ "mock": true,
+ "zone": {
+  "name": "Potrero Hill",
+  "n_points": 14116
+ },
+ "nights": [
+  {
+   "id": "2026-11-03",
+   "label": "Mon 3 Nov, fog night",
+   "kind": "fog",
+   "step_min": 10,
+   "n_frames": 97,
+   "start_iso": "2026-11-03T18:00:00-08:00",
+   "streets": "2026-11-03/streets.u8",
+   "fog": "2026-11-03/fog.png",
+   "fog_grid": {
+    "w": 214,
+    "h": 203,
+    "cols": 8,
+    "rows": 5,
+    "frame_min": 30,
+    "x0": 540100,
+    "y0": 4171500,
+    "cell_m": 80
+   },
+   "weather": "2026-11-03/weather.json"
+  },
+  {
+   "id": "2026-11-04",
+   "label": "Tue 4 Nov, dry night",
+   "kind": "dry",
+   "step_min": 10,
+   "n_frames": 97,
+   "start_iso": "2026-11-04T18:00:00-08:00",
+   "streets": "2026-11-04/streets.u8",
+   "fog": "2026-11-04/fog.png",
+   "fog_grid": {
+    "w": 214,
+    "h": 203,
+    "cols": 8,
+    "rows": 5,
+    "frame_min": 30,
+    "x0": 540100,
+    "y0": 4171500,
+    "cell_m": 80
+   },
+   "weather": "2026-11-04/weather.json"
+  },
+  {
+   "id": "2026-11-05",
+   "label": "Wed 5 Nov, fog night",
+   "kind": "fog",
+   "step_min": 10,
+   "n_frames": 97,
+   "start_iso": "2026-11-05T18:00:00-08:00",
+   "streets": "2026-11-05/streets.u8",
+   "fog": "2026-11-05/fog.png",
+   "fog_grid": {
+    "w": 214,
+    "h": 203,
+    "cols": 8,
+    "rows": 5,
+    "frame_min": 30,
+    "x0": 540100,
+    "y0": 4171500,
+    "cell_m": 80
+   },
+   "weather": "2026-11-05/weather.json"
+  }
+ ]
+}

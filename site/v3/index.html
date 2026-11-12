@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070b14">
+<title>Death Fog 3D</title>
+<meta name="description" content="Overnight wet-street replay of San Francisco's Potrero Hill: a 20 m proof-of-concept simulation.">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="gl" aria-label="3-D view of San Francisco terrain, buildings and street wetness"></canvas>
+
+<header id="top">
+  <div class="brand"><span class="dot"></span><b>Death Fog</b> <span class="sub">3-D replay</span></div>
+  <div class="poc">Proof of concept: 20 m simulation, not a forecast</div>
+  <div class="views">
+    <button id="btn-city" type="button">City</button>
+    <button id="btn-route" type="button" class="accent">Potrero route</button>
+  </div>
+</header>
+
+<aside id="weather" aria-label="Weather readout">
+  <div class="wx"><span class="k">Temp</span><span class="v" id="wx-temp">--</span></div>
+  <div class="wx"><span class="k">Dew pt</span><span class="v" id="wx-dew">--</span></div>
+  <div class="wx"><span class="k">Wind</span><span class="v" id="wx-wind">--</span></div>
+  <div class="wx"><span class="k">Low cloud</span><span class="v" id="wx-cloud">--</span></div>
+  <div class="wx"><span class="k">Sun</span><span class="v" id="wx-sun">--</span></div>
+</aside>
+
+<section id="legend" aria-label="Legend">
+  <div class="lg-title">Death fog chance <span class="lg-sub">street wetness index</span></div>
+  <div class="ramp" id="ramp"></div>
+  <div class="ticks"><span>0</span><span>20</span><span>50</span><span>80</span><span>100</span></div>
+  <div class="cats"><span>dry</span><span>damp</span><span>slick</span><span>wet</span><span>icy-fog</span></div>
+</section>
+
+<div id="tip" role="status" hidden></div>
+<div id="labels"></div>
+
+<footer id="controls">
+  <div class="row r1">
+    <select id="night" aria-label="Night"></select>
+    <div class="clock"><span id="clock">--:--</span><span id="clock-sub"></span></div>
+  </div>
+  <div class="row r2">
+    <button id="play" type="button" aria-label="Play">&#9654;</button>
+    <input id="slider" type="range" min="0" max="96" step="any" value="0" aria-label="Time">
+  </div>
+  <div class="row r3">
+    <div class="seg" id="speed" role="group" aria-label="Speed">
+      <button type="button" data-s="1" class="on">1x</button>
+      <button type="button" data-s="4">4x</button>
+      <button type="button" data-s="16">16x</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="fogtoggle" checked> Fog</label>
+    <label class="chk"><input type="checkbox" id="bldtoggle" checked> Buildings</label>
+  </div>
+</footer>
+
+<div id="overlay"><div class="box"><div class="spin"></div><div id="status">Loading…</div><button id="retry" type="button" hidden>Retry</button></div></div>
+<div id="badge" hidden>Mock data</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

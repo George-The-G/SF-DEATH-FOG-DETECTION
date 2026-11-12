@@ -1,0 +1,112 @@
+{
+ "start_note": "20th & Kansas intersection found in OSM",
+ "start_lat_lon": [
+  37.7596281,
+  -122.4030771
+ ],
+ "route_length_m": 930,
+ "start_z": 81.2,
+ "end_z": 4.7,
+ "route_streets": [
+  "20th Street",
+  "Kansas Street",
+  "19th Street",
+  "Kansas Street",
+  "18th Street",
+  "Kansas Street",
+  "17th Street",
+  "Kansas Street",
+  "15th Street"
+ ],
+ "ends_at_bus_stop": true,
+ "bus_stop": [
+  37.7674741,
+  -122.402975,
+  "Rhode Island Street & 15th Street"
+ ],
+ "ways": 633,
+ "points": 14116,
+ "bus_stops_in_area": 180,
+ "alternatives": [
+  {
+   "stop": [
+    37.7688717,
+    -122.3985474,
+    "100 Hooper Street"
+   ],
+   "length_m": 1397,
+   "drop_m": 78.0,
+   "climb_m": 0.2
+  },
+  {
+   "stop": [
+    37.7699043,
+    -122.403464,
+    "Division Street & Townsend Street"
+   ],
+   "length_m": 1215,
+   "drop_m": 77.2,
+   "climb_m": 0.1
+  },
+  {
+   "stop": [
+    37.7697585,
+    -122.403233,
+    "Division Street & Rhode Island Street"
+   ],
+   "length_m": 1204,
+   "drop_m": 77.2,
+   "climb_m": 0.0
+  },
+  {
+   "stop": [
+    37.7687505,
+    -122.403075,
+    "Rhode Island Street & Alameda Street"
+   ],
+   "length_m": 1093,
+   "drop_m": 77.0,
+   "climb_m": 0.0
+  },
+  {
+   "stop": [
+    37.7685627,
+    -122.40286,
+    "Rhode Island Street & Alameda Street"
+   ],
+   "length_m": 1071,
+   "drop_m": 77.0,
+   "climb_m": 0.0
+  },
+  {
+   "stop": [
+    37.7670391,
+    -122.4002435,
+    "1111 8th Street"
+   ],
+   "length_m": 1163,
+   "drop_m": 76.6,
+   "climb_m": 0.3
+  },
+  {
+   "stop": [
+    37.7674741,
+    -122.402975,
+    "Rhode Island Street & 15th Street"
+   ],
+   "length_m": 930,
+   "drop_m": 76.5,
+   "climb_m": 0.0
+  },
+  {
+   "stop": [
+    37.7672887,
+    -122.402735,
+    "Rhode Island Street & 15th Street"
+   ],
+   "length_m": 930,
+   "drop_m": 76.4,
+   "climb_m": 0.0
+  }
+ ]
+}

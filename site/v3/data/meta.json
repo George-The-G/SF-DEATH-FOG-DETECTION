@@ -1,0 +1,8 @@
+{
+ "x0": 540100,
+ "y0": 4171500,
+ "cell_m": 20,
+ "nx": 855,
+ "ny": 811,
+ "axes": "three.js: x = east metres from x0, y = up (elevation), z = -(north metres from y0)"
+}
