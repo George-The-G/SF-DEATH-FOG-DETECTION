@@ -9,10 +9,11 @@ import { ICON_SKATE_PLAY, ICON_FOG_PLAY, ICON_FOG_PAUSE } from './icons.js';
 /* ------------------------------------------------------------------ config */
 const SRC_Q = new URLSearchParams(location.search).get('src');
 const SRC_DIRS = SRC_Q === 'mock' ? ['replay_mock/'] : SRC_Q === 'synth' ? ['replay_synth/'] : ['replay/', 'replay_mock/']; // synth = tools/make_synthetic_ribbons.py fixture
-const UI2 = new URLSearchParams(location.search).get('live') === '1' || new URLSearchParams(location.search).get('ui') === '2'; // redesigned chrome (body.ui2), see UI_REDESIGN_PLAN.md
+const QP = new URLSearchParams(location.search);
+const UI2 = QP.get('ui') !== '1'; // redesigned chrome (body.ui2) for everyone; ?ui=1 keeps the old chrome (replay only), see UI_REDESIGN_PLAN.md
 if (UI2) document.body.classList.add('ui2');
 let RNG = null; // ui2 live: visible frame window {lo, hi} of the time bar (null = every frame)
-const LIVE = new URLSearchParams(location.search).get('live') === '1'; // hidden preview of the live builder snapshot (site/v3/live/); absent = replay, unchanged
+const LIVE = UI2 && !(QP.get('live') === '0' || QP.has('night') || QP.has('src')); // live data is the default; ?live=0, ?night=<id> or ?src= open the past-night replays
 const RAMP = [[0, '#3a8696'], [18, '#6fb09f'], [24, '#f4e04d'], [50, '#f2c230'], [65, '#ee8a2c'], [80, '#d9531e'], [90, '#b3202f'], [100, '#7a0f3b']];
 const CATS = ['dry', 'damp', 'slick', 'wet', 'icy-fog'];
 const $ = (id) => document.getElementById(id);
@@ -64,7 +65,7 @@ function webglOk() {
 }
 if (!webglOk()) { setStatus('This page needs WebGL, which your browser or device has disabled.', true); throw new Error('no webgl'); }
 
-async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`); return r.json(); }
+async function getJSON(url, opt) { const r = await fetch(url, opt); if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`); return r.json(); }
 async function getBuf(url) { const r = await fetch(url); if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`); return r.arrayBuffer(); }
 function withTimeout(p, ms, what) { return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + ' timed out')), ms))]); }
 
@@ -664,7 +665,7 @@ $('speed').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return; speed = +b.dataset.s;
   [...$('speed').children].forEach((c) => c.classList.toggle('on', c === b));
 });
-$('night').addEventListener('change', async (e) => { setPlaying(false); try { await selectNight(+e.target.value); } catch (err) { setStatus('Could not load this night: ' + err.message, true); } });
+$('night').addEventListener('change', async (e) => { if (e.target.value === 'live' || String(e.target.value).startsWith('r:')) { if (!(LIVE && e.target.value === 'live')) goNight(e.target.value); return; } setPlaying(false); try { await selectNight(+e.target.value); } catch (err) { setStatus('Could not load this night: ' + err.message, true); } });
 $('fogtoggle').addEventListener('change', (e) => fog.setVisible(e.target.checked));
 $('fogdens').addEventListener('input', (e) => fog.setDensity(+e.target.value / 100));
 /* "District streets": every street of Potrero Hill District and Sunset District as a wetness gradient (default on). */
@@ -784,20 +785,21 @@ function liveExtendG() { // picking / tooltips / route bins see the city samples
 }
 let rib2Meta = null;
 async function composeFog(idx) { // the three day PNGs -> one contiguous tile sheet (frame i = tile i), so the shader can interpolate across day boundaries
-  const g = idx.fog_grid, imgs = await Promise.all(idx.fog_files.map((f) => loadImg(base + f))), rows = Math.ceil(idx.n_frames / g.cols);
+  const g = idx.fog_grid, imgs = await Promise.all(idx.fog_files.map((f) => loadImg(base + f + LV.V))), rows = Math.ceil(idx.n_frames / g.cols);
   const cv = document.createElement('canvas'); cv.width = g.cols * g.w; cv.height = rows * g.h;
   const cx = cv.getContext('2d');
   idx.frame_ranges.forEach(([a, b], k) => { for (let j = 0; j < b - a; j++) { const gi = a + j; cx.drawImage(imgs[k], (j % g.cols) * g.w, Math.floor(j / g.cols) * g.h, g.w, g.h, (gi % g.cols) * g.w, Math.floor(gi / g.cols) * g.h, g.w, g.h); } });
   const blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
   return { url: URL.createObjectURL(blob), grid: { ...g, rows } };
 }
+const ageNow = () => (LQ === 'delayed' ? 130 : LV && LV.real && LV.asof ? (Date.now() - Date.parse(LV.asof)) / 60000 : null);
 const fmtAge = (m) => { m = Math.round(m); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
 function liveBar(idx, st) { // ui2 only: status inputs, data notices in the dock, City streets switch, weather extras
   const asof = st && st.generated_iso ? st.generated_iso : idx.data_as_of;
   const real = !!(st && st.scheduled); // false for the static preview snapshot: it never updates, so its age is not shown (a banner would be permanent)
   const ageMin = LQ === 'delayed' ? 130 : real && asof ? (Date.now() - Date.parse(asof)) / 60000 : null;
   LV.asofTxt = asof ? ptFmt(asof, { weekday: 'short', hour: '2-digit', minute: '2-digit' }).replace(',', '') : 'unknown time';
-  LV.real = real; LV.ageMin = ageMin;
+  LV.real = real; LV.ageMin = ageMin; LV.asof = asof;
   const fo = LQ === 'forecast' || !!(st && st.mode && st.mode !== 'observations_nudged') || idx.observed_until_frame == null;
   const stack = document.createElement('div'); stack.id = 'lvstack'; $('dock').prepend(stack);
   stack.innerHTML = (ageMin != null && ageMin > 90 ? `<div class="lvb warn">Data delayed. Last update was ${fmtAge(ageMin)} ago. Showing the most recent run.</div>` : '') +
@@ -855,27 +857,41 @@ function livePeak(R) { // frame where the route's mean wetness is highest inside
   }
   R.lvPk = { key, f: bf }; return bf;
 }
+const goNight = (v) => { // the Night list switches between live and a past night by reloading in that mode
+  const q = new URLSearchParams(location.search); for (const k of ['live', 'night', 'liveerr', 'route']) q.delete(k);
+  if (v !== 'live') q.set('night', v.replace(/^r:/, ''));
+  const s = q.toString(); location.href = location.pathname + (s ? '?' + s : '');
+};
+function liveNightList() { // live first; the past nights are added once their index has loaded
+  const sel = $('night'); sel.innerHTML = '<option value="live">Live (beta): tonight + 2 days</option>';
+  loadIndex().then(([ri]) => {
+    sel.insertAdjacentHTML('beforeend', '<optgroup label="Past nights">' + ri.nights.map((n) => `<option value="r:${n.id}">${nightLabel(n)}${n.approx_direction ? ' *' : ''}</option>`).join('') + '</optgroup>');
+    sel.value = 'live';
+  }).catch((e) => console.warn('past nights list unavailable', e));
+}
 async function bootLive() {
   base = 'live/';
-  const [idx, st] = await Promise.all([withTimeout(getJSON(base + 'index.json'), 15000, 'live index'), getJSON(base + 'status.json').catch(() => null)]);
+  const st = await getJSON(base + 'status.json', { cache: 'no-store' }).catch(() => null);
+  const V = st && st.generated_iso ? '?v=' + encodeURIComponent(st.generated_iso) : ''; // a new run is a new URL, so index, days and fog always belong together
+  const idx = await withTimeout(getJSON(base + 'index.json' + V), 15000, 'live index');
   const S1 = idx.ribbons_n, S2 = idx.ribbons_city_n, ST = S1 + S2, nF = idx.n_frames, f0 = idx.frame_ranges[0][1] - idx.frame_ranges[0][0];
-  LV = { idx, st, ST, S1, el: null, cityOn: true, u8: null, nf: 0, range: rangeLoad(), anchor: 0, lo: 0, hiWant: 0, spanTxt: '' };
+  LV = { idx, st, ST, S1, V, el: null, cityOn: true, u8: null, nf: 0, range: rangeLoad(), anchor: 0, lo: 0, hiWant: 0, spanTxt: '' };
   if (LQ === 'forecast') idx.observed_until_frame = null;
-  index = { nights: [idx] }; $('night').innerHTML = '<option value="0">Live (beta)</option>';
+  index = { nights: [idx] }; liveNightList();
   setStatus('Loading street geometry…');
   await ensureRibbons({ ribbons: 'data/ribbons.bin' });
   if (rib.samples.S !== S1) throw new Error(`live index expects ${S1} district samples, ribbons.bin has ${rib.samples.S}`);
   const [cb, cm] = await Promise.all([withTimeout(getBuf(base + idx.ribbons_city), 60000, 'city ribbons'), getJSON(base + idx.ribbons_city_meta)]);
   rib2 = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch }); rib2.build(cb, cm); rib2.mesh.renderOrder = 9; rib2Meta = cm; // under the district/route ribbons
   setStatus('Loading live street wetness…');
-  const [d0, wx] = await Promise.all([withTimeout(getBuf(base + idx.frame_files[0]), 60000, 'day 0'), getJSON(base + idx.weather).catch(() => null)]);
+  const [d0, wx] = await Promise.all([withTimeout(getBuf(base + idx.frame_files[0] + V), 60000, 'day 0'), getJSON(base + idx.weather + V).catch(() => null)]);
   if (d0.byteLength !== f0 * ST) throw new Error(`${idx.frame_files[0]} has ${d0.byteLength} bytes, expected ${f0 * ST}`);
   setMode(true); liveExtendG();
   night = { ...idx, label: 'Live snapshot', n_frames: f0 }; weather = wx;
   liveSetData(new Uint8Array(d0), f0);
   fogGrid = { ...idx.fog_grid, rows: idx.fog_grid.rows[0] };
   setStatus('Loading fog…');
-  const ok = await fog.build(base + idx.fog_files[0], fogGrid);
+  const ok = await fog.build(base + idx.fog_files[0] + V, fogGrid);
   $('fogtoggle').disabled = !ok; $('fogdens').disabled = !ok; if (!ok) $('fogtoggle').checked = false;
   fog.setVisible($('fogtoggle').checked);
   $('wx-note').hidden = true;
@@ -891,7 +907,7 @@ async function bootLive() {
 async function liveRest(idx, d0, f0, nF, ST) {
   try {
     LV.el.load.textContent = 'loading the next days…';
-    const rest = await Promise.all(idx.frame_files.slice(1).map((f) => getBuf(base + f)));
+    const rest = await Promise.all(idx.frame_files.slice(1).map((f) => getBuf(base + f + LV.V)));
     const full = new Uint8Array(nF * ST); full.set(new Uint8Array(d0), 0);
     let o = f0 * ST;
     rest.forEach((b, i) => { const k = i + 1, nfk = idx.frame_ranges[k][1] - idx.frame_ranges[k][0]; if (b.byteLength !== nfk * ST) throw new Error(`${idx.frame_files[k]} has ${b.byteLength} bytes, expected ${nfk * ST}`); full.set(new Uint8Array(b), o); o += b.byteLength; });
@@ -950,11 +966,11 @@ function ui2Clock(w, f) { // clock second line, status line, track
   $('clock-sub').textContent = LV ? `${w.day.split(' ')[0]} · ${fc ? 'forecast' : 'observed'}` : w.day + ' ' + tzName(night.start_iso);
   $('clock-sub').classList.toggle('fc', fc);
   let t = LV
-    ? (fc ? 'Forecast hour · NWS RRFS model' : LV.real ? `As of ${LV.asofTxt} · Fort Point, KSFO` : `Preview snapshot · as of ${LV.asofTxt}`) + (LV.ageMin != null && LV.ageMin > 90 ? ` · ${fmtAge(LV.ageMin)} old` : '')
+    ? (fc ? (LV.real && ageNow() != null ? `Forecast (NWS RRFS) \u00b7 updated ${fmtAge(ageNow())} ago` : 'Forecast hour \u00b7 NWS RRFS model') : LV.real ? `As of ${LV.asofTxt}` + (ageNow() != null ? ` \u00b7 updated ${fmtAge(ageNow())} ago` : '') : `Snapshot \u00b7 as of ${LV.asofTxt}`)
     : nightLabel(night) + ' · replay';
   if (LV && LV.range !== 'all' && LV.spanTxt) { // short range: the visible span first, then where the data comes from
-    const sh = fc ? 'forecast hour' : LV.real ? `as of ${LV.asofTxt}` : `snapshot ${LV.asofTxt}`;
-    t = `${LV.spanTxt} \u00b7 ${sh}` + (LV.ageMin != null && LV.ageMin > 90 ? ` \u00b7 ${fmtAge(LV.ageMin)} old` : '');
+    const sh = LV.real && ageNow() != null ? `updated ${fmtAge(ageNow())} ago` : fc ? 'forecast hour' : LV.real ? `as of ${LV.asofTxt}` : `snapshot ${LV.asofTxt}`;
+    t = `${LV.spanTxt} \u00b7 ${sh}`;
   }
   if (t !== stSig) { $('st3l').textContent = t; stSig = t; }
   ui2Track();
@@ -1029,7 +1045,12 @@ if (UI2) ui2Build();
     await loadMeshes();
     PB = pb; PJ = pj; parsePts(pb, pj); await initRoutes();
     requestAnimationFrame(frame);
-    if (LIVE) { initSheet(); await bootLive(); applyUrlRoute(); window.__ready = true; return; }
+    if (LIVE) {
+      initSheet();
+      try { await bootLive(); applyUrlRoute(); window.__ready = true; return; } catch (e) { // live files missing or unreadable: reload into the past-night replay
+        console.warn('live failed, falling back to the replay', e); const q = new URLSearchParams(location.search); q.set('live', '0'); q.set('liveerr', '1'); location.replace('?' + q.toString()); return;
+      }
+    }
     setStatus('Loading replay…');
     let idx, dir;
     try { [idx, dir] = await loadIndex(); } catch (e) {
@@ -1038,7 +1059,7 @@ if (UI2) ui2Build();
       return;
     }
     index = idx; base = dir; $('badge').hidden = !idx.mock; if (idx.mock) $('badge').textContent = 'Mock data';
-    $('night').innerHTML = idx.nights.map((n, i) => `<option value="${i}">${nightLabel(n)}${n.approx_direction ? ' *' : ''}</option>`).join('');
+    $('night').innerHTML = (UI2 ? '<option value="live">Live (beta): tonight + 2 days</option>' : '') + idx.nights.map((n, i) => `<option value="${i}">${nightLabel(n)}${n.approx_direction ? ' *' : ''}</option>`).join('');
     const qn = new URLSearchParams(location.search).get('night');
     let firstFog = idx.nights.findIndex((n) => n.id === qn);
     if (firstFog < 0) { // default: strongest fog night
@@ -1048,6 +1069,7 @@ if (UI2) ui2Build();
     tNow = Math.min(60, idx.nights[firstFog].n_frames - 1);
     initSheet();
     await selectNight(firstFog);
+    if (QP.get('liveerr')) toast('Live data is unavailable right now. Showing a past night.');
     applyUrlRoute();
     window.__ready = true;
   } catch (e) {

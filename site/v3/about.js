@@ -113,7 +113,7 @@ async function loadHtml() {
   return state.html;
 }
 
-const LIVE_ABOUT = new URLSearchParams(location.search).get('live') === '1';
+const AQ = new URLSearchParams(location.search), LIVE_ABOUT = AQ.get('ui') !== '1' && !(AQ.get('live') === '0' || AQ.has('night') || AQ.has('src')); // same rule as app.js: live is the default
 const LIVE_HTML = '<h3>Live data</h3><p>Streets are coloured by a modelled wetness index for tonight and the next two days, refreshed through the day.</p><ul>' +
   '<li><b>Forecast:</b> NWS RRFS, via Open-Meteo</li><li><b>Fog cover:</b> NOAA GOES-18 satellite</li>' +
   '<li><b>Surface:</b> airport reports from KSFO, KOAK and KHAF</li><li><b>Wind:</b> NOAA tide station at Fort Point</li></ul>' +

@@ -16,7 +16,7 @@
 </script>
 </head>
 <body>
-<script>if (/[?&](live=1|ui=2)(&|$)/.test(location.search)) document.body.classList.add('ui2');</script>
+<script>if (!/[?&]ui=1(&|$)/.test(location.search)) document.body.classList.add('ui2');</script>
 <header id="top">
   <button id="rbtn" type="button" class="chip accent" aria-haspopup="listbox" aria-expanded="false" aria-controls="rpop">
     <span class="sw" id="rsw"></span>
