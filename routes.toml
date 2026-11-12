@@ -3,13 +3,13 @@
 #
 # [zone.<id>]   a group of routes that share one street-point table and one 2 m sun/horizon window.
 #   name         label shown in the viewer's route picker
-#   builder      "disc"     the original Potrero Hill builder (microclimate.toml [zone.potrero]: disc of radius_m around the start)
+#   builder      "disc"     the original Potrero Hill District builder (microclimate.toml [zone.potrero]: disc of radius_m around the start)
 #                "corridor" every street segment within corridor_m of any route of the zone
 #   corridor_m   (corridor) half-width of the point corridor around the routes, default 250
 #   osm_bbox     (corridor) [south, west, north, east] fetched once from Overpass and cached in deathfog-data/raw/osm_<id>.json
 #
 # [[route]]
-#   id, name, zone, color   required (name e.g. "Golden Gate Heights: 10th Ave (green)")
+#   id, name, zone, color   required (name e.g. "Sunset District: 10th Ave")
 #   waypoints    ordered list; each entry is either an OSM intersection "9th Ave & Judah St" (street names, abbreviations ok)
 #                or a coordinate "37.7621,-122.4662". The route is the shortest street path through them in order, so
 #                put a waypoint at every turn or where two paths are possible. Streets are real OSM roads only (no steps, paths, alleys).
@@ -31,11 +31,11 @@ width_m = 6.5
 highways = ["residential", "tertiary", "secondary", "primary", "unclassified", "living_street", "trunk"]
 
 [zone.potrero]
-name = "Potrero Hill"
+name = "Potrero Hill District"
 builder = "disc"
 
 [zone.ggh]
-name = "Golden Gate Heights"
+name = "Sunset District"
 builder = "corridor"
 corridor_m = 250
 district_m = 600
@@ -43,7 +43,7 @@ osm_bbox = [37.738, -122.492, 37.768, -122.448]
 
 [[route]]
 id = "potrero"
-name = "Potrero Hill: 20th & Kansas to 15th & Rhode Island"
+name = "Potrero Hill District: 20th & Kansas to 15th & Rhode Island"
 zone = "potrero"
 color = "#5ef2ff"
 auto = "downhill"
@@ -51,13 +51,13 @@ start = [37.7597, -122.4037]
 start_label = "Start: 20th & Kansas"
 end_label = "Bus stop: 15th & Rhode Island"
 
-# The five Golden Gate Heights routes were drawn by hand on a Google Maps screenshot (routes_drawn.json holds the drawn lines) and
+# The five Sunset District routes were drawn by hand on a Google Maps screenshot (routes_drawn.json holds the drawn lines) and
 # map-matched to OSM streets. On the screenshot the flag (9th Ave & Judah St) is the LOW end (88 m; Quintara St is 200-215 m), so the
 # routes are listed top of the hill first: they start on Quintara St and finish at 9th & Judah. Reverse a list to flip a route.
 [[route]]
 id = "ggh-yellow"
 drawn = "yellow"
-name = "Golden Gate Heights: 14th Ave (yellow)"
+name = "Sunset District: 14th Ave"
 zone = "ggh"
 color = "#f2c230"
 waypoints = ["12th Ave & Quintara St", "14th Ave & Quintara St", "14th Ave & Pacheco St", "14th Ave & Ortega St",
@@ -69,7 +69,7 @@ end_label = "Finish: 9th & Judah"
 [[route]]
 id = "ggh-orange"
 drawn = "orange"
-name = "Golden Gate Heights: 12th Ave and 11th Ave (orange)"
+name = "Sunset District: 12th Ave and 11th Ave"
 zone = "ggh"
 color = "#f07a1e"
 waypoints = ["Cragmont Ave & Quintara St", "Cragmont Ave & Rockridge Dr", "12th Ave & Funston Ave", "12th Ave & Pacheco St",
@@ -81,7 +81,7 @@ end_label = "Finish: 9th & Judah"
 [[route]]
 id = "ggh-green"
 drawn = "green"
-name = "Golden Gate Heights: 10th Ave (green)"
+name = "Sunset District: 10th Ave"
 zone = "ggh"
 color = "#3fbf5a"
 waypoints = ["10th Ave & Quintara St", "10th Ave & Judah St", "9th Ave & Judah St"]
@@ -91,7 +91,7 @@ end_label = "Finish: 9th & Judah"
 [[route]]
 id = "ggh-red"
 drawn = "red"
-name = "Golden Gate Heights: 9th Ave (red)"
+name = "Sunset District: 9th Ave"
 zone = "ggh"
 color = "#e8434a"
 waypoints = ["9th Ave & Mendosa Ave", "9th Ave & Pacheco St", "9th Ave & Noriega St", "9th Ave & Lawton St",
@@ -102,7 +102,7 @@ end_label = "Finish: 9th & Judah"
 [[route]]
 id = "ggh-purple"
 drawn = "purple"
-name = "Golden Gate Heights: 8th Ave (purple)"
+name = "Sunset District: 8th Ave"
 zone = "ggh"
 color = "#b070f0"
 waypoints = ["9th Ave & Mendosa Ave", "9th Ave & Alton Ave", "Alton Ave & Pacheco St", "8th Ave & Pacheco St",

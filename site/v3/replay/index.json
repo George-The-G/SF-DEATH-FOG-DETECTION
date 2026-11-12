@@ -1,18 +1,18 @@
 {
  "zone": {
-  "name": "Potrero Hill",
+  "name": "Potrero Hill District",
   "n_points": 29018
  },
  "zones": [
   {
    "id": "potrero",
-   "name": "Potrero Hill",
+   "name": "Potrero Hill District",
    "row0": 0,
    "row1": 14116
   },
   {
    "id": "ggh",
-   "name": "Golden Gate Heights",
+   "name": "Sunset District",
    "row0": 14116,
    "row1": 29018
   }

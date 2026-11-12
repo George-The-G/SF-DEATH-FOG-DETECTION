@@ -167,7 +167,7 @@ def write(cfg, data_dir, out_dir, until=None):
     frame_min = cfg["replay"]["fog_frame_min"]
     N = len(P["x"])
     zt = zone_table(data_dir)
-    zones = zt["zones"] if zt else [{"id": "potrero", "name": "Potrero Hill", "row0": 0, "row1": N, "routes": []}]
+    zones = zt["zones"] if zt else [{"id": "potrero", "name": "Potrero Hill District", "row0": 0, "row1": N, "routes": []}]
     route_ids = zt["routes"] if zt else []
     pot = P["zone"] == "potrero"  # headline stats stay on the Potrero zone as before
     entries = []
@@ -210,7 +210,7 @@ def write(cfg, data_dir, out_dir, until=None):
         })
         print(d, nt["kind"], "tier", nt["tier"], "W09 mean/p95", entries[-1]["w_dawn_mean"], entries[-1]["w_dawn_p95"],
               "approx" if meta["approx_direction"] else "", flush=True)
-    index = {"zone": {"name": "Potrero Hill", "n_points": int(N)},
+    index = {"zone": {"name": "Potrero Hill District", "n_points": int(N)},
              "zones": [{"id": z["id"], "name": z["name"], "row0": z["row0"], "row1": z["row1"]} for z in zones],
              "model": "wetness proxy, hand-set constants (MVP)",
              "constants": wetness.CONSTANTS, "fog_sheet": "tile row 0 = north, column 0 = west; pixel = 255*s(t-lag)*tracer(band 0)",

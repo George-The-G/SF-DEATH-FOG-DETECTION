@@ -88,7 +88,7 @@ def make_weather(kind, start):
 
 
 out.mkdir(parents=True, exist_ok=True)
-index = {"mock": True, "zone": {"name": "Potrero Hill", "n_points": N}, "nights": []}
+index = {"mock": True, "zone": {"name": "Potrero Hill District", "n_points": N}, "nights": []}
 for nid, label, kind, seed in NIGHTS:
     rng = np.random.default_rng(seed)
     d = out / nid; d.mkdir(exist_ok=True)

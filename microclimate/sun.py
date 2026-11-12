@@ -80,7 +80,7 @@ def load_points(grids_dir):
     if zj.exists():
         zones = json.load(open(zj))["zones"]
     else:
-        zones = [{"id": "potrero", "name": "Potrero Hill", "row0": 0, "row1": len(rows), "center": list(ZONE_CENTER),
+        zones = [{"id": "potrero", "name": "Potrero Hill District", "row0": 0, "row1": len(rows), "center": list(ZONE_CENTER),
                   "half_m": WINDOW_HALF_M, "osm": ["osm_potrero.json"]}]
     return rows, zones
 
