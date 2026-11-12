@@ -28,12 +28,11 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   color: var(--warn); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
 .chip { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255, 255, 255, .06); white-space: nowrap; }
 .chip.accent { border-color: var(--accent); color: var(--accent); }
-#rbtn { padding: 0 12px; min-width: 0; flex: 0 1 auto; }
-#flyhdr { flex: none; font-size: 15px; color: var(--accent); border-color: var(--accent); border-radius: 50%; background: rgba(94, 242, 255, .12); }
-#menubtn { margin-left: auto; }
-#rbtn #rlabel { overflow: hidden; text-overflow: ellipsis; max-width: 112px; }
-@media (min-width: 420px) { #rbtn #rlabel { max-width: 180px; } }
-.car { font-size: 11px; opacity: .8; }
+#rbtn { padding: 0 12px; min-width: 0; flex: 1 1 auto; order: 1; justify-content: flex-start; }
+#flyhdr { order: 3; flex: none; font-size: 15px; color: var(--accent); border-color: var(--accent); border-radius: 50%; background: rgba(94, 242, 255, .12); }
+#menubtn { order: 4; }
+#rbtn #rlabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.car { font-size: 11px; opacity: .8; margin-left: auto; }
 .ib { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, .06); padding: 0; flex: none; }
 .ib[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, .55); flex: none; }
@@ -147,7 +146,7 @@ body.flying #flyhdr { margin-left: 0; }
 /* ---------------------------------------------------------------- landscape phone: one-row top band, weather + legend side by side */
 @media (max-height: 500px) {
   #top { flex-wrap: nowrap; top: calc(var(--sat) + 2px); padding-top: 2px; padding-bottom: 2px; }
-  .poc { order: 0; flex: 0 1 auto; }
+  .poc { order: 2; flex: 0 1 auto; }
   #normal { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; align-items: start; }
   #timebar { grid-column: 1 / -1; height: 46px; }
   .inner { max-width: none; }
@@ -158,7 +157,8 @@ body.flying #flyhdr { margin-left: 0; }
 @media (min-width: 700px) and (min-height: 501px) {
   #top { flex-wrap: nowrap; top: 6px; left: 12px; right: 12px; padding: 4px 8px 4px 14px; }
   #menubtn { margin-left: 0; }
-  .poc { order: 0; flex: 1; justify-content: center; }
+  .poc { order: 2; flex: 1; justify-content: center; }
+  #rbtn { flex: 0 1 auto; }
   #menubtn { display: none; }
   #sheet { left: auto; right: 12px; bottom: auto; top: calc(var(--top-h, 60px) + 22px); width: 320px; max-height: calc(100dvh - var(--top-h, 60px) - 36px); border-radius: 16px; padding: 14px 16px; }
   #sheet .grab { display: none; }
