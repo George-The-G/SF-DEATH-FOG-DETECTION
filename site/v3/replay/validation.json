@@ -1,0 +1,218 @@
+{
+ "nights": [
+  "2026-11-10",
+  "2026-10-08",
+  "2026-10-01",
+  "2026-09-30",
+  "2026-09-24",
+  "2026-09-22",
+  "2026-09-20",
+  "2026-10-16",
+  "2026-10-03"
+ ],
+ "constants": {
+  "DT_MAX": 4.0,
+  "WIND_CALM": 6.0,
+  "GAP_FOG": 4.0,
+  "CLOUD_FOG": 40.0,
+  "TRACER_REF": 0.03,
+  "FOG_EXP": 0.5,
+  "K_DEW": 8.0,
+  "K_FOG": 20.0,
+  "K_RAIN": 60.0,
+  "RAIN_SAT": 1.0,
+  "K_EVAP_BASE": 5.0,
+  "K_EVAP_WIND": 2.0,
+  "K_SUN": 80.0,
+  "K_DIFF": 10.0,
+  "LAG_MAX_H": 3.0,
+  "WIND_LAG_MIN": 1.5,
+  "X_WEST": 540100.0,
+  "USE_REFINED": true,
+  "REFINE_NORM": 0.91,
+  "REFINE_MIN": 0.25,
+  "BAND_OFFSET_M": 30.0
+ },
+ "results": [
+  {
+   "check": "a_ew_vs_ns",
+   "status": "PASS",
+   "detail": "expected E-W drier at 09:00 (morning sun runs along the street). Mean W at 09:00 over 7 fog nights: E-W 36.1 vs N-S 38.0 (diff -1.9, 0.06 pooled SD); at 10:00 E-W 26.5 vs N-S 27.9. n points E-W 4696, N-S 8498.",
+   "ew_0900": 36.127262115478516,
+   "ns_0900": 38.031982421875,
+   "ew_1000": 26.542179107666016,
+   "ns_1000": 27.89089012145996
+  },
+  {
+   "check": "b_less_sun_side_wetter",
+   "status": "PASS",
+   "detail": "on 10379 E-W segments with a >=20 min sun difference (ties excluded: 422) the shadier side is wetter at 09:00 on 76.6 % (threshold 70 %). Note the model has this built in via the sun term; sun-minutes accumulated 18:00-09:00.",
+   "frac": 0.7662587917911167,
+   "n": 10379,
+   "ties": 422,
+   "per_night": [
+    {
+     "night": "2026-11-10",
+     "segments": 1037,
+     "n_decided": 1011,
+     "frac": 0.8150346191889218
+    },
+    {
+     "night": "2026-10-08",
+     "segments": 1662,
+     "n_decided": 1634,
+     "frac": 0.7496940024479805
+    },
+    {
+     "night": "2026-10-01",
+     "segments": 1709,
+     "n_decided": 1702,
+     "frac": 0.6498237367802585
+    },
+    {
+     "night": "2026-09-30",
+     "segments": 1672,
+     "n_decided": 1672,
+     "frac": 0.7003588516746412
+    },
+    {
+     "night": "2026-09-24",
+     "segments": 1588,
+     "n_decided": 1541,
+     "frac": 0.836469824789098
+    },
+    {
+     "night": "2026-09-22",
+     "segments": 1571,
+     "n_decided": 1470,
+     "frac": 0.8442176870748299
+    },
+    {
+     "night": "2026-09-20",
+     "segments": 1562,
+     "n_decided": 1349,
+     "frac": 0.8131949592290586
+    }
+   ]
+  },
+  {
+   "check": "c_dry_nights_below_20",
+   "status": "PASS",
+   "detail": "max over the night of the 95th percentile of W across points: 2026-10-16 0.0, 2026-10-03 0.0",
+   "p95": {
+    "2026-10-16": 0.0,
+    "2026-10-03": 0.0
+   }
+  },
+  {
+   "check": "d1_fog_deposition_follows_tracer",
+   "status": "PASS",
+   "detail": "fog deposition at the top-20 % tracer points over the bottom-20 %: x7.2 (min x7.0); corr(deposition, tracer) mean 0.93 (this is largely by construction).",
+   "ratios": [
+    7.097930310861035,
+    7.459875861276925,
+    7.157190814018658,
+    7.091409282195654,
+    7.682239534805154,
+    7.0269858912969285,
+    7.15020269114464
+   ]
+  },
+  {
+   "check": "d2_city_tracer_sunset_vs_mission",
+   "status": "PASS",
+   "detail": "band-0 tracer at street level (5x5 cells): outer Sunset 0.510 vs Mission 0.004",
+   "outer_sunset": 0.509765625,
+   "mission": 0.0036945343017578125
+  },
+  {
+   "check": "d3_tracer_bounded_and_converged",
+   "status": "FAIL",
+   "detail": "all four bands: no NaN, 0 <= c <= 1, steady-state drift over the last 2000 steps < 0.01 (b0: drift 0.0000, b1: drift 0.0038, b2: drift 0.0538, b3: drift 0.1269). Exact mass conservation is not testable (ground deposition removes tracer).",
+   "bands": {
+    "0": {
+     "max": 1.0,
+     "min": 0.0,
+     "drift": 3.803335130214691e-05,
+     "mean_below_100m": 0.3067869246006012
+    },
+    "1": {
+     "max": 1.0,
+     "min": 0.0,
+     "drift": 0.003764132037758827,
+     "mean_below_100m": 0.22950151562690735
+    },
+    "2": {
+     "max": 1.0,
+     "min": 0.0,
+     "drift": 0.053785085678100586,
+     "mean_below_100m": 0.11005544662475586
+    },
+    "3": {
+     "max": 1.0,
+     "min": 0.0,
+     "drift": 0.12692396342754364,
+     "mean_below_100m": 0.010320967994630337
+    }
+   }
+  },
+  {
+   "check": "e_ablations",
+   "status": "INFO",
+   "detail": "street-level W pattern at 09:00 (mean over 7 fog nights): baseline: std 19.8, corr 1.00, mean|dW| 0.0; sun_term_off: std 20.1, corr 0.96, mean|dW| 4.3; svf_median: std 18.8, corr 0.87, mean|dW| 5.0; tracer_uniform: std 9.3, corr 0.49, mean|dW| 14.8; refined_wind_off: std 23.2, corr 0.84, mean|dW| 11.1; all_four_off: std 0.2, corr -0.09, mean|dW| 18.7; streets whose 09:00 W changes most when refined wind is OFF (mean dW, W units): Southern Heights Avenue -14.4, York Street -12.3, Folsom Street -12.1, 21st Street -11.5, Dr. David Sanchez Way -11.4, Wisconsin Street -11.2, Potrero Avenue -10.9, 23rd Street -10.4",
+   "table": {
+    "baseline": {
+     "std": 19.82187271118164,
+     "corr_with_baseline": 1.0,
+     "mean_abs_diff": 0.0
+    },
+    "sun_term_off": {
+     "std": 20.1198787689209,
+     "corr_with_baseline": 0.9615285330414919,
+     "mean_abs_diff": 4.337157726287842
+    },
+    "svf_median": {
+     "std": 18.784557342529297,
+     "corr_with_baseline": 0.8720432366226862,
+     "mean_abs_diff": 5.014180660247803
+    },
+    "tracer_uniform": {
+     "std": 9.255595207214355,
+     "corr_with_baseline": 0.4937823098730048,
+     "mean_abs_diff": 14.750877380371094
+    },
+    "refined_wind_off": {
+     "std": 23.154109954833984,
+     "corr_with_baseline": 0.8438206859909575,
+     "mean_abs_diff": 11.100942611694336,
+     "streets_most_changed": {
+      "Southern Heights Avenue": -14.4,
+      "York Street": -12.3,
+      "Folsom Street": -12.1,
+      "21st Street": -11.5,
+      "Dr. David Sanchez Way": -11.4,
+      "Wisconsin Street": -11.2,
+      "Potrero Avenue": -10.9,
+      "23rd Street": -10.4
+     },
+     "rel_wind_pct": [
+      0.25,
+      0.3943406641483307,
+      1.0
+     ]
+    },
+    "all_four_off": {
+     "std": 0.16676394641399384,
+     "corr_with_baseline": -0.0942557980387396,
+     "mean_abs_diff": 18.71498680114746
+    }
+   }
+  },
+  {
+   "check": "f_v2_observed_fog_nights",
+   "status": "SKIPPED",
+   "detail": "optional; not attempted in the MVP (needs v2 observations aligned to the replay nights)"
+  }
+ ],
+ "all_pass": false
+}

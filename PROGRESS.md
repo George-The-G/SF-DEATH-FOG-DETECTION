@@ -52,3 +52,7 @@ Commands (from repo root, PYTHONPATH=repo): `python -m microclimate street`, `py
 - Surface model: 2 m window (zone centre +/- 1700 m: DEM bilinear + footprints at hgt_median_m), outside it the 20 m terrain + mean building height; rays to 3 km, step 2 m near, 4 % of distance mid, max 25 m; observer 1 m above DEM. 280 points that fall inside a footprint were moved to the nearest non-building 2 m cell (up to 30 m).
 - API: sun.sunlit(horizon_deg, sun_az, sun_el), sun.sunlit_hours(horizon_deg, date, step_min) (pvlib 37.76, -122.40, America/Los_Angeles), sun.sun_track(date).
 - Caveat: at 20 m the 270 degree wind ratio at street columns is almost uniform (p5-p95 0.999-1.008) because street columns have mean building height of only 0-5 m; the feature carries little information until the refined correction or a finer field is merged.
+
+## M4 + M6: wetness, replay, validation (2026-11-11)
+Commands: python -m microclimate replay (writes site/v3/replay/), python -m microclimate validate (PASS/FAIL, validation.json, overview.png). Tests: tests_mc/test_wetness.py. Nine nights replayed (7 fog, 2 dry), refined wind applied after normalisation (USE_REFINED). Validation: a,b,c,d1,d2 PASS; d3 FAIL (tracer bands 2-3 not converged); f skipped. Full write-up in MVP_REPORT.md. Replay is 13.6 MB raw, 4.2 MB gzipped.
+

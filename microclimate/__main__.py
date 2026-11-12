@@ -1,4 +1,4 @@
-import json
+﻿import json
 import sys
 from pathlib import Path
 
@@ -32,12 +32,22 @@ def main(argv):
             sun.check(cfg, DATA / "raw", DATA / "grids")
         else:
             print(json.dumps(sun.build(cfg, DATA / "raw", DATA / "grids"), indent=1))
+    elif cmd == "replay":
+        from . import replay
+        replay.write(cfg, DATA, Path("site/v3/replay"))
+    elif cmd == "validate":
+        from . import validate
+        ok = validate.run(cfg, DATA, Path("site/v3/replay"))
+        validate.overview(cfg, DATA, Path("site/v3/replay"))
+        sys.exit(0 if ok else 1)
     else:
-        print("commands: geometry, zone, meshes, wind, street, sun [--check]")
+        print("commands: geometry, zone, meshes, wind, street, sun [--check], replay, validate")
 
 
 if __name__ == "__main__":
     main(sys.argv[1:])
+
+
 
 
 
