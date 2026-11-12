@@ -535,7 +535,7 @@ async function ensureRibbons(n) {
   const r = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch });
   r.build(buf, m);
   if (rib) rib.dispose();
-  rib = r; ribMeta = m; ribPath = n.ribbons; r.setSideDepth($('disttoggle').checked ? 3 : 0); r.setRouteColors(ROUTES.map((R) => R.def.color));
+  rib = r; ribMeta = m; ribPath = n.ribbons; r.setDistrictVisible($('disttoggle').checked); r.setRouteColors(ROUTES.map((R) => R.def.color));
   if (selRoute >= 0) setRouteHighlight(selRoute);
 }
 function setMode(r) {
@@ -545,13 +545,13 @@ function setMode(r) {
     rib.setVisible(true);
     const S = rib.samples, x = new Float32Array(S.S), y = new Float32Array(S.S), z = new Float32Array(S.S);
     for (let k = 0; k < S.S; k++) { x[k] = S.pos[k * 3]; y[k] = S.pos[k * 3 + 1]; z[k] = S.pos[k * 3 + 2]; }
-    G = { n: S.S, x, y, z, mask: S.mask, cls: S.cls, depth: S.depth, st: S.st, side: S.side, names: ribMeta.streets };
+    G = { n: S.S, x, y, z, mask: S.mask, cls: S.cls, st: S.st, side: S.side, names: ribMeta.streets };
     wetNow = new Float32Array(S.S).fill(-1);
   } else {
     buildPoints(); pointsMesh.visible = true; if (rib) rib.setVisible(false);
     const N = pts.N, x = new Float32Array(N), z = new Float32Array(N);
     for (let k = 0; k < N; k++) { x[k] = pts.f[k * 4]; z[k] = pts.f[k * 4 + 2]; }
-    G = { n: N, x, y: elevY, z, mask: pts.mask, cls: new Uint8Array(N), depth: new Uint8Array(N), st: pts.st, side: pts.side, names: pts.streets };
+    G = { n: N, x, y: elevY, z, mask: pts.mask, cls: new Uint8Array(N), st: pts.st, side: pts.side, names: pts.streets };
     wetNow = wetAttr.array;
   }
   ROUTES.forEach((R, k) => { R.bins = null; if (!r) { R.hi.visible = k === selRoute; R.dim.visible = k !== selRoute; } });
@@ -568,7 +568,7 @@ async function selectNight(i) {
   let sb = null, wx = null, ru8 = null;
   if (useR) { // continuous ribbons: ribbons.bin/meta once, streets_r.u8 per night
     try {
-      await ensureRibbons(n);
+      setStatus('Loading street geometry…'); await ensureRibbons(n); setStatus(`Loading ${n.label}: street wetness…`);
       const [rb, w2] = await Promise.all([withTimeout(getBuf(base + n.streets_r), 60000, 'ribbon street data'), getJSON(base + n.weather).catch(() => null)]);
       if (rb.byteLength !== n.n_frames * rib.samples.S) throw new Error(`streets_r.u8 has ${rb.byteLength} bytes, expected ${n.n_frames * rib.samples.S}`);
       ru8 = new Uint8Array(rb); wx = w2;
@@ -589,11 +589,12 @@ async function selectNight(i) {
   if (useR) rib.setNight(ru8, n.n_frames);
   wetDirty = true;
   $('slider').max = n.n_frames - 1; $('wx-note').hidden = !n.approx_direction;
+  setStatus('Loading fog…');
   const ok = n.fog && fogGrid ? await fog.build(base + n.fog, fogGrid) : false;
   $('fogtoggle').disabled = !ok; $('fogdens').disabled = !ok; if (!ok) $('fogtoggle').checked = false;
   fog.setVisible($('fogtoggle').checked);
   tNow = clamp(tNow, 0, n.n_frames - 1); applyTime(true);
-  overlay.classList.add('hide');
+  overlay.classList.add('hide'); $('status').textContent = ''; // hidden overlay must not keep a stale 'Loading' text
 }
 
 /* wall-clock label from ISO string (ignores offset: shows local time as written) */
@@ -650,9 +651,8 @@ $('speed').addEventListener('click', (e) => {
 $('night').addEventListener('change', async (e) => { setPlaying(false); try { await selectNight(+e.target.value); } catch (err) { setStatus('Could not load this night: ' + err.message, true); } });
 $('fogtoggle').addEventListener('change', (e) => fog.setVisible(e.target.checked));
 $('fogdens').addEventListener('input', (e) => fog.setDensity(+e.target.value / 100));
-/* "District streets": every street of Potrero Hill and Golden Gate Heights as a wetness gradient (default on). With older ribbon data
-   (side blocks only, depth 1-3) the same switch shows or hides all of those blocks. */
-$('disttoggle').addEventListener('change', (e) => { if (rib) rib.setSideDepth(e.target.checked ? 3 : 0); hideTip(); });
+/* "District streets": every street of Potrero Hill and Golden Gate Heights as a wetness gradient (default on). */
+$('disttoggle').addEventListener('change', (e) => { if (rib) rib.setDistrictVisible(e.target.checked); hideTip(); });
 $('bldtoggle').addEventListener('change', (e) => { if (buildingsMesh) buildingsMesh.visible = e.target.checked; });
 
 /* camera flights */
@@ -670,9 +670,9 @@ function pick(cx, cy, maxPx) {
   if (camera.position.distanceTo(controls.target) > 9000) return -1;
   camera.updateMatrixWorld(); const m = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements;
   const W = innerWidth, H = innerHeight; let best = -1, bd = maxPx * maxPx;
-  const skipSide = useRib && (!rib.uniforms.uSideVis.value || rib.uniforms.uSideFade.value < 0.3), sd = useRib ? rib.uniforms.uSideDepth.value : 3; // hidden side blocks are not pickable
+  const skipDist = useRib && (!rib.uniforms.uDistVis.value || rib.uniforms.uDistFade.value < 0.3); // a hidden district layer is not pickable
   for (let k = 0; k < G.n; k++) {
-    if (G.cls[k] && (skipSide || G.depth[k] > sd)) continue;
+    if (G.cls[k] && skipDist) continue;
     const x = G.x[k], y = G.y[k], z = G.z[k];
     const w = m[3] * x + m[7] * y + m[11] * z + m[15]; if (w <= 0) continue;
     const sx = ((m[0] * x + m[4] * y + m[8] * z + m[12]) / w * .5 + .5) * W, sy = (1 - ((m[1] * x + m[5] * y + m[9] * z + m[13]) / w * .5 + .5)) * H;
