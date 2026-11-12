@@ -19,11 +19,16 @@ def main(argv):
     elif cmd == "meshes":
         from . import meshes
         print(json.dumps(meshes.build(cfg, DATA / "raw", DATA / "grids", Path("site/v3/data")), indent=1))
+    elif cmd == "wind":
+        from . import wind
+        order = [270, 247.5, 292.5, 225, 315, 202.5, 337.5, 360]
+        wind.build(cfg, DATA / "grids", DATA / "library", directions=order)
     else:
-        print("commands: geometry, zone, meshes")
+        print("commands: geometry, zone, meshes, wind")
 
 
 if __name__ == "__main__":
     main(sys.argv[1:])
+
 
 
