@@ -54,6 +54,7 @@ button, select, input { font: inherit; color: inherit; }
 .seg button.on { background: rgba(94,242,255,.18); color: var(--accent); }
 .chk { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: 13px; min-height: 36px; }
 .chk input { width: 18px; height: 18px; accent-color: var(--accent); }
+.fogg { gap: 8px; } .fogg label.chk { min-height: 0; } #fogdens { width: 70px; height: 28px; } .fogg input[type=range] { accent-color: var(--accent); }
 
 #tip { position: fixed; z-index: 8; pointer-events: none; background: rgba(5, 8, 16, .94); border: 1px solid var(--accent); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; max-width: 240px; transform: translate(-50%, calc(-100% - 14px)); }
 #tip b { font-family: var(--mono); font-size: 15px; }
@@ -86,5 +87,6 @@ button, select, input { font: inherit; color: inherit; }
   #badge { top: 128px; left: 12px; transform: none; }
   #clock { font-size: 20px; }
   .chk { font-size: 12px; }
+  .r3 { gap: 4px 8px; } .seg button { padding: 7px 11px; } #fogdens { width: 52px; }
 }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { createFog } from './fog.js';
 
 /* ------------------------------------------------------------------ config */
 const SRC_DIRS = new URLSearchParams(location.search).get('src') === 'mock' ? ['replay_mock/'] : ['replay/', 'replay_mock/'];
@@ -248,9 +249,9 @@ function buildPoints(bin, info) {
         if (vRoute > .5) { vec2 e = abs(vUv - .5); if (max(e.x * 1.0, e.y * .5) > .4 && e.x > .36) c = mix(c, vec3(.37,.95,1.), .9); }
         gl_FragColor = vec4(c, 1.);
       }`,
-    side: THREE.DoubleSide,
+    side: THREE.DoubleSide, transparent: true, // transparent pass so it sorts after the fog sheets (alpha stays 1)
   });
-  pointsMesh = new THREE.Mesh(q, pointMat); pointsMesh.frustumCulled = false; pointsMesh.renderOrder = 2;
+  pointsMesh = new THREE.Mesh(q, pointMat); pointsMesh.frustumCulled = false; pointsMesh.renderOrder = 10; // after the fog sheets so street colours stay legible
   scene.add(pointsMesh);
 }
 
@@ -276,53 +277,8 @@ function buildRoute(info) {
   mk(ROUTE.bus, 'Bus stop: 15th & Rhode Island', 0xf2c230);
 }
 
-/* ------------------------------------------------------------------ fog layer */
-let fogLayers = [], fogUniforms = null, fogTex = null;
-function buildFog(png, g) {
-  clearFog();
-  return new Promise((resolve) => {
-    new THREE.TextureLoader().load(png, (tex) => {
-      tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.flipY = false; tex.colorSpace = THREE.NoColorSpace;
-      fogTex = tex;
-      const wm = g.w * g.cell_m, hm = g.h * g.cell_m, ox = g.x0 - meta.x0, oz = -(g.y0 - meta.y0);
-      const seg = 2;
-      fogUniforms = {
-        uTex: { value: tex }, uFrame: { value: 0 }, uTiles: { value: new THREE.Vector4(g.cols, g.rows, g.w, g.h) }, uNT: { value: g.cols * g.rows },
-        uNorthUp: { value: g.row0 === 'north' ? 1 : 0 }, uTexel: { value: new THREE.Vector2(1 / tex.image.width, 1 / tex.image.height) }, uOpacity: { value: 1 },
-      };
-      [[28, 1.0], [70, 0.6], [130, 0.35]].forEach(([off, op]) => {
-        const geo = new THREE.PlaneGeometry(wm, hm, Math.round(g.w / seg), Math.round(g.h / seg));
-        geo.rotateX(-Math.PI / 2); geo.translate(ox + wm / 2, 0, oz - hm / 2);
-        const p = geo.attributes.position;
-        for (let k = 0; k < p.count; k++) p.setY(k, (terrainH ? Math.max(0, terrainH.at(p.getX(k), p.getZ(k))) : 0) + off);
-        const mat = new THREE.ShaderMaterial({
-          uniforms: { ...fogUniforms, uLayer: { value: op } }, transparent: true, depthWrite: false, side: THREE.DoubleSide,
-          vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
-          fragmentShader: `
-            precision highp float; varying vec2 vUv; uniform sampler2D uTex; uniform float uFrame, uNT, uNorthUp, uLayer; uniform vec4 uTiles; uniform vec2 uTexel;
-            float tile(float k, vec2 uv){
-              k = clamp(k, 0., uNT - 1.); float r = floor(k / uTiles.x), c = k - r * uTiles.x;
-              float s = uNorthUp > .5 ? 1. - uv.y : uv.y;           // row 0 is south unless north-up
-              vec2 tp = vec2(uv.x * uTiles.z, s * uTiles.w);
-              tp = clamp(tp, vec2(.5), uTiles.zw - .5);
-              vec2 px = vec2(c * uTiles.z + tp.x, r * uTiles.w + tp.y);
-              return texture2D(uTex, px * uTexel).r;
-            }
-            void main(){
-              float a = floor(uFrame), t = uFrame - a;
-              float v = mix(tile(a, vUv), tile(a + 1., vUv), t);
-              float e = smoothstep(0., .04, min(min(vUv.x, 1. - vUv.x), min(vUv.y, 1. - vUv.y)));
-              float al = smoothstep(.05, .75, v) * .5 * uLayer * e;
-              gl_FragColor = vec4(mix(vec3(.62,.72,.86), vec3(.82,.88,.97), v), al);
-            }`,
-        });
-        const m = new THREE.Mesh(geo, mat); m.renderOrder = 1; m.frustumCulled = false; scene.add(m); fogLayers.push(m);
-      });
-      resolve(true);
-    }, undefined, () => { toast('Fog layer unavailable'); resolve(false); });
-  });
-}
-function clearFog() { fogLayers.forEach((m) => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }); fogLayers = []; if (fogTex) fogTex.dispose(); fogTex = null; }
+/* ------------------------------------------------------------------ fog layer (see fog.js) */
+const fog = createFog({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast });
 
 /* ------------------------------------------------------------------ replay data */
 let index = null, base = '', night = null, streets = null, weather = null, fogGrid = null;
@@ -350,9 +306,9 @@ async function selectNight(i) {
   if (sb.byteLength !== want) throw new Error(`streets.u8 has ${sb.byteLength} bytes, expected ${want}`);
   night = n; streets = new Uint8Array(sb); weather = wx; fogGrid = n.fog_grid;
   $('slider').max = n.n_frames - 1; $('wx-note').hidden = !n.approx_direction;
-  const ok = n.fog && fogGrid ? await buildFog(base + n.fog, fogGrid) : false;
-  $('fogtoggle').disabled = !ok; if (!ok) $('fogtoggle').checked = false;
-  fogLayers.forEach((m) => (m.visible = $('fogtoggle').checked));
+  const ok = n.fog && fogGrid ? await fog.build(base + n.fog, fogGrid) : false;
+  $('fogtoggle').disabled = !ok; $('fogdens').disabled = !ok; if (!ok) $('fogtoggle').checked = false;
+  fog.setVisible($('fogtoggle').checked);
   tNow = clamp(tNow, 0, n.n_frames - 1); applyTime(true);
   overlay.classList.add('hide');
 }
@@ -386,7 +342,7 @@ function applyTime(force) {
     }
     if (hoverIdx >= 0) showTip(hoverIdx, hoverXY);
   }
-  if (fogUniforms) fogUniforms.uFrame.value = (f * night.step_min) / fogGrid.frame_min;
+  fog.setFrame((f * night.step_min) / fogGrid.frame_min);
 }
 function tzName(iso) { return /-07:00$/.test(iso) ? 'PDT' : /-08:00$/.test(iso) ? 'PST' : ''; }
 function compass(d) { return d == null ? '' : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(d / 45) % 8]; }
@@ -400,7 +356,8 @@ $('speed').addEventListener('click', (e) => {
   [...$('speed').children].forEach((c) => c.classList.toggle('on', c === b));
 });
 $('night').addEventListener('change', async (e) => { setPlaying(false); try { await selectNight(+e.target.value); } catch (err) { setStatus('Could not load this night: ' + err.message, true); } });
-$('fogtoggle').addEventListener('change', (e) => fogLayers.forEach((m) => (m.visible = e.target.checked)));
+$('fogtoggle').addEventListener('change', (e) => fog.setVisible(e.target.checked));
+$('fogdens').addEventListener('input', (e) => fog.setDensity(+e.target.value / 100));
 $('bldtoggle').addEventListener('change', (e) => { if (buildingsMesh) buildingsMesh.visible = e.target.checked; });
 
 /* camera flights */
@@ -470,6 +427,7 @@ function frame(ts) {
   }
   controls.update();
   const dist = camera.position.distanceTo(controls.target);
+  fog.update(camera, dist, ts / 1000);
   if (pointMat) pointMat.uniforms.uScale.value = clamp(dist / 450, 1, 12);
   const bs = clamp(dist / 450, 1, 80); beacons.forEach((b) => b.scale.set(bs * 1.5, 1, bs * 1.5));
   const showLbl = dist < 3500;
