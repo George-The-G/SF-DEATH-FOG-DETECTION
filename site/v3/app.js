@@ -667,7 +667,7 @@ $('speed').addEventListener('click', (e) => {
 $('night').addEventListener('change', async (e) => { setPlaying(false); try { await selectNight(+e.target.value); } catch (err) { setStatus('Could not load this night: ' + err.message, true); } });
 $('fogtoggle').addEventListener('change', (e) => fog.setVisible(e.target.checked));
 $('fogdens').addEventListener('input', (e) => fog.setDensity(+e.target.value / 100));
-/* "District streets": every street of Potrero Hill and Golden Gate Heights as a wetness gradient (default on). */
+/* "District streets": every street of Potrero Hill District and Sunset District as a wetness gradient (default on). */
 $('disttoggle').addEventListener('change', (e) => { if (rib) rib.setDistrictVisible(e.target.checked); hideTip(); });
 $('bldtoggle').addEventListener('change', (e) => { if (buildingsMesh) buildingsMesh.visible = e.target.checked; });
 
@@ -908,6 +908,7 @@ async function liveRest(idx, d0, f0, nF, ST) {
    route list with mini profiles. The existing elements and handlers are reused; this block only builds the extra bits and updates them. */
 const UI2_GEAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>';
 const UI2_INFO = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>';
+const UI2_DROP = '<svg class="ci" viewBox="0 0 24 24" aria-label="rain"><path d="M12 3.5S6.5 10 6.5 14.2a5.5 5.5 0 0 0 11 0C17.5 10 12 3.5 12 3.5Z"/></svg>';
 const UI2_CLOUD = '<svg class="ci" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 20.5a4.6 4.6 0 0 1-.55-9.2 6.8 6.8 0 0 1 12.9-1.3A5.3 5.3 0 0 1 19 20.5Z"/></svg>';
 const PROF_N = 24, PROF_NODATA = 'rgba(157,176,201,.25)';
 
@@ -962,7 +963,7 @@ function ui2WxLine(i) { // one line: 66° dew 57° · SW 11 mph · cloud 47% · 
   const g = (a) => (a && a[i] != null ? a[i] : null), F = (c) => (c == null ? '--' : Math.round(c * 9 / 5 + 32));
   const ws = g(weather.wind_ms), c = g(weather.cloud_low_pct), p = g(weather.precip_mm), dot = '<span>·</span>';
   const wind = (weather.wind_dir ? compass(weather.wind_dir[i]) + ' ' : '') + (ws == null ? '--' : Math.round(ws * 2.23694)) + ' mph' + ($('wx-note').hidden ? '' : '*');
-  return `${F(g(weather.temp_c))}°F <span>dew</span> ${F(g(weather.dewpoint_c))}°F ${dot} ${wind} ${dot} ${UI2_CLOUD}${c == null ? '--' : Math.round(c)}%` + (p == null ? '' : ` ${dot} <span>rain</span> ${p < 0.05 ? '0' : p.toFixed(1)} mm/h`);
+  return `${F(g(weather.temp_c))}°F <span>dew</span> ${F(g(weather.dewpoint_c))}°F ${dot} ${wind} ${dot} ${UI2_CLOUD}${c == null ? '--' : Math.round(c)}%` + (p == null ? '' : ` ${dot} ${UI2_DROP}${p < 0.05 ? '0' : p.toFixed(1)} mm/h`);
 }
 
 /* route profile: the route's samples grouped into 24 equal stretches along its length, mean wetness per stretch, drawn as hard-stop gradient */

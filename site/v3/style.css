@@ -252,6 +252,9 @@ body.ui2 #wxbtn { height: 32px; padding: 0; font-size: 12.5px; letter-spacing: -
 body.ui2 #wxbtn .sl { display: none; }
 body.ui2 #wxline span { color: var(--soft); }
 body.ui2 #wxline .ci { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 2px; stroke: var(--soft); stroke-width: 2; }
+body.ui2 #wxline { word-spacing: -.12em; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 14px; } /* one row when it fits, two short lines (never a cut-off value) on narrow phones with the longest readings */
+@media (max-width: 400px) { body.ui2 #wxbtn { font-size: 11.5px; letter-spacing: -.02em; } body.ui2 #wxline .ci { width: 12px; height: 12px; } }
+@media (max-width: 380px) { body.ui2 #wxbtn { font-size: 11px; letter-spacing: -.03em; } body.ui2 #wxline .ci { width: 11px; height: 11px; margin-right: 1px; } }
 body.ui2 #wxgrid { display: none !important; }
 body.ui2 #legend { grid-column: 2; width: 52px; min-height: 0; padding: 0; background: none; border-radius: var(--r-s); display: flex; flex-direction: column; gap: 3px; }
 body.ui2 #legend .ramp { height: 5px; border-radius: var(--r-s); border: 0; }
