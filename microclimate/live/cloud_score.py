@@ -207,17 +207,24 @@ def timing(obs_yes, model_yes, hours):
 
 
 # ------------------------------------------------------------------ archive (guide 02 part B) and lead times
-ARCHIVE_FRAME_KEYS = ("frame_times_iso", "frame_times", "times")
-ARCHIVE_LOWCLOUD_KEYS = ("lattice_low_cloud", "lattice_cloud_low", "cloud_low_lattice")
+ARCHIVE_LOWCLOUD_KEYS = ("lattice_cloud_low", "lattice_low_cloud", "cloud_low_lattice")   # the first is what archive.build_record writes
+ARCHIVE_FRAME_KEYS = ("frame_times_iso", "frame_times")                                    # optional explicit frame times; archive.py stores t0_iso + frame_min instead
+
+
+def _iso(s):
+    t = dt.datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
 
 
 def read_archive_run(path):
-    """THE ONLY PLACE THAT KNOWS THE ARCHIVE FORMAT. Read one `run_<UTC yyyymmddThhmm>.npz` of the run archive (guide 02 part B) -> dict(run_time, frame_times,
-    low) or None when the file does not carry what is needed.
+    """THE ONLY PLACE THAT KNOWS THE ARCHIVE FORMAT. Read one `run_<UTC yyyymmddThhmm>.npz` of the run archive (guide 02 part B, microclimate/live/archive.py)
+    -> dict(run_time, frame_times, low) or None when the file does not carry what is needed.
       run_time     aware UTC datetime parsed from the file name
-      frame_times  list of aware UTC datetimes, one per saved frame (stored as ISO strings, or as epoch seconds)
-      low          float array [n_frames, L] of the lattice low cloud cover as a fraction (stored as a fraction or in percent; 30 lattice points, lat-major)
-    Adjust ARCHIVE_FRAME_KEYS / ARCHIVE_LOWCLOUD_KEYS or this function when the archive writer settles on other names."""
+      frame_times  list of aware UTC datetimes, one per saved frame: t0_iso + k * frame_min minutes (what archive.py writes), or explicit `frame_times_iso`
+                   (ISO strings) / `frame_times` (ISO strings or epoch seconds) when present
+      low          float array [n_frames, L] of the lattice low cloud cover as a FRACTION. archive.py stores `lattice_cloud_low` as float16 PERCENT with shape
+                   [L, n_frames] (L = 30, lat-major); the orientation is detected from the shape and percent is detected by a maximum above 1.5
+    Adjust ARCHIVE_* keys or this function when the archive writer changes."""
     p = Path(path)
     m = re.match(r"run_(\d{8})T(\d{4})", p.name)
     if not m:
@@ -225,19 +232,27 @@ def read_archive_run(path):
     try:
         rt = dt.datetime.strptime(m[1] + m[2], "%Y%m%d%H%M").replace(tzinfo=dt.timezone.utc)
         with np.load(p, allow_pickle=False) as z:
-            fk = next((k for k in ARCHIVE_FRAME_KEYS if k in z.files), None)
             lk = next((k for k in ARCHIVE_LOWCLOUD_KEYS if k in z.files), None)
-            if fk is None or lk is None:
+            if lk is None:
                 return None
-            ft, low = z[fk], np.asarray(z[lk], float)
-        if ft.dtype.kind in "US" or ft.dtype == object:
-            times = [dt.datetime.fromisoformat(str(s).replace("Z", "+00:00")) for s in ft]
-            times = [t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc) for t in times]
-        else:
-            times = [dt.datetime.fromtimestamp(float(s), dt.timezone.utc) for s in ft]
-        if low.ndim != 2 or low.shape[0] != len(times):
+            low = np.asarray(z[lk], float)
+            fk = next((k for k in ARCHIVE_FRAME_KEYS if k in z.files), None)
+            if fk is not None:
+                ft = z[fk]
+                times = [_iso(s) for s in ft] if (ft.dtype.kind in "US" or ft.dtype == object) else [dt.datetime.fromtimestamp(float(s), dt.timezone.utc) for s in ft]
+            elif "t0_iso" in z.files:
+                t0, step = _iso(z["t0_iso"]), float(z["frame_min"]) if "frame_min" in z.files else float(C.OUT_STEP_MIN)
+                n = low.shape[1] if (low.ndim == 2 and low.shape[0] < low.shape[1]) else low.shape[0]
+                times = [t0 + dt.timedelta(minutes=step * k) for k in range(n)]
+            else:
+                return None
+        if low.ndim != 2:
             return None
-        if np.nanmax(low) > 1.5:           # percent
+        if low.shape[0] != len(times):
+            low = low.T                                         # archive.py layout [L, n_frames]
+        if low.shape[0] != len(times):
+            return None
+        if np.isfinite(low).any() and np.nanmax(low) > 1.5:      # percent
             low = low / 100.0
         return dict(run_time=rt, frame_times=times, low=low)
     except Exception:  # noqa: BLE001  (an unreadable file is skipped, never fatal)
@@ -589,7 +604,7 @@ def run_safe(out, hook, rr, F, S, diag, goes_hours, t0, now, notes, static_dir=N
         except Exception as e:  # noqa: BLE001
             nosat = None
             notes.append(f"cloud score: fog tiles without the satellite factor not built: {e!r}"[:200])
-        res = score_current(rr, F, goes_hours, t_hours, sun_h, tiles, nosat, now, log=log, archive_dir=archive_dir or C.ARCHIVE_DIR)
+        res = score_current(rr, F, goes_hours, t_hours, sun_h, tiles, nosat, now, log=log, archive_dir=archive_dir or C.CLOUD_ARCHIVE_DIR)
         prev, pnote = read_prev(os.environ.get(C.CLOUDSCORE_PREV_ENV) or (out / C.CLOUD_SCORE_FILE))
         if pnote:
             notes.append("cloud score: " + pnote)
@@ -685,7 +700,7 @@ def run_cli(argv):
         return 1
     doc = json.loads(f.read_text(encoding="utf-8"))
     print_summary(doc, int(str(opt("--since", "14d")).rstrip("d")))
-    arch = opt("--archive", C.ARCHIVE_DIR)
+    arch = opt("--archive", C.CLOUD_ARCHIVE_DIR)
     if arch:
         n = len(list(Path(arch).rglob("run_*.npz"))) if Path(arch).is_dir() else 0
         print(f"archive {arch}: {n} run files" + ("" if n else " (no archive yet)"))

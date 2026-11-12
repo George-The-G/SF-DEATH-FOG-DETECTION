@@ -169,11 +169,18 @@ class TestRolling(unittest.TestCase):
 
 
 # ------------------------------------------------------------------ archive
-def write_archive(folder, run_time, n_frames=30, percent=True, key="lattice_low_cloud", time_key="frame_times_iso", value=0.9):
-    times = np.array([(run_time + dt.timedelta(hours=k)).isoformat() for k in range(n_frames)])
-    low = np.full((n_frames, 30), value * (100.0 if percent else 1.0))
+def write_archive(folder, run_time, n_frames=40, value=0.9, fmt="real", percent=True, key=None, t0=None):
+    """fmt 'real' = what microclimate/live/archive.py writes (t0_iso, frame_min, lattice_cloud_low float16 percent [L, n_frames], generated_iso, ...);
+    fmt 'explicit' = frame_times_iso and a [n_frames, L] array (the alternative the reader also accepts)."""
     p = Path(folder) / f"run_{run_time:%Y%m%dT%H%M}.npz"
-    np.savez_compressed(p, **{time_key: times, key: low, "other": np.zeros(3)})
+    t0 = t0 or run_time.replace(minute=0)
+    scale = 100.0 if percent else 1.0
+    if fmt == "real":
+        np.savez_compressed(p, **{key or "lattice_cloud_low": np.full((30, n_frames), value * scale, np.float16), "t0_iso": np.array(t0.isoformat()), "frame_min": np.array(60),
+                                  "generated_iso": np.array(run_time.isoformat()), "w": np.zeros((n_frames, 5), np.uint8)})
+    else:
+        times = np.array([(t0 + dt.timedelta(hours=k)).isoformat() for k in range(n_frames)])
+        np.savez_compressed(p, **{"frame_times_iso": times, key or "lattice_low_cloud": np.full((n_frames, 30), value * scale), "other": np.zeros(3)})
     return p
 
 
@@ -184,9 +191,12 @@ class TestArchive(unittest.TestCase):
             r = cs.read_archive_run(p)
             self.assertEqual(r["run_time"], T0 + dt.timedelta(hours=1))
             self.assertEqual(r["frame_times"][3], T0 + dt.timedelta(hours=4))
-            self.assertAlmostEqual(float(r["low"][0, 0]), 0.9)             # percent converted to a fraction
-            r2 = cs.read_archive_run(write_archive(d, T0 + dt.timedelta(hours=2), percent=False))
+            self.assertAlmostEqual(float(r["low"][0, 0]), 0.9, places=2)   # float16 percent converted to a fraction
+            self.assertEqual(r["low"].shape, (40, 30))                    # [L, n_frames] on disk, [n_frames, L] after reading
+            r2 = cs.read_archive_run(write_archive(d, T0 + dt.timedelta(hours=2), fmt="explicit", percent=False))
             self.assertAlmostEqual(float(r2["low"][0, 0]), 0.9)
+            self.assertEqual(r2["frame_times"][3], T0 + dt.timedelta(hours=5))
+            self.assertEqual(r2["low"].shape, (40, 30))
             self.assertIsNone(cs.read_archive_run(write_archive(d, T0 + dt.timedelta(hours=3), key="something_else")))
             bad = Path(d) / "run_20261112T0500.npz"
             bad.write_bytes(b"not an npz")

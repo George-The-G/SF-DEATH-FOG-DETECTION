@@ -74,7 +74,7 @@ CLOUD_LEADS_H = (1, 3, 6, 12, 24)    # lead times scored from the run archive
 CLOUD_LEAD_TOL_H = 0.75              # an archive frame counts for a lead time when its lead is within this many hours
 UPWIND_BOX = (-122.80, 37.68, -122.62, 37.84)   # ocean box lon0, lat0, lon1, lat1: about 10-25 km west of Ocean Beach
 BAY_BOX = (-122.37, 37.74, -122.31, 37.78)      # central bay between San Francisco and Oakland
-ARCHIVE_DIR = os.environ.get("DEATHFOG_ARCHIVE_DIR") or None   # folder holding run_<yyyymmddThhmm>.npz (guide 02 part B); None = no archive yet
+CLOUD_ARCHIVE_DIR = os.environ.get("DEATHFOG_CLOUD_ARCHIVE_DIR") or None   # folder with recent run_<yyyymmddThhmm>.npz files (a checkout of branch live-archive, guide 02 part B) read for lead times; None = no archive yet
 CLOUDSCORE_PREV_ENV = "DEATHFOG_CLOUDSCORE_PREV"               # path of the previous rolling cloud_score.json (set by live_ci/refresh.sh)
 
 # ---- paths ----
