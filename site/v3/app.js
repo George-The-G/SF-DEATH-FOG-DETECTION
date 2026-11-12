@@ -122,14 +122,88 @@ async function loadMeshes() {
     terrainMesh = gl.scene; terrainMesh.scale.y = EX; scene.add(terrainMesh);
   } catch (e) { console.warn(e); toast('Terrain failed to load'); }
   try {
-    const gl = await withTimeout(loadGLB('data/buildings.glb'), 60000, 'buildings');
-    gl.scene.traverse((o) => {
-      if (!o.isMesh) return;
-      if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
-      o.material = new THREE.MeshLambertMaterial({ color: 0x6b7a96, emissive: 0x0b1224, side: THREE.DoubleSide });
-    });
-    buildingsMesh = gl.scene; buildingsMesh.scale.y = EX; scene.add(buildingsMesh);
+    buildingsMesh = buildBuildings(await withTimeout(getBuf('data/buildings.bin'), 60000, 'buildings'));
+    buildingsMesh.scale.y = EX; scene.add(buildingsMesh);
+    const bt = $('bldtoggle'); if (bt) buildingsMesh.visible = bt.checked;
   } catch (e) { console.warn(e); toast('Buildings failed to load'); }
+}
+
+/* ------------------------------------------------------------------ buildings (data/buildings.bin, see microclimate/meshes.py)
+   Near-rectangular footprints are instanced oriented boxes (one InstancedMesh per 1 km tile so off-screen tiles are culled);
+   complex or very large footprints are simplified true polygons, extruded into one mesh. Bases come from the terrain mesh. */
+function buildBuildings(buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x31444c42) throw new Error('bad buildings.bin');
+  const nb = dv.getUint32(4, true), np = dv.getUint32(8, true), nvt = dv.getUint32(12, true);
+  const xyQ = dv.getFloat32(16, true), hQ = dv.getFloat32(20, true), wdQ = dv.getFloat32(24, true);
+  let o = 28;
+  const take = (T, n) => { const a = new T(buf, o, n); o += Math.ceil(n * T.BYTES_PER_ELEMENT / 4) * 4; return a; };
+  const cx = take(Uint16Array, nb), cn = take(Uint16Array, nb), bb = take(Uint16Array, nb), bh = take(Uint16Array, nb);
+  const bw = take(Uint8Array, nb), bd = take(Uint8Array, nb), ba = take(Uint8Array, nb);
+  const pnv = take(Uint8Array, np), pb = take(Uint16Array, np), ph = take(Uint16Array, np), pv = take(Uint16Array, nvt * 2);
+
+  const lo = new THREE.Color(0x56647f), hi = new THREE.Color(0xaabcdf), col = new THREE.Color();
+  const tint = (h, k) => { // taller = lighter, plus a little per-building variation
+    const t = Math.pow(clamp((h - 6) / 90, 0, 1), 0.7), j = 0.9 + 0.2 * (((k * 2654435761) >>> 8) % 1000) / 1000;
+    return col.copy(lo).lerp(hi, t).multiplyScalar(j);
+  };
+  const group = new THREE.Group();
+
+  // unit box, no bottom face: x,z in [-.5,.5], y in [0,1]
+  const P = [], N = [];
+  const quad = (a, b, c, d, n) => { for (const v of [a, b, c, a, c, d]) { P.push(...v); N.push(...n); } };
+  quad([-.5, 0, .5], [.5, 0, .5], [.5, 1, .5], [-.5, 1, .5], [0, 0, 1]);
+  quad([.5, 0, -.5], [-.5, 0, -.5], [-.5, 1, -.5], [.5, 1, -.5], [0, 0, -1]);
+  quad([.5, 0, .5], [.5, 0, -.5], [.5, 1, -.5], [.5, 1, .5], [1, 0, 0]);
+  quad([-.5, 0, -.5], [-.5, 0, .5], [-.5, 1, .5], [-.5, 1, -.5], [-1, 0, 0]);
+  quad([-.5, 1, .5], [.5, 1, .5], [.5, 1, -.5], [-.5, 1, -.5], [0, 1, 0]);
+  const boxGeo = new THREE.BufferGeometry();
+  boxGeo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  boxGeo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x0b1224 });
+
+  const tiles = new Map();
+  for (let k = 0; k < nb; k++) {
+    const key = Math.floor(cx[k] * xyQ / 1000) * 1000 + Math.floor(cn[k] * xyQ / 1000);
+    let a = tiles.get(key); if (!a) tiles.set(key, a = []); a.push(k);
+  }
+  const dummy = new THREE.Object3D();
+  for (const ids of tiles.values()) {
+    const im = new THREE.InstancedMesh(boxGeo, mat, ids.length);
+    ids.forEach((k, n) => {
+      dummy.position.set(cx[k] * xyQ, bb[k] * hQ, -cn[k] * xyQ);
+      dummy.rotation.set(0, ba[k] * Math.PI / 256, 0);
+      dummy.scale.set(bw[k] * wdQ, bh[k] * hQ, bd[k] * wdQ);
+      dummy.updateMatrix(); im.setMatrixAt(n, dummy.matrix); im.setColorAt(n, tint(bh[k] * hQ, k));
+    });
+    im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); im.matrixAutoUpdate = false;
+    group.add(im);
+  }
+
+  // true polygons: walls + flat roof, non-indexed, one mesh
+  const pos = [], colr = [];
+  let vi = 0;
+  for (let k = 0; k < np; k++) {
+    const n = pnv[k], y0 = pb[k] * hQ, y1 = y0 + ph[k] * hQ, c = tint(ph[k] * hQ, nb + k), ring = [];
+    for (let i = 0; i < n; i++) ring.push(new THREE.Vector2(pv[(vi + i) * 2] * xyQ, -pv[(vi + i) * 2 + 1] * xyQ));
+    vi += n;
+    const push = (x, y, z) => { pos.push(x, y, z); colr.push(c.r, c.g, c.b); };
+    for (let i = 0; i < n; i++) {
+      const a = ring[i], b = ring[(i + 1) % n];
+      push(a.x, y0, a.y); push(b.x, y0, b.y); push(b.x, y1, b.y);
+      push(a.x, y0, a.y); push(b.x, y1, b.y); push(a.x, y1, a.y);
+    }
+    const tri = THREE.ShapeUtils.triangulateShape(ring, []);
+    for (const t of tri) for (const i of t) push(ring[i].x, y1, ring[i].y);
+  }
+  if (pos.length) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3));
+    g.computeVertexNormals();
+    group.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x0b1224, side: THREE.DoubleSide })));
+  }
+  return group;
 }
 
 /* ------------------------------------------------------------------ street points */

@@ -4,5 +4,13 @@
  "cell_m": 20,
  "nx": 855,
  "ny": 811,
- "axes": "three.js: x = east metres from x0, y = up (elevation), z = -(north metres from y0)"
+ "axes": "three.js: x = east metres from x0, y = up (elevation), z = -(north metres from y0)",
+ "buildings": {
+  "file": "buildings.bin",
+  "format": "BLD1",
+  "boxes": 163375,
+  "polygons": 5375,
+  "polygon_vertices": 71498,
+  "min_area_m2": 15.0
+ }
 }
