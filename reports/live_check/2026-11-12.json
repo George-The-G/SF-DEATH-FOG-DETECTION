@@ -1,0 +1,800 @@
+{
+ "generated_iso": "2026-11-12T18:00:00+00:00",
+ "model_version": "live-1",
+ "rrfs_model": "ncep_rrfs_conus",
+ "definition": {
+  "model_fog": "RRFS low cloud >= 60 % and T-Td <= 2.0 C",
+  "obs_fog": "vis <= 3.0 mi or BKN/OVC/VV <= 1000 ft",
+  "note": "RRFS before observation nudging: the skill the nudging has to correct; the street index itself has no station truth"
+ },
+ "recent": {
+  "label": "last 30 d",
+  "start": "2026-10-13T18:00:00+00:00",
+  "end": "2026-11-11T18:00:00+00:00",
+  "hours": 697,
+  "fog": {
+   "KHAF": {
+    "hours": 635,
+    "base_rate": 0.164,
+    "hits": 9,
+    "misses": 95,
+    "false_alarms": 21,
+    "correct_neg": 510,
+    "hit_rate": 0.087,
+    "false_alarm_ratio": 0.7,
+    "onset": {
+     "n_obs": 33,
+     "n_matched": 9,
+     "median_err_h": 1.0,
+     "mean_abs_err_h": 2.44
+    },
+    "clear": {
+     "n_obs": 32,
+     "n_matched": 11,
+     "median_err_h": 2.0,
+     "mean_abs_err_h": 2.82
+    }
+   },
+   "KSFO": {
+    "hours": 638,
+    "base_rate": 0.036,
+    "hits": 7,
+    "misses": 16,
+    "false_alarms": 23,
+    "correct_neg": 592,
+    "hit_rate": 0.304,
+    "false_alarm_ratio": 0.767,
+    "onset": {
+     "n_obs": 7,
+     "n_matched": 6,
+     "median_err_h": -0.5,
+     "mean_abs_err_h": 2.33
+    },
+    "clear": {
+     "n_obs": 6,
+     "n_matched": 5,
+     "median_err_h": -1.0,
+     "mean_abs_err_h": 2.4
+    }
+   },
+   "KOAK": {
+    "hours": 638,
+    "base_rate": 0.028,
+    "hits": 12,
+    "misses": 6,
+    "false_alarms": 22,
+    "correct_neg": 598,
+    "hit_rate": 0.667,
+    "false_alarm_ratio": 0.647,
+    "onset": {
+     "n_obs": 3,
+     "n_matched": 3,
+     "median_err_h": -1.0,
+     "mean_abs_err_h": 2.33
+    },
+    "clear": {
+     "n_obs": 3,
+     "n_matched": 3,
+     "median_err_h": -3.0,
+     "mean_abs_err_h": 3.33
+    }
+   }
+  },
+  "notes": [],
+  "wind_coops_fort_point": {
+   "n": 638,
+   "obs_mean_ms": 2.36,
+   "model_mean_ms": 3.06,
+   "bias_ms": 0.7,
+   "ratio_obs_over_model": 0.77,
+   "rmse_ms": 1.66,
+   "dir_bias_deg": 18.8
+  }
+ },
+ "replay_nights": {
+  "2026-09-20": {
+   "label": "2026-09-20",
+   "start": "2026-09-21T02:00:00+00:00",
+   "end": "2026-09-22T02:00:00+00:00",
+   "hours": 25,
+   "fog": {
+    "KHAF": {
+     "hours": 0,
+     "base_rate": null,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 0,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    },
+    "KSFO": {
+     "hours": 0,
+     "base_rate": null,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 0,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    },
+    "KOAK": {
+     "hours": 0,
+     "base_rate": null,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 0,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    }
+   },
+   "notes": [],
+   "wind_coops_fort_point": {
+    "n": 0
+   }
+  },
+  "2026-09-22": {
+   "label": "2026-09-22",
+   "start": "2026-09-23T02:00:00+00:00",
+   "end": "2026-09-24T02:00:00+00:00",
+   "hours": 25,
+   "fog": {
+    "KHAF": {
+     "hours": 0,
+     "base_rate": null,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 0,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    },
+    "KSFO": {
+     "hours": 0,
+     "base_rate": null,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 0,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    },
+    "KOAK": {
+     "hours": 0,
+     "base_rate": null,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 0,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    }
+   },
+   "notes": [],
+   "wind_coops_fort_point": {
+    "n": 0
+   }
+  },
+  "2026-09-24": {
+   "label": "2026-09-24",
+   "start": "2026-09-25T02:00:00+00:00",
+   "end": "2026-09-26T02:00:00+00:00",
+   "hours": 25,
+   "fog": {
+    "KHAF": {
+     "hours": 3,
+     "base_rate": 0.0,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 3,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    },
+    "KSFO": {
+     "hours": 3,
+     "base_rate": 0.0,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 3,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    }
+   },
+   "notes": [
+    "KOAK: HTTPError('429 Client Error: Too Many Requests for url: https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=OAK&data=vsby&data=skyc1&data=skyc2&data=skyc3&data=skyl1&data=skyl2&dat"
+   ],
+   "wind_coops_fort_point": {
+    "n": 3,
+    "obs_mean_ms": 5.16,
+    "model_mean_ms": 7.67,
+    "bias_ms": 2.5,
+    "ratio_obs_over_model": 0.67,
+    "rmse_ms": 2.54,
+    "dir_bias_deg": 51.0
+   }
+  },
+  "2026-09-30": {
+   "label": "2026-09-30",
+   "start": "2026-10-01T02:00:00+00:00",
+   "end": "2026-10-02T02:00:00+00:00",
+   "hours": 25,
+   "fog": {
+    "KHAF": {
+     "hours": 25,
+     "base_rate": 1.0,
+     "hits": 15,
+     "misses": 10,
+     "false_alarms": 0,
+     "correct_neg": 0,
+     "hit_rate": 0.6,
+     "false_alarm_ratio": 0.0,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    },
+    "KSFO": {
+     "hours": 25,
+     "base_rate": 0.04,
+     "hits": 0,
+     "misses": 1,
+     "false_alarms": 6,
+     "correct_neg": 18,
+     "hit_rate": 0.0,
+     "false_alarm_ratio": 1.0,
+     "onset": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": -5.0,
+      "mean_abs_err_h": 5.0
+     },
+     "clear": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": -1.0,
+      "mean_abs_err_h": 1.0
+     }
+    },
+    "KOAK": {
+     "hours": 25,
+     "base_rate": 0.24,
+     "hits": 3,
+     "misses": 3,
+     "false_alarms": 2,
+     "correct_neg": 17,
+     "hit_rate": 0.5,
+     "false_alarm_ratio": 0.4,
+     "onset": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": -1.0,
+      "mean_abs_err_h": 1.0
+     },
+     "clear": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": -1.0,
+      "mean_abs_err_h": 1.0
+     }
+    }
+   },
+   "notes": [],
+   "wind_coops_fort_point": {
+    "n": 25,
+    "obs_mean_ms": 3.48,
+    "model_mean_ms": 4.83,
+    "bias_ms": 1.35,
+    "ratio_obs_over_model": 0.72,
+    "rmse_ms": 1.8,
+    "dir_bias_deg": -0.5
+   }
+  },
+  "2026-10-01": {
+   "label": "2026-10-01",
+   "start": "2026-10-02T02:00:00+00:00",
+   "end": "2026-10-03T02:00:00+00:00",
+   "hours": 25,
+   "fog": {
+    "KHAF": {
+     "hours": 25,
+     "base_rate": 0.96,
+     "hits": 13,
+     "misses": 11,
+     "false_alarms": 0,
+     "correct_neg": 1,
+     "hit_rate": 0.542,
+     "false_alarm_ratio": 0.0,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 1,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    },
+    "KSFO": {
+     "hours": 25,
+     "base_rate": 0.12,
+     "hits": 3,
+     "misses": 0,
+     "false_alarms": 7,
+     "correct_neg": 15,
+     "hit_rate": 1.0,
+     "false_alarm_ratio": 0.7,
+     "onset": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": -3.0,
+      "mean_abs_err_h": 3.0
+     },
+     "clear": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": 1.0,
+      "mean_abs_err_h": 1.0
+     }
+    },
+    "KOAK": {
+     "hours": 25,
+     "base_rate": 0.2,
+     "hits": 5,
+     "misses": 0,
+     "false_alarms": 5,
+     "correct_neg": 15,
+     "hit_rate": 1.0,
+     "false_alarm_ratio": 0.5,
+     "onset": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": -5.0,
+      "mean_abs_err_h": 5.0
+     },
+     "clear": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": 0.0,
+      "mean_abs_err_h": 0.0
+     }
+    }
+   },
+   "notes": [],
+   "wind_coops_fort_point": {
+    "n": 25,
+    "obs_mean_ms": 2.48,
+    "model_mean_ms": 3.29,
+    "bias_ms": 0.81,
+    "ratio_obs_over_model": 0.75,
+    "rmse_ms": 1.93,
+    "dir_bias_deg": 6.2
+   }
+  },
+  "2026-10-03": {
+   "label": "2026-10-03",
+   "start": "2026-10-04T02:00:00+00:00",
+   "end": "2026-10-05T02:00:00+00:00",
+   "hours": 25,
+   "fog": {
+    "KHAF": {
+     "hours": 25,
+     "base_rate": 0.0,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 25,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    },
+    "KSFO": {
+     "hours": 25,
+     "base_rate": 0.0,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 25,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    }
+   },
+   "notes": [
+    "KOAK: HTTPError('429 Client Error: Too Many Requests for url: https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=OAK&data=vsby&data=skyc1&data=skyc2&data=skyc3&data=skyl1&data=skyl2&dat"
+   ],
+   "wind_coops_fort_point": {
+    "n": 25,
+    "obs_mean_ms": 2.78,
+    "model_mean_ms": 3.26,
+    "bias_ms": 0.48,
+    "ratio_obs_over_model": 0.85,
+    "rmse_ms": 2.05,
+    "dir_bias_deg": -15.0
+   }
+  },
+  "2026-10-08": {
+   "label": "2026-10-08",
+   "start": "2026-10-09T02:00:00+00:00",
+   "end": "2026-10-10T02:00:00+00:00",
+   "hours": 25,
+   "fog": {
+    "KHAF": {
+     "hours": 25,
+     "base_rate": 0.76,
+     "hits": 12,
+     "misses": 7,
+     "false_alarms": 3,
+     "correct_neg": 3,
+     "hit_rate": 0.632,
+     "false_alarm_ratio": 0.2,
+     "onset": {
+      "n_obs": 2,
+      "n_matched": 2,
+      "median_err_h": 1.5,
+      "mean_abs_err_h": 3.5
+     },
+     "clear": {
+      "n_obs": 2,
+      "n_matched": 2,
+      "median_err_h": 0.5,
+      "mean_abs_err_h": 1.5
+     }
+    },
+    "KSFO": {
+     "hours": 25,
+     "base_rate": 0.0,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 2,
+     "correct_neg": 23,
+     "hit_rate": null,
+     "false_alarm_ratio": 1.0,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    },
+    "KOAK": {
+     "hours": 25,
+     "base_rate": 0.16,
+     "hits": 4,
+     "misses": 0,
+     "false_alarms": 1,
+     "correct_neg": 20,
+     "hit_rate": 1.0,
+     "false_alarm_ratio": 0.2,
+     "onset": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": -1.0,
+      "mean_abs_err_h": 1.0
+     },
+     "clear": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": 0.0,
+      "mean_abs_err_h": 0.0
+     }
+    }
+   },
+   "notes": [],
+   "wind_coops_fort_point": {
+    "n": 25,
+    "obs_mean_ms": 2.99,
+    "model_mean_ms": 6.03,
+    "bias_ms": 3.04,
+    "ratio_obs_over_model": 0.5,
+    "rmse_ms": 3.26,
+    "dir_bias_deg": 11.9
+   }
+  },
+  "2026-10-16": {
+   "label": "2026-10-16",
+   "start": "2026-10-17T02:00:00+00:00",
+   "end": "2026-10-18T02:00:00+00:00",
+   "hours": 25,
+   "fog": {
+    "KHAF": {
+     "hours": 25,
+     "base_rate": 0.0,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 25,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    },
+    "KSFO": {
+     "hours": 25,
+     "base_rate": 0.0,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 25,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    },
+    "KOAK": {
+     "hours": 25,
+     "base_rate": 0.0,
+     "hits": 0,
+     "misses": 0,
+     "false_alarms": 0,
+     "correct_neg": 25,
+     "hit_rate": null,
+     "false_alarm_ratio": null,
+     "onset": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     },
+     "clear": {
+      "n_obs": 0,
+      "n_matched": 0,
+      "median_err_h": null,
+      "mean_abs_err_h": null
+     }
+    }
+   },
+   "notes": [],
+   "wind_coops_fort_point": {
+    "n": 25,
+    "obs_mean_ms": 2.69,
+    "model_mean_ms": 3.05,
+    "bias_ms": 0.36,
+    "ratio_obs_over_model": 0.88,
+    "rmse_ms": 1.92,
+    "dir_bias_deg": 3.2
+   }
+  },
+  "2026-11-10": {
+   "label": "2026-11-10",
+   "start": "2026-11-11T02:00:00+00:00",
+   "end": "2026-11-12T02:00:00+00:00",
+   "hours": 25,
+   "fog": {
+    "KHAF": {
+     "hours": 25,
+     "base_rate": 0.52,
+     "hits": 1,
+     "misses": 12,
+     "false_alarms": 0,
+     "correct_neg": 12,
+     "hit_rate": 0.077,
+     "false_alarm_ratio": 0.0,
+     "onset": {
+      "n_obs": 4,
+      "n_matched": 1,
+      "median_err_h": 4.0,
+      "mean_abs_err_h": 4.0
+     },
+     "clear": {
+      "n_obs": 4,
+      "n_matched": 2,
+      "median_err_h": 2.5,
+      "mean_abs_err_h": 3.5
+     }
+    },
+    "KSFO": {
+     "hours": 25,
+     "base_rate": 0.36,
+     "hits": 3,
+     "misses": 6,
+     "false_alarms": 0,
+     "correct_neg": 16,
+     "hit_rate": 0.333,
+     "false_alarm_ratio": 0.0,
+     "onset": {
+      "n_obs": 2,
+      "n_matched": 1,
+      "median_err_h": 0.0,
+      "mean_abs_err_h": 0.0
+     },
+     "clear": {
+      "n_obs": 2,
+      "n_matched": 1,
+      "median_err_h": -2.0,
+      "mean_abs_err_h": 2.0
+     }
+    },
+    "KOAK": {
+     "hours": 25,
+     "base_rate": 0.24,
+     "hits": 4,
+     "misses": 2,
+     "false_alarms": 1,
+     "correct_neg": 18,
+     "hit_rate": 0.667,
+     "false_alarm_ratio": 0.2,
+     "onset": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": -1.0,
+      "mean_abs_err_h": 1.0
+     },
+     "clear": {
+      "n_obs": 1,
+      "n_matched": 1,
+      "median_err_h": -1.0,
+      "mean_abs_err_h": 1.0
+     }
+    }
+   },
+   "notes": [],
+   "wind_coops_fort_point": {
+    "n": 25,
+    "obs_mean_ms": 3.06,
+    "model_mean_ms": 2.54,
+    "bias_ms": -0.53,
+    "ratio_obs_over_model": 1.21,
+    "rmse_ms": 1.25,
+    "dir_bias_deg": 39.8
+   }
+  }
+ }
+}
