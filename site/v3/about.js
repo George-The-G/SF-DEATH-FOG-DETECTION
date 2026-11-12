@@ -29,6 +29,13 @@ const CSS = `
 .ab-body b{font-weight:650}
 .ab-body a{color:var(--accent,#5ef2ff);text-underline-offset:2px;overflow-wrap:anywhere}
 .ab-body code{font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:12.5px;color:var(--dim,#9db0c9)}
+.ab-formula{font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:12.5px;padding:8px 10px;border:1px solid var(--line,rgba(140,170,210,.26));border-radius:10px;background:rgba(255,255,255,.04)}
+.ab-tblw{overflow-x:auto;margin:0 0 8px}
+.ab-tbl{width:100%;border-collapse:collapse;font-size:12.5px;line-height:1.35}
+.ab-tbl th,.ab-tbl td{text-align:left;vertical-align:top;padding:5px 6px 5px 0;border-bottom:1px solid var(--line,rgba(140,170,210,.26))}
+.ab-tbl th{color:var(--dim,#9db0c9);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.ab-tbl td:first-child{white-space:nowrap;font-weight:650}
+.ab-src{line-height:1.7}
 .ab-date{color:var(--dim,#9db0c9);font-size:12px;margin-top:12px!important}
 .ab-msg{color:var(--dim,#9db0c9)}
 @media (min-width:700px){
