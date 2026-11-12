@@ -1,0 +1,100 @@
+# Skate "flyover" routes for the 3-D viewer. One declarative file drives the whole pipeline:
+#   python -m microclimate routes
+#
+# [zone.<id>]   a group of routes that share one street-point table and one 2 m sun/horizon window.
+#   name         label shown in the viewer's route picker
+#   builder      "disc"     the original Potrero Hill builder (microclimate.toml [zone.potrero]: disc of radius_m around the start)
+#                "corridor" every street segment within corridor_m of any route of the zone
+#   corridor_m   (corridor) half-width of the point corridor around the routes, default 250
+#   osm_bbox     (corridor) [south, west, north, east] fetched once from Overpass and cached in deathfog-data/raw/osm_<id>.json
+#
+# [[route]]
+#   id, name, zone, color   required (name e.g. "Golden Gate Heights: 10th Ave (green)")
+#   waypoints    ordered list; each entry is either an OSM intersection "9th Ave & Judah St" (street names, abbreviations ok)
+#                or a coordinate "37.7621,-122.4662". The route is the shortest street path through them in order, so
+#                put a waypoint at every turn or where two paths are possible. Streets are real OSM roads only (no steps, paths, alleys).
+#   start / end / via   alternative to waypoints: start, then via (list), then end
+#   auto         "downhill" (Potrero only): the legacy auto-detected route from `start = [lat, lon]` to the bus stop at the bottom
+#   drawn        (optional) key of the hand-drawn line in routes_drawn.json, only used for the comparison overlay PNG
+#   start_label / end_label   optional text on the beacons (default: the first / last waypoint)
+
+[zone.potrero]
+name = "Potrero Hill"
+builder = "disc"
+
+[zone.ggh]
+name = "Golden Gate Heights"
+builder = "corridor"
+corridor_m = 250
+osm_bbox = [37.738, -122.492, 37.768, -122.448]
+
+[[route]]
+id = "potrero"
+name = "Potrero Hill: 20th & Kansas to 15th & Rhode Island"
+zone = "potrero"
+color = "#5ef2ff"
+auto = "downhill"
+start = [37.7597, -122.4037]
+start_label = "Start: 20th & Kansas"
+end_label = "Bus stop: 15th & Rhode Island"
+
+# The five Golden Gate Heights routes were drawn by hand on a Google Maps screenshot (routes_drawn.json holds the drawn lines) and
+# map-matched to OSM streets. On the screenshot the flag (9th Ave & Judah St) is the LOW end (88 m; Quintara St is 200-215 m), so the
+# routes are listed top of the hill first: they start on Quintara St and finish at 9th & Judah. Reverse a list to flip a route.
+[[route]]
+id = "ggh-yellow"
+drawn = "yellow"
+name = "Golden Gate Heights: 14th Ave (yellow)"
+zone = "ggh"
+color = "#f2c230"
+waypoints = ["12th Ave & Quintara St", "14th Ave & Quintara St", "14th Ave & Pacheco St", "14th Ave & Ortega St",
+             "14th Ave & 15th Ave", "15th Ave & Aloha Ave", "15th Ave & Lawton St", "12th Ave & Lawton St",
+             "12th Ave & Judah St", "9th Ave & Judah St"]
+start_label = "Start: 12th & Quintara"
+end_label = "Finish: 9th & Judah"
+
+[[route]]
+id = "ggh-orange"
+drawn = "orange"
+name = "Golden Gate Heights: 12th Ave and 11th Ave (orange)"
+zone = "ggh"
+color = "#f07a1e"
+waypoints = ["Cragmont Ave & Quintara St", "Cragmont Ave & Rockridge Dr", "12th Ave & Funston Ave", "12th Ave & Pacheco St",
+             "11th Ave & Pacheco St", "11th Ave & Noriega St", "12th Ave & Noriega St", "12th Ave & Lawton St",
+             "12th Ave & Judah St", "9th Ave & Judah St"]
+start_label = "Start: Cragmont & Quintara"
+end_label = "Finish: 9th & Judah"
+
+[[route]]
+id = "ggh-green"
+drawn = "green"
+name = "Golden Gate Heights: 10th Ave (green)"
+zone = "ggh"
+color = "#3fbf5a"
+waypoints = ["10th Ave & Quintara St", "10th Ave & Judah St", "9th Ave & Judah St"]
+start_label = "Start: 10th & Quintara"
+end_label = "Finish: 9th & Judah"
+
+[[route]]
+id = "ggh-red"
+drawn = "red"
+name = "Golden Gate Heights: 9th Ave (red)"
+zone = "ggh"
+color = "#e8434a"
+waypoints = ["9th Ave & Mendosa Ave", "9th Ave & Pacheco St", "9th Ave & Noriega St", "9th Ave & Lawton St",
+             "9th Ave & Judah St"]
+start_label = "Start: 9th & Mendosa"
+end_label = "Finish: 9th & Judah"
+
+[[route]]
+id = "ggh-purple"
+drawn = "purple"
+name = "Golden Gate Heights: 8th Ave (purple)"
+zone = "ggh"
+color = "#b070f0"
+waypoints = ["9th Ave & Mendosa Ave", "9th Ave & Alton Ave", "Alton Ave & Pacheco St", "8th Ave & Pacheco St",
+             "8th Ave & Linares Ave", "8th Ave & Noriega St", "8th Ave & Lawton St", "9th Ave & Lawton St",
+             "9th Ave & Judah St"]
+start_label = "Start: 9th & Mendosa"
+end_label = "Finish: 9th & Judah"
+

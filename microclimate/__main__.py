@@ -35,13 +35,17 @@ def main(argv):
     elif cmd == "replay":
         from . import replay
         replay.write(cfg, DATA, Path("site/v3/replay"))
+    elif cmd == "routes":
+        from . import routes
+        sys.exit(routes.run(cfg, DATA, argv[1:]))
     elif cmd == "validate":
         from . import validate
         ok = validate.run(cfg, DATA, Path("site/v3/replay"))
         validate.overview(cfg, DATA, Path("site/v3/replay"))
         sys.exit(0 if ok else 1)
     else:
-        print("commands: geometry, zone, meshes, wind, street, sun [--check], replay, validate")
+        print("commands: geometry, zone, meshes, wind, street, sun [--check], replay, validate, "
+              "routes [--force] [--from STEP] [--only STEP] [--no-validate]  (routes: everything for all routes in routes.toml)")
 
 
 if __name__ == "__main__":

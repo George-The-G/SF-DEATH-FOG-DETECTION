@@ -109,8 +109,10 @@ class Zone:
                 stop = stops[0]
         return path, stop, total
 
-    def points(self, route_set, step=10.0, side_m=5.0):
-        rows, pid = [], 0
+    def points(self, route_set, step=10.0, side_m=5.0, keep=None, route_sets=None, pid0=0):
+        """keep(mid_x, mid_y) -> bool optionally restricts to segments (corridor zones); route_sets (list of edge sets) adds
+        a route_mask bit per route; pid0 is the first row id. Defaults reproduce the original Potrero table exactly."""
+        rows, pid = [], pid0
         for w in self.ways:
             tags = w.get("tags", {})
             nodes = w["nodes"]
@@ -118,6 +120,8 @@ class Zone:
                 (x1, y1), (x2, y2) = self.xy(a), self.xy(b)
                 L = math.hypot(x2 - x1, y2 - y1)
                 if L < 1:
+                    continue
+                if keep is not None and not keep((x1 + x2) / 2, (y1 + y2) / 2):
                     continue
                 dx, dy = (x2 - x1) / L, (y2 - y1) / L
                 bearing = (math.degrees(math.atan2(dx, dy)) + 360) % 180  # undirected 0-180, 90 = east-west
@@ -131,10 +135,13 @@ class Zone:
                     for side, sgn in (("left", 1), ("right", -1)):
                         sx, sy = px - dy * side_m * sgn, py + dx * side_m * sgn
                         slon, slat = self.t.transform(sx, sy, direction="INVERSE")
-                        rows.append({"id": pid, "way": w["id"], "seg": si, "side": side, "x": round(sx, 1), "y": round(sy, 1),
-                                     "lat": round(slat, 6), "lon": round(slon, 6), "z": round(z, 1), "street": tags.get("name", ""),
-                                     "bearing": round(bearing, 1), "slope_pct": round(slope, 1), "surface": tags.get("surface", ""),
-                                     "on_route": int((a, b) in route_set or (b, a) in route_set)})
+                        row = {"id": pid, "way": w["id"], "seg": si, "side": side, "x": round(sx, 1), "y": round(sy, 1),
+                               "lat": round(slat, 6), "lon": round(slon, 6), "z": round(z, 1), "street": tags.get("name", ""),
+                               "bearing": round(bearing, 1), "slope_pct": round(slope, 1), "surface": tags.get("surface", ""),
+                               "on_route": int((a, b) in route_set or (b, a) in route_set)}
+                        if route_sets is not None:
+                            row["route_mask"] = sum(1 << i for i, rs in enumerate(route_sets) if (a, b) in rs or (b, a) in rs)
+                        rows.append(row)
                         pid += 1
         return rows
 

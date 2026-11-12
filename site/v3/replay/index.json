@@ -1,8 +1,22 @@
 {
  "zone": {
   "name": "Potrero Hill",
-  "n_points": 14116
+  "n_points": 21210
  },
+ "zones": [
+  {
+   "id": "potrero",
+   "name": "Potrero Hill",
+   "row0": 0,
+   "row1": 14116
+  },
+  {
+   "id": "ggh",
+   "name": "Golden Gate Heights",
+   "row0": 14116,
+   "row1": 21210
+  }
+ ],
  "model": "wetness proxy, hand-set constants (MVP)",
  "constants": {
   "DT_MAX": 4.0,
@@ -71,7 +85,39 @@
     "tier": 0
    },
    "w_dawn_mean": 23.9,
-   "w_dawn_p95": 45.0
+   "w_dawn_p95": 45.0,
+   "w_dawn_by_route": {
+    "potrero": {
+     "mean": 35.4,
+     "p95": 49.6,
+     "points": 176
+    },
+    "ggh-yellow": {
+     "mean": 9.6,
+     "p95": 29.8,
+     "points": 556
+    },
+    "ggh-orange": {
+     "mean": 10.1,
+     "p95": 29.4,
+     "points": 462
+    },
+    "ggh-green": {
+     "mean": 14.0,
+     "p95": 28.5,
+     "points": 300
+    },
+    "ggh-red": {
+     "mean": 14.3,
+     "p95": 28.4,
+     "points": 296
+    },
+    "ggh-purple": {
+     "mean": 14.0,
+     "p95": 28.4,
+     "points": 338
+    }
+   }
   },
   {
    "id": "2026-10-08",
@@ -105,7 +151,39 @@
     "tier": 0
    },
    "w_dawn_mean": 29.8,
-   "w_dawn_p95": 77.5
+   "w_dawn_p95": 77.5,
+   "w_dawn_by_route": {
+    "potrero": {
+     "mean": 47.7,
+     "p95": 71.6,
+     "points": 176
+    },
+    "ggh-yellow": {
+     "mean": 25.5,
+     "p95": 53.2,
+     "points": 556
+    },
+    "ggh-orange": {
+     "mean": 26.1,
+     "p95": 53.8,
+     "points": 462
+    },
+    "ggh-green": {
+     "mean": 25.4,
+     "p95": 52.4,
+     "points": 300
+    },
+    "ggh-red": {
+     "mean": 22.5,
+     "p95": 41.8,
+     "points": 296
+    },
+    "ggh-purple": {
+     "mean": 21.7,
+     "p95": 40.5,
+     "points": 338
+    }
+   }
   },
   {
    "id": "2026-10-01",
@@ -139,7 +217,39 @@
     "tier": 0
    },
    "w_dawn_mean": 82.1,
-   "w_dawn_p95": 100.0
+   "w_dawn_p95": 100.0,
+   "w_dawn_by_route": {
+    "potrero": {
+     "mean": 98.3,
+     "p95": 100.0,
+     "points": 176
+    },
+    "ggh-yellow": {
+     "mean": 37.9,
+     "p95": 97.5,
+     "points": 556
+    },
+    "ggh-orange": {
+     "mean": 42.6,
+     "p95": 98.2,
+     "points": 462
+    },
+    "ggh-green": {
+     "mean": 43.7,
+     "p95": 98.7,
+     "points": 300
+    },
+    "ggh-red": {
+     "mean": 40.2,
+     "p95": 86.7,
+     "points": 296
+    },
+    "ggh-purple": {
+     "mean": 38.9,
+     "p95": 85.8,
+     "points": 338
+    }
+   }
   },
   {
    "id": "2026-09-30",
@@ -173,7 +283,39 @@
     "tier": 0
    },
    "w_dawn_mean": 61.6,
-   "w_dawn_p95": 94.9
+   "w_dawn_p95": 94.9,
+   "w_dawn_by_route": {
+    "potrero": {
+     "mean": 80.0,
+     "p95": 100.0,
+     "points": 176
+    },
+    "ggh-yellow": {
+     "mean": 18.8,
+     "p95": 51.6,
+     "points": 556
+    },
+    "ggh-orange": {
+     "mean": 20.8,
+     "p95": 52.5,
+     "points": 462
+    },
+    "ggh-green": {
+     "mean": 21.9,
+     "p95": 48.0,
+     "points": 300
+    },
+    "ggh-red": {
+     "mean": 19.8,
+     "p95": 37.8,
+     "points": 296
+    },
+    "ggh-purple": {
+     "mean": 19.0,
+     "p95": 37.6,
+     "points": 338
+    }
+   }
   },
   {
    "id": "2026-09-24",
@@ -207,7 +349,39 @@
     "tier": 0
    },
    "w_dawn_mean": 20.7,
-   "w_dawn_p95": 35.5
+   "w_dawn_p95": 35.5,
+   "w_dawn_by_route": {
+    "potrero": {
+     "mean": 30.1,
+     "p95": 38.8,
+     "points": 176
+    },
+    "ggh-yellow": {
+     "mean": 40.8,
+     "p95": 47.4,
+     "points": 556
+    },
+    "ggh-orange": {
+     "mean": 40.2,
+     "p95": 47.4,
+     "points": 462
+    },
+    "ggh-green": {
+     "mean": 41.6,
+     "p95": 47.1,
+     "points": 300
+    },
+    "ggh-red": {
+     "mean": 40.9,
+     "p95": 46.7,
+     "points": 296
+    },
+    "ggh-purple": {
+     "mean": 40.3,
+     "p95": 46.4,
+     "points": 338
+    }
+   }
   },
   {
    "id": "2026-09-22",
@@ -241,7 +415,39 @@
     "tier": 0
    },
    "w_dawn_mean": 20.2,
-   "w_dawn_p95": 48.4
+   "w_dawn_p95": 48.4,
+   "w_dawn_by_route": {
+    "potrero": {
+     "mean": 36.7,
+     "p95": 46.5,
+     "points": 176
+    },
+    "ggh-yellow": {
+     "mean": 37.8,
+     "p95": 62.8,
+     "points": 556
+    },
+    "ggh-orange": {
+     "mean": 38.4,
+     "p95": 63.3,
+     "points": 462
+    },
+    "ggh-green": {
+     "mean": 39.5,
+     "p95": 63.0,
+     "points": 300
+    },
+    "ggh-red": {
+     "mean": 37.6,
+     "p95": 60.7,
+     "points": 296
+    },
+    "ggh-purple": {
+     "mean": 36.6,
+     "p95": 60.2,
+     "points": 338
+    }
+   }
   },
   {
    "id": "2026-09-20",
@@ -275,7 +481,39 @@
     "tier": 0
    },
    "w_dawn_mean": 31.8,
-   "w_dawn_p95": 87.6
+   "w_dawn_p95": 87.6,
+   "w_dawn_by_route": {
+    "potrero": {
+     "mean": 58.6,
+     "p95": 81.1,
+     "points": 176
+    },
+    "ggh-yellow": {
+     "mean": 99.8,
+     "p95": 100.0,
+     "points": 556
+    },
+    "ggh-orange": {
+     "mean": 99.8,
+     "p95": 100.0,
+     "points": 462
+    },
+    "ggh-green": {
+     "mean": 99.9,
+     "p95": 100.0,
+     "points": 300
+    },
+    "ggh-red": {
+     "mean": 99.8,
+     "p95": 100.0,
+     "points": 296
+    },
+    "ggh-purple": {
+     "mean": 99.8,
+     "p95": 100.0,
+     "points": 338
+    }
+   }
   },
   {
    "id": "2026-10-16",
@@ -309,7 +547,39 @@
     "tier": 2
    },
    "w_dawn_mean": 0.0,
-   "w_dawn_p95": 0.0
+   "w_dawn_p95": 0.0,
+   "w_dawn_by_route": {
+    "potrero": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 176
+    },
+    "ggh-yellow": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 556
+    },
+    "ggh-orange": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 462
+    },
+    "ggh-green": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 300
+    },
+    "ggh-red": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 296
+    },
+    "ggh-purple": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 338
+    }
+   }
   },
   {
    "id": "2026-10-03",
@@ -343,7 +613,39 @@
     "tier": 0
    },
    "w_dawn_mean": 0.0,
-   "w_dawn_p95": 0.0
+   "w_dawn_p95": 0.0,
+   "w_dawn_by_route": {
+    "potrero": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 176
+    },
+    "ggh-yellow": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 556
+    },
+    "ggh-orange": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 462
+    },
+    "ggh-green": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 300
+    },
+    "ggh-red": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 296
+    },
+    "ggh-purple": {
+     "mean": 0.0,
+     "p95": 0.0,
+     "points": 338
+    }
+   }
   }
  ]
 }

@@ -57,7 +57,8 @@ def build(cfg, grids_dir, lib_dir, refined_dir=None, out_path=None):
     grids_dir, lib_dir = Path(grids_dir), Path(lib_dir)
     spec = json.load(open(grids_dir / "grid_spec.json"))
     solid = np.load(grids_dir / "solid_20m.npz")["solid"]
-    pts = read_points(grids_dir / "zone" / "potrero_points.csv")
+    pf = grids_dir / "zone" / "points.csv"  # combined table of all zones (python -m microclimate routes); legacy: potrero only
+    pts = read_points(pf if pf.exists() else grids_dir / "zone" / "potrero_points.csv")
     n = len(pts)
     x = np.array([float(r["x"]) for r in pts])
     y = np.array([float(r["y"]) for r in pts])
@@ -100,6 +101,12 @@ def build(cfg, grids_dir, lib_dir, refined_dir=None, out_path=None):
         refine = corr[ci, cj].astype(float)
 
     out_path = Path(out_path or grids_dir / "zone" / "street_features.csv")
+    ci_f = np.isfinite(refine)
+    refine_cov = {}
+    if "zone" in pts[0]:
+        for zid in dict.fromkeys(r["zone"] for r in pts):
+            sel = np.array([r["zone"] == zid for r in pts])
+            refine_cov[zid] = float(ci_f[sel].mean())
     with open(out_path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(COLUMNS)
@@ -109,4 +116,5 @@ def build(cfg, grids_dir, lib_dir, refined_dir=None, out_path=None):
     fin = lambda a: float(np.isfinite(a).mean())
     return {"points": n, "out": str(out_path), "finite_wind": fin(wind), "finite_fog": [fin(a) for a in fog],
             "wind_ratio_median": float(np.nanmedian(wind)), "wind_ratio_p05_p95": [float(np.nanpercentile(wind, 5)), float(np.nanpercentile(wind, 95))],
-            "fog_median": [float(np.nanmedian(a)) for a in fog], "refine_corr_present": bool(rf.exists())}
+            "fog_median": [float(np.nanmedian(a)) for a in fog], "refine_corr_present": bool(rf.exists()),
+            "refine_corr_finite_by_zone": refine_cov}

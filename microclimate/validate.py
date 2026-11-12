@@ -133,7 +133,8 @@ def fog_height_checks(P, nights, fog, dry, data_dir):
 def run(cfg, data_dir, out_dir):
     results.clear()
     from pyproj import Transformer
-    P = replay.load_inputs(data_dir)
+    Pall = replay.load_inputs(data_dir)
+    P = replay.subset(Pall, Pall["zone"] == "potrero")  # the gated checks below run on Potrero exactly as in the single-zone pipeline
     nights = replay.get_nights(cfg, data_dir)
     fog = [n for n in nights if n["kind"] == "fog"]
     dry = [n for n in nights if n["kind"] == "dry"]
@@ -242,6 +243,7 @@ def run(cfg, data_dir, out_dir):
     lines = "; ".join(f"{k}: std {v['std']:.1f}, corr {v['corr_with_baseline']:.2f}, mean|dW| {v['mean_abs_diff']:.1f}" for k, v in table.items() if isinstance(v, dict) and "std" in v)
     lines += "; streets whose 09:00 W changes most when refined wind is OFF (mean dW, W units): " + ", ".join(f"{k} {v:+.1f}" for k, v in table["refined_wind_off"]["streets_most_changed"].items())
     rec("e_ablations", "INFO", f"street-level W pattern at 09:00 (mean over {len(fog)} fog nights): {lines}", table=table)
+    zone_reports(Pall, nights, fog, dry, data_dir)
     rec("f_v2_observed_fog_nights", "SKIPPED", "optional; not attempted in the MVP (needs v2 observations aligned to the replay nights)")
 
     scored = [r for r in results if r["status"] in ("PASS", "FAIL")]
@@ -253,12 +255,58 @@ def run(cfg, data_dir, out_dir):
     print("ALL PASS" if allpass else "SOME FAIL")
     return allpass
 
+def zone_reports(Pall, nights, fog, dry, data_dir):
+    """INFO lines for every zone other than Potrero: the same (a), (b), (c) statistics plus mean/p95 of W at 09:00 per route
+    on each fog night. Not gated: the expectations (E-W drier than N-S, shadier side wetter) are about flat grid streets and a
+    hill with curving streets may legitimately differ."""
+    zt = replay.zone_table(data_dir)
+    if not zt:
+        return
+    for z in zt["zones"]:
+        if z["id"] == "potrero":
+            continue
+        m = Pall["zone"] == z["id"]
+        Pz = replay.subset(Pall, m)
+        run = {n["id"]: replay.run_night(Pz, n) for n in nights}
+        brg = Pz["bearing"] % 180.0
+        ew, ns = np.abs(brg - 90.0) <= 25.0, (brg <= 25.0) | (brg >= 155.0)
+        m_ew = float(np.mean([run[n["id"]][0][DAWN][ew].mean() for n in fog])) if ew.any() else float("nan")
+        m_ns = float(np.mean([run[n["id"]][0][DAWN][ns].mean() for n in fog])) if ns.any() else float("nan")
+        L, R = seg_groups(Pz)
+        sel_ew = np.abs((brg[L] % 180) - 90) <= 25
+        L, R = L[sel_ew], R[sel_ew]
+        win = tot = 0
+        for n in fog:
+            W, dg = run[n["id"]]
+            lit = dg["lit"][:DAWN + 1].sum(0) * 10.0
+            d = lit[L] - lit[R]
+            s = np.abs(d) >= 20
+            wl, wr = W[DAWN][L][s], W[DAWN][R][s]
+            better = np.where(d[s] < 0, wl > wr, wr > wl)
+            dec = wl != wr
+            win += int((better & dec).sum())
+            tot += int(dec.sum())
+        p95dry = max(float(np.percentile(run[n["id"]][0], 95, axis=1).max()) for n in dry) if dry else float("nan")
+        rb = {}
+        for bi, rid in enumerate(zt["routes"]):
+            sel = ((Pz["route_mask"] >> bi) & 1) == 1
+            if sel.any():
+                rb[rid] = {n["id"]: [round(float(run[n["id"]][0][DAWN][sel].mean()), 1),
+                                     round(float(np.percentile(run[n["id"]][0][DAWN][sel], 95)), 1)] for n in fog}
+        rec(f"zone_{z['id']}_info", "INFO",
+            f"{z['name']} ({int(m.sum())} points): 09:00 mean W over {len(fog)} fog nights E-W {m_ew:.1f} vs N-S {m_ns:.1f}; shadier side wetter on "
+            f"{100 * win / max(tot, 1):.0f} % of {tot} E-W segments with >=20 min sun difference; max dry-night p95 {p95dry:.1f}. "
+            f"Per-route [mean, p95] of W at 09:00 per fog night in validation.json.",
+            ew_0900=m_ew, ns_0900=m_ns, shadier_wetter_frac=win / max(tot, 1), n_segments=tot, dry_p95=p95dry, routes_by_night=rb)
+
+
 def overview(cfg, data_dir, out_dir, night_id=None):
     """PNG: map of W at 09:00 on a fog night over the Potrero points and time series at 3 sample points."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     P = replay.load_inputs(data_dir)
+    P = replay.subset(P, P["zone"] == "potrero")
     fog = [n for n in replay.get_nights(cfg, data_dir) if n["kind"] == "fog"]
     n = next((x for x in fog if x["id"] == night_id), None) or max(fog, key=lambda x: replay.run_night(P, x)[0][DAWN].mean())
     W, dg = replay.run_night(P, n)

@@ -23,7 +23,8 @@ DAWN_STEP_H = 15.0   # 09:00 local (frame 90) = "dawn / morning" frame used by v
 
 def load_inputs(data_dir):
     zone = Path(data_dir) / "grids" / "zone"
-    pts = pd.read_csv(zone / "potrero_points.csv")
+    pf = zone / "points.csv"  # combined table of all zones; legacy single-zone file as fallback
+    pts = pd.read_csv(pf if pf.exists() else zone / "potrero_points.csv")
     feat = pd.read_csv(zone / "street_features.csv")
     sur = pd.read_csv(zone / "street_surface.csv")
     fog_b = feat[["fog_b0", "fog_b1", "fog_b2", "fog_b3"]].to_numpy(np.float32)
@@ -36,8 +37,35 @@ def load_inputs(data_dir):
         wind_ratio=feat["wind_ratio"].to_numpy(np.float32), rel_wind=wetness.refined_rel(feat["refine_corr"].to_numpy(float)),
         fog_b=fog_b, tracer=wetness.pick_tracer(fog_b, pts["z"].to_numpy(float)),
         street=pts["street"].to_numpy(), on_route=pts["on_route"].to_numpy(), lat=pts["lat"].to_numpy(), lon=pts["lon"].to_numpy(),
+        zone=(pts["zone"].to_numpy() if "zone" in pts else np.full(len(pts), "potrero")),
+        route_mask=(pts["route_mask"].to_numpy(np.int64) if "route_mask" in pts else pts["on_route"].to_numpy(np.int64)),
     )
     return P
+
+
+def subset(P, mask):
+    """Rows of every per-point array in P selected by a bool mask (the model is per point, so a subset run equals the same columns)."""
+    n = len(mask)
+    return {k: (v[mask] if isinstance(v, np.ndarray) and v.shape[:1] == (n,) else v) for k, v in P.items()}
+
+
+def route_dawn(W, route_mask, route_ids, frame):
+    """Mean and 95th percentile of W at the dawn frame over the street points of each route (bit i of route_mask = route i)."""
+    out = {}
+    for bi, rid in enumerate(route_ids):
+        sel = ((route_mask >> bi) & 1) == 1
+        if sel.any():
+            v = W[frame][sel]
+            out[rid] = {"mean": round(float(v.mean()), 1), "p95": round(float(np.percentile(v, 95)), 1), "points": int(sel.sum())}
+    return out
+
+
+def zone_table(data_dir):
+    """[{id, name, row0, row1, routes}] from zones.json (a single Potrero zone if the file is absent)."""
+    p = Path(data_dir) / "grids" / "zone" / "zones.json"
+    if p.exists():
+        return json.load(open(p))
+    return None
 
 
 def get_nights(cfg, data_dir, until=None):
@@ -116,6 +144,10 @@ def write(cfg, data_dir, out_dir, until=None):
     step_min = cfg["replay"]["step_min"]
     frame_min = cfg["replay"]["fog_frame_min"]
     N = len(P["x"])
+    zt = zone_table(data_dir)
+    zones = zt["zones"] if zt else [{"id": "potrero", "name": "Potrero Hill", "row0": 0, "row1": N, "routes": []}]
+    route_ids = zt["routes"] if zt else []
+    pot = P["zone"] == "potrero"  # headline stats stay on the Potrero zone as before
     entries = []
     for nt in nights:
         d = nt["id"]
@@ -142,12 +174,15 @@ def write(cfg, data_dir, out_dir, until=None):
                          "cell_m": FOG_CELL},
             "weather": f"{d}/weather.json", "approx_direction": meta["approx_direction"],
             "info": {k: round(v, 2) if isinstance(v, float) else v for k, v in meta.items()},
-            "w_dawn_mean": round(float(W[int(DAWN_STEP_H * 60 / step_min)].mean()), 1),
-            "w_dawn_p95": round(float(np.percentile(W[int(DAWN_STEP_H * 60 / step_min)], 95)), 1),
+            "w_dawn_mean": round(float(W[int(DAWN_STEP_H * 60 / step_min)][pot].mean()), 1),
+            "w_dawn_p95": round(float(np.percentile(W[int(DAWN_STEP_H * 60 / step_min)][pot], 95)), 1),
+            "w_dawn_by_route": route_dawn(W, P["route_mask"], route_ids, int(DAWN_STEP_H * 60 / step_min)),
         })
         print(d, nt["kind"], "tier", nt["tier"], "W09 mean/p95", entries[-1]["w_dawn_mean"], entries[-1]["w_dawn_p95"],
               "approx" if meta["approx_direction"] else "", flush=True)
-    index = {"zone": {"name": "Potrero Hill", "n_points": int(N)}, "model": "wetness proxy, hand-set constants (MVP)",
+    index = {"zone": {"name": "Potrero Hill", "n_points": int(N)},
+             "zones": [{"id": z["id"], "name": z["name"], "row0": z["row0"], "row1": z["row1"]} for z in zones],
+             "model": "wetness proxy, hand-set constants (MVP)",
              "constants": wetness.CONSTANTS, "fog_sheet": "tile row 0 = north, column 0 = west; pixel = 255*s(t-lag)*tracer(band 0)",
              "nights": entries}
     (out / "index.json").write_text(json.dumps(index, indent=1))

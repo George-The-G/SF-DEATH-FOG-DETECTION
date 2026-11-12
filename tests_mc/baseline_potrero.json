@@ -1,0 +1,10 @@
+{
+ "n_points": 14116,
+ "points_sha256": "a623ee2087eee55c26a17ef87eccdbef7134ca53bc4a85a8dd15f29ca428b80e",
+ "features_no_refine_sha256": "26a73d74e4a065a0bdde7fc69194226d9b1f951bd0acacd458c593e6f01dafbd",
+ "refine_corr_sha256": "e119c563c949d949ff2f54cc05dbb83cb0fe68e2557976e0ce98d789cf8e7d36",
+ "surface_sha256": "970d361cc08f841024a98a498889ce2778f9edf6046fd71ea22cb53c74356b01",
+ "horizon_sha256": "74414473423fc639e6da022857767a03589142189a38f98eedb2234bcfe97169",
+ "svf_sha256": "e7e6def67a9ea50d8e7b1ad8c67aa8718e3b1ad25fa946fe12d4e854b753f7d8",
+ "note": "Potrero regression baseline taken from the single-zone pipeline before routes.toml (v3-dev cff1d91). Rows 0..n_points-1 of the combined tables must reproduce these."
+}
