@@ -335,6 +335,7 @@ function clearRoute(goCity = true) {
   [...$('rlist').querySelectorAll('.ritem')].forEach((b) => b.classList.toggle('on', !!b.dataset.city));
   flyUI(); closePicker();
   if (goCity) flyTo(CITY.pos, CITY.target, 2200);
+  if (LV && LV.el) liveStrip();
 }
 
 function setRouteHighlight(i) {
@@ -356,6 +357,7 @@ function selectRoute(i, flyCam = true) {
   [...$('rlist').querySelectorAll('.ritem')].forEach((b) => b.classList.toggle('on', !b.dataset.city && +b.dataset.i === i));
   flyUI(); closePicker();
   if (flyCam) flyToRoute(R);
+  if (LV && LV.el) liveStrip();
 }
 
 function flyToRoute(R) {
@@ -637,9 +639,11 @@ function applyTime(force) {
       $('wx-cloud').textContent = g(weather.cloud_low_pct, 0) + ' %';
       const s = weather.sun_el ? weather.sun_el[i] : null; $('wx-sun').textContent = s == null ? '--' : (s > 0 ? 'up ' : 'down ') + minus(s.toFixed(0)) + '°';
       const t = $('wx-temp').textContent.replace(' ', ''), dp = $('wx-dew').textContent.replace(' °F', '°F'), wd = $('wx-wind').textContent.trim() + ($('wx-note').hidden ? '' : '*');
+      if (LV && LV.el) liveWx(i);
       $('wxline').textContent = `${t} · dew ${dp} · ${wd} · ${$('wx-cloud').textContent.replace(' ', '')} cloud · sun ${s == null ? '--' : minus(Math.round(s)) + '°'}`;
     }
     if (hoverIdx >= 0) showTip(hoverIdx, hoverXY);
+    if (LV && LV.el) liveStrip();
   }
   fog.setFrame((f * night.step_min) / fogGrid.frame_min);
 }
@@ -678,8 +682,10 @@ function pick(cx, cy, maxPx) {
   camera.updateMatrixWorld(); const m = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements;
   const W = innerWidth, H = innerHeight; let best = -1, bd = maxPx * maxPx;
   const skipDist = useRib && (!rib.uniforms.uDistVis.value || rib.uniforms.uDistFade.value < 0.3); // a hidden district layer is not pickable
+  const skipCity = !!LV && !LV.cityOn; // live: a hidden city layer is not pickable
   for (let k = 0; k < G.n; k++) {
     if (G.cls[k] && skipDist) continue;
+    if (skipCity && k >= rib.samples.S) continue;
     const x = G.x[k], y = G.y[k], z = G.z[k];
     const w = m[3] * x + m[7] * y + m[11] * z + m[15]; if (w <= 0) continue;
     const sx = ((m[0] * x + m[4] * y + m[8] * z + m[12]) / w * .5 + .5) * W, sy = (1 - ((m[1] * x + m[5] * y + m[9] * z + m[13]) / w * .5 + .5)) * H;
@@ -756,7 +762,8 @@ let rib2 = null; // city ribbons (live only)
 const loadImg = (u) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('image ' + u)); i.src = u; });
 const ptFmt = (iso, o) => new Date(iso).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour12: false, ...o });
 let LV = null; // { idx, st, ST, S1, el }
-function liveSetData(u8, nf) { rib.setNight(u8, nf, 0, LV.ST); rib2.setNight(u8, nf, LV.S1, LV.ST); wetDirty = true; }
+const LQ = new URLSearchParams(location.search).get('livetest'); // preview testing: 'delayed' | 'forecast'
+function liveSetData(u8, nf) { LV.u8 = u8; LV.nf = nf; rib.setNight(u8, nf, 0, LV.ST); rib2.setNight(u8, nf, LV.S1, LV.ST); wetDirty = true; }
 function liveExtendG() { // picking / tooltips / route bins see the city samples too (appended after the district+route samples)
   const a = rib.samples, b = rib2.samples, n = a.S + b.S, off = ribMeta.streets.length;
   const cat = (T, p, q) => { const o = new T(n); o.set(p); o.set(q, a.S); return o; };
@@ -779,26 +786,86 @@ function livePlaceMarker() {
   if (!LV) return;
   const sl = $('slider'), max = +sl.max, fr = LV.idx.observed_until_frame, bar = $('timebar');
   const mk = LV.el.mark, ob = LV.el.obs, fc = LV.el.fc;
+  if (max > 0 && sl.offsetWidth) { // day labels at local midnights (and the first frame)
+    const dl = LV.el.days; dl.textContent = '';
+    const marks = [];
+    for (let f = 0; f <= max; f++) {
+      const w = wall(LV.idx.start_iso, f * LV.idx.step_min); if (f && w.time !== '00:00') continue;
+      marks.push({ t: w.day.split(' ')[0], x: sl.offsetLeft + 8 + (f / max) * (sl.offsetWidth - 16) });
+    }
+    marks.forEach((m, i) => { // drop a label that would collide with the next one
+      if (i + 1 < marks.length && marks[i + 1].x - m.x < 40) return;
+      const s = document.createElement('span'); s.textContent = m.t; s.style.left = m.x + 'px'; dl.appendChild(s);
+    });
+  }
   if (fr == null || !(max > 0) || !sl.offsetWidth) { mk.hidden = true; ob.hidden = true; fc.textContent = 'forecast only'; fc.style.left = '0px'; return; }
   const x = sl.offsetLeft + 8 + Math.min(1, fr / max) * (sl.offsetWidth - 16), W = bar.clientWidth;
   mk.hidden = false; mk.style.left = x + 'px'; ob.hidden = false; ob.style.right = (W - x + 5) + 'px'; fc.style.left = (x + 5) + 'px';
 }
+const fmtAge = (m) => { m = Math.round(m); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
 function liveBar(idx, st) {
   const bar = document.createElement('div'); bar.id = 'livebar';
-  bar.innerHTML = '<div class="lv-note"><b>PREVIEW SNAPSHOT: not updating</b> <span id="lv-asof"></span></div><div class="lv-row"><span class="lv-obs">observed</span><span class="lv-fc">forecast</span><span class="lv-load" id="lv-load"></span></div>';
+  bar.innerHTML = '<div class="lv-days" id="lv-days"></div><div class="lv-row"><span class="lv-obs">observed</span><span class="lv-fc">forecast</span><span class="lv-load" id="lv-load"></span><i class="lv-ld" id="lv-ld"></i></div><div class="lv-note" id="lv-note"></div>';
   $('timebar').before(bar);
   const mk = document.createElement('i'); mk.id = 'livemark'; mk.title = 'Observed until here, forecast after'; $('timebar').appendChild(mk);
   const asof = st && st.generated_iso ? st.generated_iso : idx.data_as_of;
-  $('lv-asof').textContent = asof ? `· Data as of ${ptFmt(asof, { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).replace(',', '')}` : '';
-  LV.el = { mark: mk, obs: bar.querySelector('.lv-obs'), fc: bar.querySelector('.lv-fc'), load: $('lv-load') };
+  const real = !!(st && st.scheduled); // false for the static preview snapshot: it never updates, so its age is not shown (a banner would be permanent)
+  const ageMin = LQ === 'delayed' ? 130 : real && asof ? (Date.now() - Date.parse(asof)) / 60000 : null;
+  const when = asof ? ptFmt(asof, { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).replace(',', '') : '';
+  const note = $('lv-note');
+  note.innerHTML = (real ? '' : '<b>Preview snapshot, not updating</b> · ') + (when ? `Data as of ${when}` : '') + (ageMin != null ? ` · updated ${fmtAge(ageMin)} ago` : '');
+  note.classList.toggle('late', ageMin != null && ageMin > 90);
+  const fo = LQ === 'forecast' || !!(st && st.mode && st.mode !== 'observations_nudged') || idx.observed_until_frame == null;
+  const stack = document.createElement('div'); stack.id = 'lvstack'; document.body.appendChild(stack);
+  stack.innerHTML = (ageMin != null && ageMin > 90 ? `<div class="lvb warn">Data delayed. Last update was ${fmtAge(ageMin)} ago. Showing the most recent run.</div>` : '') +
+    (fo ? '<div class="lvb info">Forecast only. No recent station or satellite readings, so nothing is corrected by observations.</div>' : '') +
+    '<div class="lvb rs" id="lv-rs" hidden></div>';
+  // City streets layer switch (next to District streets), default on
+  const lab = document.createElement('label'); lab.innerHTML = '<input type="checkbox" id="citytoggle" checked><span>City streets</span>';
+  $('disttoggle').closest('label').before(lab);
+  $('citytoggle').addEventListener('change', (e) => { LV.cityOn = e.target.checked; rib2.setVisible(e.target.checked); hideTip(); });
+  // Weather grid: rain row and source line
+  const rain = document.createElement('div'); rain.className = 'wx'; rain.innerHTML = '<span class="k">Rain</span><span class="v" id="wx-rain">--</span>';
+  $('wxgrid').insertBefore(rain, $('wx-note'));
+  const src = document.createElement('div'); src.className = 'note'; src.id = 'wx-src'; $('wxgrid').appendChild(src);
+  LV.el = { mark: mk, obs: bar.querySelector('.lv-obs'), fc: bar.querySelector('.lv-fc'), load: $('lv-load'), ld: $('lv-ld'), days: $('lv-days'), rs: $('lv-rs') };
   new ResizeObserver(livePlaceMarker).observe($('timebar')); setBandVars();
+}
+function liveWx(i) { // rain row + source line for the selected hour
+  const p = weather && weather.precip_mm ? weather.precip_mm[i] : null;
+  $('wx-rain').textContent = p == null ? '--' : p.toFixed(1) + ' mm/h';
+  const fr = LV.idx.observed_until_frame, obs = fr != null && i <= fr;
+  $('wx-src').textContent = obs ? 'Observed hours: model nudged to Fort Point (CO-OPS), KSFO/KOAK/KHAF and GOES-18 satellite.' : 'Forecast hours: NWS RRFS model via Open-Meteo.';
+}
+function liveRouteCols(R) { const ks = []; for (const a of routeBins(R).values()) for (const k of a) ks.push(k); return ks; }
+function livePeak(R) { // frame where the route's mean wetness is highest in the loaded window
+  if (R.lvPk && R.lvPk.nf === LV.nf) return R.lvPk.f;
+  const ks = liveRouteCols(R); let bf = -1, bv = -1;
+  for (let f = 0; f < LV.nf; f++) {
+    let s = 0, n = 0; const o = f * LV.ST;
+    for (const k of ks) { const v = LV.u8[o + k]; if (v !== 255) { s += v; n++; } }
+    if (n && s / n > bv) { bv = s / n; bf = f; }
+  }
+  R.lvPk = { nf: LV.nf, f: bf }; return bf;
+}
+function liveStrip() { // one line under the top row: average and worst wetness on the selected route, and when it peaks
+  const el = LV.el && LV.el.rs; if (!el) return;
+  const R = selRoute >= 0 ? ROUTES[selRoute] : null; if (!R || !LV.u8) { el.hidden = true; return; }
+  ensureWet();
+  let sum = 0, n = 0, mx = -1;
+  for (const k of liveRouteCols(R)) { const v = wetNow[k]; if (v >= 0) { sum += v; n++; if (v > mx) mx = v; } }
+  if (!n) { el.hidden = true; return; }
+  const pk = livePeak(R), pkTxt = pk >= 0 ? ptFmt(new Date(Date.parse(LV.idx.start_iso) + pk * LV.idx.step_min * 60000).toISOString(), { weekday: 'short', hour: 'numeric', hour12: true }).replace(',', '') : '';
+  el.innerHTML = `<span><i>Wet now</i> avg ${Math.round(sum / n)} · worst ${Math.round(mx)}</span>` + (pkTxt ? `<span><i>Wettest</i> ${pkTxt}</span>` : '');
+  el.hidden = false;
 }
 async function bootLive() {
   base = 'live/';
   const [idx, st] = await Promise.all([withTimeout(getJSON(base + 'index.json'), 15000, 'live index'), getJSON(base + 'status.json').catch(() => null)]);
   const S1 = idx.ribbons_n, S2 = idx.ribbons_city_n, ST = S1 + S2, nF = idx.n_frames, f0 = idx.frame_ranges[0][1] - idx.frame_ranges[0][0];
-  LV = { idx, st, ST, S1, el: null };
-  index = { nights: [idx] }; $('night').innerHTML = '<option value="0">Live snapshot</option>';
+  LV = { idx, st, ST, S1, el: null, cityOn: true, u8: null, nf: 0 };
+  if (LQ === 'forecast') idx.observed_until_frame = null;
+  index = { nights: [idx] }; $('night').innerHTML = '<option value="0">Live (beta) \u00b7 tonight + 2 days</option>';
   setStatus('Loading street geometry…');
   await ensureRibbons({ ribbons: 'data/ribbons.bin' });
   if (rib.samples.S !== S1) throw new Error(`live index expects ${S1} district samples, ribbons.bin has ${rib.samples.S}`);
@@ -833,9 +900,9 @@ async function liveRest(idx, d0, f0, nF, ST) {
     const cf = await composeFog(idx);
     liveSetData(full, nF); night.n_frames = nF;
     fogGrid = cf.grid; await fog.build(cf.url, fogGrid); fog.setVisible($('fogtoggle').checked);
-    $('slider').max = nF - 1; LV.el.load.textContent = ''; livePlaceMarker(); applyTime(true);
+    $('slider').max = nF - 1; LV.el.load.textContent = ''; LV.el.ld.hidden = true; livePlaceMarker(); applyTime(true);
     window.__liveFull = true;
-  } catch (e) { console.warn(e); LV.el.load.textContent = 'later days unavailable'; }
+  } catch (e) { console.warn(e); LV.el.load.textContent = 'later days unavailable'; LV.el.ld.hidden = true; }
 }
 
 /* ------------------------------------------------------------------ boot */

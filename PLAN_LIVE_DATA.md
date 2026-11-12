@@ -143,6 +143,15 @@ Built so far (preview, 2026-11-12, `?live=1` only; the page without `live` is un
 - Time bar (text-only additions, `#livebar` + `#livemark` created only in live mode, CSS block at the end of style.css): a yellow line at `observed_until_frame` with the words "observed" (left) and "forecast" (right) above the bar, a line "PREVIEW SNAPSHOT: not updating - Data as of <weekday HH:MM PT>" from status.json `generated_iso`, clock = hour + weekday + date. Not built yet: day labels on the bar, "data delayed" banner, About text, "City streets" chip, live weather source label.
 - Size (gz): existing page data 3.24 MB + live first paint 2.31 MB = 5.55 MB (budget about 5 MB; fallback if it matters: 60 m city spacing); days 1-2 add 1.31 MB in the background.
 
+UI pass built on 2026-11-12 (still `?live=1` only; page without `live` unchanged, top header and bottom controls pixel-identical to the previous build, 3-D area differs only by animation noise, same as build vs build):
+- Time bar: day labels (weekday at each local midnight; a label that would collide with the next is dropped), observed/forecast line, status line "Data as of ... " plus "updated N min ago" once the job is scheduled (the static snapshot says "Preview snapshot, not updating" and shows no age, so its banner is not permanent), indeterminate loading line while days 1-2 load.
+- Banners (`#lvstack`): orange "Data delayed" when age > 90 min; blue "Forecast only" when status.json mode is not observations_nudged or observed_until_frame is null. Test with `?live=1&livetest=delayed` or `&livetest=forecast`.
+- Settings sheet: "Live (beta) - tonight + 2 days" night entry; "City streets" chip (default on, also stops picking on city streets) beside "District streets".
+- Route selected: existing chip stats kept (length, drop, climb); new strip under the header: average and worst wetness at the selected hour, and the hour the route's mean wetness peaks in the loaded window.
+- Weather grid: rain row (mm/h) and a source line (observed hours vs NWS RRFS forecast hours).
+- About: "Live data" section (sources and accuracy statement) shown first when `?live=1`.
+- Pill buttons: icons untouched. Their radius (999) is already the viewer's chip radius, so no change was needed.
+Not built yet: scheduled-job `scheduled: true` flag in status.json (needed for "updated N min ago" and the delayed banner outside tests), "Live (beta)" as default night after go-live, About text that removes the replay wording for live, wetness source label on tooltips, observed_until_frame ~2 h late (builder), first-paint size.
 ## 10. Order and effort
 1. Step 1 (1 day) -> 2. Step 2 (2-3 days, mostly unattended compute) -> 3. Step 3 (2 days) -> 4. Step 4 (2-3 days) -> 5. Section 5 (1-2 days) -> 6. Section 6 (1 day + 3 days shadow) -> 7. Section 7 (1-2 days; can run in parallel with section 6 shadow time).
 Total about 2.5-3.5 weeks of agent work. UI (section 9) afterwards.

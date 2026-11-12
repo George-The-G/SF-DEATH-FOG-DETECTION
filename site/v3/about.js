@@ -113,7 +113,11 @@ async function loadHtml() {
   return state.html;
 }
 
-export function isOpen() { return !!state.root; }
+const LIVE_ABOUT = new URLSearchParams(location.search).get('live') === '1';
+const LIVE_HTML = '<h3>Live data</h3><p>Streets are coloured by a modelled wetness index, refreshed through the day. Sources:</p><ul>' +
+  '<li><b>Forecast:</b> NWS RRFS model via Open-Meteo</li><li><b>Fog cover:</b> NOAA GOES-18 satellite</li>' +
+  '<li><b>Surface:</b> airport reports (METAR KSFO, KOAK, KHAF)</li><li><b>Wind:</b> NOAA CO-OPS Fort Point</li></ul>' +
+  '<p class="ab-msg">Accuracy: wetness is modelled, not measured, and has not yet been checked against real wet-road reports. Treat it as a guide, not a forecast.</p>';export function isOpen() { return !!state.root; }
 
 export async function openAbout() {
   if (state.root) return;
@@ -165,7 +169,7 @@ export async function openAbout() {
   if (state.trigger) state.trigger.setAttribute('aria-expanded', 'true');
 
   const html = await loadHtml();
-  if (state.root === root) { body.innerHTML = html; body.scrollTop = 0; }
+  if (state.root === root) { body.innerHTML = (LIVE_ABOUT ? LIVE_HTML : '') + html; body.scrollTop = 0; }
 }
 
 export function closeAbout() {

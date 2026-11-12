@@ -195,3 +195,21 @@ h4 { margin: 0 0 8px; font-size: 11px; letter-spacing: .09em; text-transform: up
 #livebar .lv-load { right: 0; color: var(--warn); }
 #timebar { position: relative; }
 #livemark { position: absolute; top: 8px; bottom: 8px; width: 2px; margin-left: -1px; background: var(--warn); border-radius: 1px; pointer-events: none; }
+
+/* live UI (preview): day labels, loading line, status note, banners, route strip. Radii follow the viewer's scale: 12 controls, 999 chips. */
+#livebar .lv-note { color: var(--dim); margin-top: 1px; }
+#livebar .lv-note b { color: var(--warn); font-weight: 600; letter-spacing: .02em; }
+#livebar .lv-note.late { color: #ff9f43; }
+#livebar .lv-days { position: relative; height: 14px; color: var(--dim); }
+#livebar .lv-days span { position: absolute; top: 0; padding-left: 4px; border-left: 1px solid var(--line); white-space: nowrap; line-height: 14px; }
+#livebar .lv-ld { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; display: block; border-radius: 1px; background: linear-gradient(90deg, transparent, var(--accent), transparent) no-repeat; background-size: 40% 100%; animation: lvld 1.3s linear infinite; }
+#livebar .lv-ld[hidden] { display: none; }
+@keyframes lvld { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+@media (prefers-reduced-motion: reduce) { #livebar .lv-ld { animation: none; background: var(--accent); opacity: .5; } }
+#lvstack { position: fixed; z-index: 5; top: calc(var(--top-h, 90px) + var(--sat) + var(--m) + var(--g)); left: max(var(--m), var(--sal)); right: max(var(--m), var(--sar)); display: flex; flex-direction: column; gap: var(--g); pointer-events: none; }
+.lvb { border-radius: 12px; padding: 6px 10px; font-size: 12px; line-height: 1.35; border: 1px solid var(--line); background: rgba(10, 16, 30, .88); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.lvb[hidden] { display: none; }
+.lvb.warn { background: rgba(255, 159, 67, .16); border-color: #ff9f43; color: #ffd3a3; }
+.lvb.info { background: rgba(74, 168, 255, .14); border-color: #4aa8ff; color: #bfdcff; }
+.lvb.rs { display: flex; justify-content: space-between; gap: 10px; color: var(--text); }
+.lvb.rs i { font-style: normal; color: var(--accent); margin-right: 4px; }
