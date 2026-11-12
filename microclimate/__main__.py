@@ -47,6 +47,9 @@ def main(argv):
     elif cmd == "routes":
         from . import routes
         sys.exit(routes.run(cfg, DATA, argv[1:]))
+    elif cmd == "city":  # whole-city street points + static live table: city [points|features|sun|static] [--out DIR] [--max-tiles N]
+        from . import city
+        sys.exit(city.run(DATA, argv[1:]))
     elif cmd == "validate":
         from . import validate
         ok = validate.run(cfg, DATA, Path("site/v3/replay"))
