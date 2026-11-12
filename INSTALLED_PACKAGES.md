@@ -16,3 +16,4 @@ Python packages go in a project virtual environment (.venv in this folder) so de
 
 Notes: the first table rows above were written by install_tools.bat; the Node.js row there has no version, the row just above has it. Other files created: bench/ (benchmark, gitignored), pip.log, pip.err (safe to delete).
 | 2026-11-11 | mapbox-earcut (pip, in .venv) | see requirements-mc.txt | pip into .venv | delete the .venv folder |
+| 2026-11-12 | (wind direction library) no new packages | - | only existing .venv packages used | - |
