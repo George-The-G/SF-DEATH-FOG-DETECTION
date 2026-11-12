@@ -43,6 +43,20 @@ after 60 days without repository activity, and there is an **Enable workflow** b
 * The page shows its version (`[site] version`). **v1** is kept as a branch: to roll back, Actions > collect > Run workflow >
   *Use workflow from: v1*, or ask to reset `main` to `v1`. Temperatures on the page and in alerts are in Fahrenheit.
 
+## v3 street-level replay
+
+Live pages: status page https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/ and the 3-D replay
+https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/ (built from the `v3-dev` branch; see `site/v3/about.html`).
+
+* A replay of nine recent nights of how wet streets may have been: a **proof of concept on a 20 m grid, not a forecast**.
+  Wind is a single **west-wind field only** (offshore winds bring no fog), scaled to each night's speed.
+* A street-level correction from 297 nested **5 m patches** (about 107 km2, ~70% of the city's land; 98% of buildings lie
+  inside a patch, ~90% in cells with a usable correction) is applied on top of the 20 m citywide wind. It is not a continuous
+  5 m citywide run, and it is over-damped and uncalibrated. Potrero Hill uses 2.5 m values for most street points; street
+  points with no correction count as fully exposed.
+* District views (Potrero Hill, Golden Gate Heights) with **street ribbons** shown by default; full-screen canvas viewer with a
+  header, weather bar, legend, time bar and menu.
+
 ## How the code is layered
 
 ```

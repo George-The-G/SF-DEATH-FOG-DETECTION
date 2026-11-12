@@ -7,7 +7,7 @@
 <h3 id="ab-how">How it works</h3>
 <ol class="ab-steps">
 <li><b>Terrain and buildings.</b> USGS elevation plus 177,000 building footprints raised to their 2023 lidar roof height. Simple boxes, not a lidar scan.</li>
-<li><b>Wind.</b> One steady west wind over the whole city on 20 m cells, scaled to each night's wind speed. About 98% of buildings lie inside 297 finer 5 m patches (2.5 m in Potrero) that correct street-level wind.</li>
+<li><b>Wind.</b> One steady west wind over the whole city on 20 m cells, scaled to each night's wind speed. A street-level correction from 297 nested 5 m patches (about 70% of the city's land, 2.5 m values in Potrero) is applied on top; it is not a continuous 5 m citywide run. 98% of buildings sit inside a patch, about 90% in cells with a usable correction. Street points without one count as fully exposed.</li>
 <li><b>Fog.</b> A fog tracer drifts through that wind in four height layers and settles on the ground. Each night's fog top is estimated, so hills can rise above shallow fog.</li>
 <li><b>Sun and shade.</b> Each street point gets a skyline in 72 directions, so the real sun position says sunlit or shaded. Open sky drives night cooling.</li>
 <li><b>Weather.</b> Hourly Open-Meteo history for one SF point: temperature, dew point, wind, low cloud, rain, sunshine.</li>
@@ -34,7 +34,7 @@
 <h3 id="ab-limits">Limits</h3>
 <ul class="ab-limits">
 <li>West wind only; offshore winds bring no fog.</li>
-<li>Street-level wind correction exists only inside the patches, over-damped and uncalibrated.</li>
+<li>The street-level wind correction exists only inside the patches, is over-damped and uncalibrated; resolution changes district averages by under 0.5 points.</li>
 <li>One weather point for the whole city.</li>
 <li>Never compared with measured wet roads.</li>
 <li>No trees, parked cars or pavement heat storage.</li>
