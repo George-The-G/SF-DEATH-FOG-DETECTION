@@ -11,6 +11,7 @@ const SRC_Q = new URLSearchParams(location.search).get('src');
 const SRC_DIRS = SRC_Q === 'mock' ? ['replay_mock/'] : SRC_Q === 'synth' ? ['replay_synth/'] : ['replay/', 'replay_mock/']; // synth = tools/make_synthetic_ribbons.py fixture
 const UI2 = new URLSearchParams(location.search).get('live') === '1' || new URLSearchParams(location.search).get('ui') === '2'; // redesigned chrome (body.ui2), see UI_REDESIGN_PLAN.md
 if (UI2) document.body.classList.add('ui2');
+let RNG = null; // ui2 live: visible frame window {lo, hi} of the time bar (null = every frame)
 const LIVE = new URLSearchParams(location.search).get('live') === '1'; // hidden preview of the live builder snapshot (site/v3/live/); absent = replay, unchanged
 const RAMP = [[0, '#3a8696'], [18, '#6fb09f'], [24, '#f4e04d'], [50, '#f2c230'], [65, '#ee8a2c'], [80, '#d9531e'], [90, '#b3202f'], [100, '#7a0f3b']];
 const CATS = ['dry', 'damp', 'slick', 'wet', 'icy-fog'];
@@ -657,7 +658,7 @@ function compass(d) { return d == null ? '' : ['N', 'NE', 'E', 'SE', 'S', 'SW', 
 
 /* ------------------------------------------------------------------ controls */
 function setPlaying(p) { playing = p; $('play').classList.toggle('playing', p); $('play').querySelector('.ic').innerHTML = p ? ICON_FOG_PAUSE : ICON_FOG_PLAY; $('play').setAttribute('aria-label', p ? 'Pause' : 'Play'); lastTs = 0; }
-$('play').onclick = () => { if (night && tNow >= night.n_frames - 1.001) tNow = 0; setPlaying(!playing); };
+$('play').onclick = () => { if (night && tNow >= (RNG ? RNG.hi : night.n_frames - 1) - 0.001) tNow = RNG ? RNG.lo : 0; setPlaying(!playing); };
 $('slider').addEventListener('input', (e) => { tNow = parseFloat(e.target.value); applyTime(true); });
 $('speed').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return; speed = +b.dataset.s;
@@ -728,7 +729,11 @@ canvas.addEventListener('pointerleave', () => { if (!isTouch) hideTip(); });
 function frame(ts) {
   requestAnimationFrame(frame);
   if (playing && night) {
-    if (lastTs) { tNow += Math.min(0.1, (ts - lastTs) / 1000) * speed; if (tNow >= night.n_frames - 1) { tNow = night.n_frames - 1; setPlaying(false); } }
+    if (lastTs) {
+      tNow += Math.min(0.1, (ts - lastTs) / 1000) * speed;
+      if (RNG) { if (tNow >= RNG.hi) { if (RNG.hi < LV.hiWant) { tNow = RNG.hi; setPlaying(false); } else tNow = RNG.lo + Math.min(tNow - RNG.hi, RNG.hi - RNG.lo); } } // live: loops inside the chosen range (stops if the next days are still loading)
+      else if (tNow >= night.n_frames - 1) { tNow = night.n_frames - 1; setPlaying(false); }
+    }
     lastTs = ts; applyTime(false);
   }
   if (flight) {
@@ -805,6 +810,15 @@ function liveBar(idx, st) { // ui2 only: status inputs, data notices in the dock
   const rain = document.createElement('div'); rain.className = 'wx'; rain.innerHTML = '<span class="k">Rain</span><span class="v" id="wx-rain">--</span>';
   $('wxgrid').insertBefore(rain, $('wx-note'));
   const src = document.createElement('div'); src.className = 'note'; src.id = 'wx-src'; $('wxgrid').appendChild(src);
+  // Time range switch (settings, between Night/Speed and Layers): total bar length around the data time
+  const hrs = Math.round((idx.n_frames - 1) * idx.step_min / 60), row = document.createElement('div'); row.className = 'sec'; row.id = 'rngrow';
+  row.innerHTML = `<h4>Time range</h4><div class="seg" id="range" role="group" aria-label="Time range"><button type="button" data-r="24">24 h</button><button type="button" data-r="48">48 h</button><button type="button" data-r="all">All \u00b7 ${hrs} h</button></div><div class="note" id="rngnote"></div>`;
+  $('sheet').querySelector('.two.sec').after(row);
+  $('range').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return; LV.range = b.dataset.r;
+    try { localStorage.setItem(RNG_KEY, LV.range); } catch { /* not persisted */ }
+    applyRange(); applyTime(true); ui2Track(); ui2Refresh(true);
+  });
   LV.el = { ld: $('trkld'), load: { textContent: '' } };
   $('trkld').hidden = false;
   new ResizeObserver(ui2Track).observe($('trk')); setBandVars();
@@ -815,22 +829,37 @@ function liveWx(i) { // rain row + source line for the selected hour
   const fr = LV.idx.observed_until_frame, obs = fr != null && i <= fr;
   $('wx-src').textContent = obs ? 'Observed hours: model nudged to Fort Point (CO-OPS), KSFO/KOAK/KHAF and GOES-18 satellite.' : 'Forecast hours: NWS RRFS model via Open-Meteo.';
 }
+const RNG_OPTS = { 24: [6, 18], 48: [12, 36], all: null }, RNG_KEY = 'df_live_range'; // [frames back, frames ahead] of the data tick
+function rangeLoad() { try { const v = localStorage.getItem(RNG_KEY); if (v != null && v in RNG_OPTS) return v; } catch { /* no storage */ } return '24'; }
+function applyRange() { // slider min/max = visible window; frame data and shader time are untouched. Days not loaded yet limit the right end until they arrive.
+  if (!LV || !night) return;
+  const nF = LV.idx.n_frames, o = RNG_OPTS[LV.range], a = LV.idx.observed_until_frame != null ? LV.idx.observed_until_frame : LV.anchor;
+  const lo = o ? Math.max(0, a - o[0]) : 0, want = o ? Math.min(nF - 1, a + o[1]) : nF - 1, hi = Math.min(want, night.n_frames - 1);
+  LV.lo = lo; LV.hiWant = want; RNG = { lo, hi };
+  const sl = $('slider'); sl.min = lo; sl.max = hi; tNow = clamp(tNow, lo, hi);
+  const t0 = Date.parse(LV.idx.start_iso), H = (f) => ptFmt(new Date(t0 + f * LV.idx.step_min * 60000).toISOString(), { weekday: 'short', hour: 'numeric', hour12: true }).replace(',', '');
+  LV.spanTxt = H(lo) + ' \u2013 ' + H(want);
+  const n = $('rngnote'); if (n) n.textContent = `${LV.spanTxt} \u00b7 ${Math.round((a - lo) * LV.idx.step_min / 60)} h back \u00b7 ${Math.round((want - a) * LV.idx.step_min / 60)} h ahead`;
+  const rg = $('range'); if (rg) [...rg.children].forEach((b) => b.classList.toggle('on', b.dataset.r === LV.range));
+  trkSig = ''; stSig = '';
+}
 function liveRouteCols(R) { const ks = []; for (const a of routeBins(R).values()) for (const k of a) ks.push(k); return ks; }
-function livePeak(R) { // frame where the route's mean wetness is highest in the loaded window
-  if (R.lvPk && R.lvPk.nf === LV.nf) return R.lvPk.f;
+function livePeak(R) { // frame where the route's mean wetness is highest inside the visible time range (loaded frames only)
+  const lo = RNG ? RNG.lo : 0, hi = Math.min(RNG ? LV.hiWant : LV.nf - 1, LV.nf - 1), key = lo + '|' + hi + '|' + LV.nf;
+  if (R.lvPk && R.lvPk.key === key) return R.lvPk.f;
   const ks = liveRouteCols(R); let bf = -1, bv = -1;
-  for (let f = 0; f < LV.nf; f++) {
+  for (let f = lo; f <= hi; f++) {
     let s = 0, n = 0; const o = f * LV.ST;
     for (const k of ks) { const v = LV.u8[o + k]; if (v !== 255) { s += v; n++; } }
     if (n && s / n > bv) { bv = s / n; bf = f; }
   }
-  R.lvPk = { nf: LV.nf, f: bf }; return bf;
+  R.lvPk = { key, f: bf }; return bf;
 }
 async function bootLive() {
   base = 'live/';
   const [idx, st] = await Promise.all([withTimeout(getJSON(base + 'index.json'), 15000, 'live index'), getJSON(base + 'status.json').catch(() => null)]);
   const S1 = idx.ribbons_n, S2 = idx.ribbons_city_n, ST = S1 + S2, nF = idx.n_frames, f0 = idx.frame_ranges[0][1] - idx.frame_ranges[0][0];
-  LV = { idx, st, ST, S1, el: null, cityOn: true, u8: null, nf: 0 };
+  LV = { idx, st, ST, S1, el: null, cityOn: true, u8: null, nf: 0, range: rangeLoad(), anchor: 0, lo: 0, hiWant: 0, spanTxt: '' };
   if (LQ === 'forecast') idx.observed_until_frame = null;
   index = { nights: [idx] }; $('night').innerHTML = '<option value="0">Live (beta)</option>';
   setStatus('Loading street geometry…');
@@ -849,10 +878,12 @@ async function bootLive() {
   const ok = await fog.build(base + idx.fog_files[0], fogGrid);
   $('fogtoggle').disabled = !ok; $('fogdens').disabled = !ok; if (!ok) $('fogtoggle').checked = false;
   fog.setVisible($('fogtoggle').checked);
-  $('slider').max = f0 - 1; $('wx-note').hidden = true;
-  liveBar(idx, st);
+  $('wx-note').hidden = true;
   const asof = st && st.generated_iso ? Date.parse(st.generated_iso) : Date.now(), t0 = Date.parse(idx.start_iso);
-  tNow = clamp(Math.round((asof - t0) / 3600000), 0, f0 - 1);
+  LV.anchor = clamp(Math.round((asof - t0) / 3600000), 0, nF - 1); // frame of the data time; used when there is no observed_until_frame
+  tNow = clamp(LV.anchor, 0, f0 - 1);
+  liveBar(idx, st);
+  applyRange();
   applyTime(true); ui2Track();
   overlay.classList.add('hide'); $('status').textContent = '';
   liveRest(idx, d0, f0, nF, ST); // background: days 1-2 (not awaited)
@@ -867,7 +898,7 @@ async function liveRest(idx, d0, f0, nF, ST) {
     const cf = await composeFog(idx);
     liveSetData(full, nF); night.n_frames = nF;
     fogGrid = cf.grid; await fog.build(cf.url, fogGrid); fog.setVisible($('fogtoggle').checked);
-    $('slider').max = nF - 1; LV.el.load.textContent = ''; LV.el.ld.hidden = true; ui2Track(); applyTime(true); ui2Refresh(true);
+    applyRange(); LV.el.load.textContent = ''; LV.el.ld.hidden = true; ui2Track(); applyTime(true); ui2Refresh(true);
     window.__liveFull = true;
   } catch (e) { console.warn(e); LV.el.load.textContent = 'later days unavailable'; LV.el.ld.hidden = true; }
 }
@@ -898,15 +929,15 @@ function ui2Build() {
 let trkSig = '';
 function ui2Track() {
   const tr = $('trk'); if (!tr || !night) return;
-  const sl = $('slider'), max = +sl.max, W = tr.clientWidth; if (!(max > 0) || !W) return;
-  const x = (f) => 8 + clamp(f / max, 0, 1) * (W - 16);
+  const sl = $('slider'), max = +sl.max, min = +sl.min || 0, W = tr.clientWidth; if (!(max > min) || !W) return;
+  const x = (f) => 8 + clamp((f - min) / (max - min), 0, 1) * (W - 16);
   const fr = LV ? LV.idx.observed_until_frame : max; // replay (?ui=2): the whole night is drawn as observed
   $('trkthumb').style.left = x(tNow) + 'px'; $('trkplay').style.width = Math.max(0, x(tNow) - 8) + 'px';
   $('trkobs').style.width = fr == null ? '0px' : Math.max(0, x(fr) - 8) + 'px';
   const nw = $('trknow'); nw.hidden = !(LV && fr != null); if (!nw.hidden) nw.style.left = x(fr) + 'px';
-  const sig = max + '|' + W + '|' + night.start_iso; if (sig === trkSig) return; trkSig = sig;
+  const sig = min + '|' + max + '|' + W + '|' + night.start_iso; if (sig === trkSig) return; trkSig = sig;
   const dl = $('trkdays'); dl.textContent = ''; const marks = [];
-  for (let f = 0; f <= max; f++) { const w = wall(night.start_iso, f * night.step_min); if (f && w.time !== '00:00') continue; marks.push({ t: w.day.split(' ')[0], x: x(f) }); }
+  for (let f = Math.ceil(min); f <= max; f++) { const w = wall(night.start_iso, f * night.step_min); if (f !== Math.ceil(min) && w.time !== '00:00') continue; marks.push({ t: w.day.split(' ')[0], x: x(f) }); }
   marks.forEach((m, i) => { // drop a label that would collide with the next one
     if (i + 1 < marks.length && marks[i + 1].x - m.x < 44) return;
     const s = document.createElement('span'); s.textContent = m.t; s.style.left = m.x + 'px'; dl.appendChild(s);
@@ -917,9 +948,13 @@ function ui2Clock(w, f) { // clock second line, status line, track
   const i = Math.round(f), fr = LV ? LV.idx.observed_until_frame : null, fc = !!LV && (fr == null || i > fr);
   $('clock-sub').textContent = LV ? `${w.day.split(' ')[0]} · ${fc ? 'forecast' : 'observed'}` : w.day + ' ' + tzName(night.start_iso);
   $('clock-sub').classList.toggle('fc', fc);
-  const t = LV
+  let t = LV
     ? (fc ? 'Forecast hour · NWS RRFS model' : LV.real ? `As of ${LV.asofTxt} · Fort Point, KSFO` : `Preview snapshot · as of ${LV.asofTxt}`) + (LV.ageMin != null && LV.ageMin > 90 ? ` · ${fmtAge(LV.ageMin)} old` : '')
     : nightLabel(night) + ' · replay';
+  if (LV && LV.range !== 'all' && LV.spanTxt) { // short range: the visible span first, then where the data comes from
+    const sh = fc ? 'forecast hour' : LV.real ? `as of ${LV.asofTxt}` : `snapshot ${LV.asofTxt}`;
+    t = `${LV.spanTxt} \u00b7 ${sh}` + (LV.ageMin != null && LV.ageMin > 90 ? ` \u00b7 ${fmtAge(LV.ageMin)} old` : '');
+  }
   if (t !== stSig) { $('st3l').textContent = t; stSig = t; }
   ui2Track();
 }

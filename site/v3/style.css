@@ -332,3 +332,8 @@ body.ui2 .ab-acc { margin: 10px 0 0; padding: 8px 10px; border: 1px solid rgba(2
   body.ui2 .ab-card::before { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { body.ui2 #trk .ld { animation: none; background: var(--cy); opacity: .5; } }
+
+/* time range switch (live settings) */
+body.ui2 #rngrow .seg { display: flex; width: 100%; }
+body.ui2 #rngrow .seg button { flex: 1; min-width: 0; padding: 0 6px; }
+body.ui2 #rngrow .note { margin-top: 6px; font-size: 11px; color: var(--soft); }
