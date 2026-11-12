@@ -1,6 +1,6 @@
 # Plan: viewer UI redesign (live preview first)
 
-Status: approved mockup (user, 2026-11-12: "Looks good"). Not built. Build into the `?live=1` preview only, then show the user and get a second confirmation before anything else ships. Going live (PLAN_LIVE_DATA.md section 6) remains a separate approval.
+Status: BUILT in the ?live=1 preview (commit 1ea8e6d, deployed 2026-11-12), awaiting the user second confirmation. Mockup approved ("Looks good"). Build into the `?live=1` preview only, then show the user and get a second confirmation before anything else ships. Going live (PLAN_LIVE_DATA.md section 6) remains a separate approval.
 
 Reference mockup: `docs/mockups/ui_redesign_v1.html` (open in a browser; every screen is drawn at 390x844 on real captures). Artifact copy: https://claude.ai/artifact/C7Tt6LrV7zUQgpZ1hF7cv7. Route names and numbers in it are examples.
 
@@ -115,3 +115,7 @@ Bottom sheet from top 170px (phone), radius `--r-p` on the top corners, `--glass
 
 ## 8. Not in scope
 Observed-line timing bug, first-paint size, rain-term saturation, go-live (PLAN_LIVE_DATA.md section 6). These stay on the open list.
+
+## 9. Build result (2026-11-12)
+Built: sections 1-7 (also ?ui=2 on replay data). Measured 3-D share at 390x844: idle 75.5%, route selected 73.8%, flyover 75.5%, fog playing 73.8%, delayed notice 69.0%; desktop 1440x900 about 90.9%. Normal page unchanged; pytest 124 passed; keyboard (slider arrows, Esc closes list/settings/About) checked.
+Not built / open: settings-open state is an overlay (45.5%, exempt); real-phone performance unmeasured; observed-line timing, first-paint size, rain saturation, go-live as in section 8.
