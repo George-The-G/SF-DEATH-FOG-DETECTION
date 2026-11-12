@@ -6,6 +6,7 @@ UA = {"User-Agent": "sf-death-fog (github.com/George-The-G/SF-DEATH-FOG-DETECTIO
 TIMEOUT_S = 40
 RETRIES = 3
 MODEL_VERSION = "live-1"
+PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS) the scheduled job runs with; empty = the public model (guide 01)
 
 # ---- RRFS through Open-Meteo (HRRR on Open-Meteo is discontinued 2026-11-30: do not use it) ----
 OPENMETEO_URL = "https://api.open-meteo.com/v1/forecast"

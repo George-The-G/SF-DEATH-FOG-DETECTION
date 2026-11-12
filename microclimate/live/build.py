@@ -46,32 +46,15 @@ def point_table(S):
     return {k: S[k] for k in ("x", "y", "z", "svf", "porous", "wind_ratio", "rel_wind", "horizon")} | {"tracer": S["tracer"][int(np.argmin(np.abs(S["dirs"] - 270.0)))]}
 
 
-def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print):
-    from .. import city
-    t_run = time.time()
-    now = now or fetch.utcnow()
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    static = Path(static or C.STATIC_DEFAULT)
-    ribbons = Path(ribbons or static.parent / "live_ribbons.npz")
-    cache = Path(cache or static.parent / "goes_cache")
-    st = Status()
-    start, t0, end = window(now)
-    n = int(round((end - t0).total_seconds() / 60.0 / C.STEP_MIN)) + 1
-    log(f"now {now:%Y-%m-%d %H:%M}Z  window {t0:%Y-%m-%d %H:%M}Z .. {end:%Y-%m-%d %H:%M}Z ({n} steps), start (18:00 PT) {start:%Y-%m-%d %H:%M}Z")
-    try:
-        S = city.load_static(static)
-        Rb = dict(np.load(ribbons)) if ribbons.exists() else None
-    except Exception as e:  # noqa: BLE001
-        return _abort(out, st, now, t_run, f"static table unreadable: {e!r}")
-    # ---- sources
+def gather(st, t0, now, cache):
+    """Fetch every source once. -> (rrfs, obs, sector_fn, goes_hours). Raises fetch.FetchError when RRFS is unavailable (every other source may fail softly)."""
     obs = {}
     try:
         rr = fetch.rrfs()
         st.ok("rrfs", model=rr["model"], last_valid=rr["last_valid"].isoformat() if rr["last_valid"] else None, note=rr.get("note"))
     except fetch.FetchError as e:
         st.fail("rrfs", e)
-        return _abort(out, st, now, t_run, "RRFS unavailable: previous good output kept")
+        raise
     begin = t0 - dt.timedelta(hours=1)
     for name, fn in (("coops", lambda: fetch.coops(begin, now)), ("metar", lambda: fetch.metar(48)), ("sounding", lambda: fetch.sounding(now))):
         try:
@@ -107,16 +90,43 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print):
         else:
             st.ok("goes", hours=len(got), of=len(want), newest=max(res[h].t for h in got).isoformat(), products=[C.GOES_MASK, C.GOES_HEIGHT])
         return [(res[h].sector_fraction(d) if res.get(h) is not None else None) for h, d in zip(hours, dirs)]
+    return rr, obs, sector_fn, goes_hours
+
+
+def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, physics=None):
+    from .. import city
+    t_run = time.time()
+    now = now or fetch.utcnow()
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    static = Path(static or C.STATIC_DEFAULT)
+    ribbons = Path(ribbons or static.parent / "live_ribbons.npz")
+    cache = Path(cache or static.parent / "goes_cache")
+    P = wetness.check_physics(C.PHYSICS if physics is None else physics)
+    st = Status()
+    start, t0, end = window(now)
+    n = int(round((end - t0).total_seconds() / 60.0 / C.STEP_MIN)) + 1
+    log(f"now {now:%Y-%m-%d %H:%M}Z  window {t0:%Y-%m-%d %H:%M}Z .. {end:%Y-%m-%d %H:%M}Z ({n} steps), start (18:00 PT) {start:%Y-%m-%d %H:%M}Z")
+    try:
+        S = city.load_static(static)
+        Rb = dict(np.load(ribbons)) if ribbons.exists() else None
+    except Exception as e:  # noqa: BLE001
+        return _abort(out, st, now, t_run, f"static table unreadable: {e!r}")
+    # ---- sources
+    try:
+        rr, obs, sector_fn, goes_hours = gather(st, t0, now, cache)
+    except fetch.FetchError as e:
+        return _abort(out, st, now, t_run, "RRFS unavailable: previous good output kept")
     # ---- forcing
     try:
-        F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log)
+        F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"forcing failed: {e!r}")
     # ---- model
     t_sim = time.time()
     W, diag = wetness.simulate(point_table(S), F["ser"], C.STEP_MIN, tracer_dirs=S["tracer"], dirs_deg=S["dirs"], forcing_fn=F["forcing_fn"], lag_block_h=3,
-                               out_every=C.OUT_STEP_MIN // C.STEP_MIN, keep_lit=False, s_series=F["s_series"], fog_top=F["fog_top"], use_dirs=True)
+                               out_every=C.OUT_STEP_MIN // C.STEP_MIN, keep_lit=False, s_series=F["s_series"], fog_top=F["fog_top"], use_dirs=True, physics=P)
     sim_s = time.time() - t_sim
     log(f"simulate {sim_s:.1f} s, frames {W.shape}")
     # ---- outputs
@@ -125,7 +135,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print):
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"writing outputs failed: {e!r}")
-    status = dict(ok=True, model_version=C.MODEL_VERSION, generated_iso=now.isoformat(), run_seconds=round(time.time() - t_run, 1), simulate_seconds=round(sim_s, 1),
+    status = dict(ok=True, model_version=C.MODEL_VERSION, physics=sorted(P), generated_iso=now.isoformat(), run_seconds=round(time.time() - t_run, 1), simulate_seconds=round(sim_s, 1),
                   window=dict(start_18pt_iso=start.isoformat(), t0_iso=t0.isoformat(), end_iso=end.isoformat(), step_min=C.STEP_MIN, out_step_min=C.OUT_STEP_MIN),
                   observed_until_iso=F["info"]["obs_until"], forecast_from_iso=F["info"]["obs_until"], rrfs_model=rr["model"],
                   sources_used=sorted(st.sources), sources_failed=st.failed, data_as_of=st.sources, notes=st.notes[:20] + F["info"]["flags"],
