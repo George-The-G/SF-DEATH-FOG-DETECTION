@@ -34,6 +34,8 @@ fi
 
 echo "::group::build"
 rm -rf "$NEW"
+mkdir -p "$NEW"
+cp "$OUT"/state_*.npz "$NEW"/ 2>/dev/null && echo "carried state files: $(ls "$NEW" | grep -c '^state_')" || echo "no carried state files: cold start"
 START=$(date +%s)
 if [ -x /usr/bin/time ]; then
   timeout 480 /usr/bin/time -v python3 -m microclimate.live build --out "$NEW" --static "$STATIC/live_static.npz" 2> >(tee live_time.log >&2)

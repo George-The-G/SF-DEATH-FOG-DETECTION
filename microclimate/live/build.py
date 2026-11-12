@@ -17,7 +17,7 @@ import numpy as np
 
 from .. import wetness
 from . import config as C
-from . import fetch, forcing, goes, outputs
+from . import fetch, forcing, goes, outputs, state as statelib
 
 PT = ZoneInfo("America/Los_Angeles")
 
@@ -93,7 +93,7 @@ def gather(st, t0, now, cache):
     return rr, obs, sector_fn, goes_hours
 
 
-def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, physics=None):
+def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, physics=None, carry_state=None):
     from .. import city
     t_run = time.time()
     now = now or fetch.utcnow()
@@ -123,10 +123,31 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"forcing failed: {e!r}")
+    # ---- carried state (guide 02 A): never fatal, any problem is a cold start
+    carry = C.CARRY_STATE if carry_state is None else carry_state
+    sinfo = dict(carry_state=bool(carry), start="cold", anchor_time=None, saved=None, anchor=None)
+    state0, save_at, next_t0 = None, None, None
+    try:
+        arrays, why = statelib.find_anchor(out, t0, P, C.MODEL_VERSION, len(S["x"]))
+        sinfo["anchor"] = why
+        if arrays is not None and carry:
+            state0 = arrays
+            sinfo.update(start="anchor", anchor_time=t0.isoformat())
+        elif carry:
+            F["info"]["flags"].append(f"cold start ({why})")
+        next_t0 = statelib.next_t0(start)
+        k = int(round((next_t0 - t0).total_seconds() / 60.0 / C.STEP_MIN))
+        if F["obs_until"] is not None and next_t0 <= F["obs_until"] and 0 <= k < n:
+            save_at = k
+    except Exception as e:  # noqa: BLE001
+        traceback.print_exc()
+        sinfo["error"] = repr(e)[:200]
+        state0, save_at = None, None
     # ---- model
     t_sim = time.time()
     W, diag = wetness.simulate(point_table(S), F["ser"], C.STEP_MIN, tracer_dirs=S["tracer"], dirs_deg=S["dirs"], forcing_fn=F["forcing_fn"], lag_block_h=3,
-                               out_every=C.OUT_STEP_MIN // C.STEP_MIN, keep_lit=False, s_series=F["s_series"], fog_top=F["fog_top"], use_dirs=True, physics=P)
+                               out_every=C.OUT_STEP_MIN // C.STEP_MIN, keep_lit=False, s_series=F["s_series"], fog_top=F["fog_top"], use_dirs=True, physics=P,
+                               state0=state0, save_at=save_at)
     sim_s = time.time() - t_sim
     log(f"simulate {sim_s:.1f} s, frames {W.shape}")
     # ---- outputs
@@ -135,7 +156,21 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"writing outputs failed: {e!r}")
-    status = dict(ok=True, model_version=C.MODEL_VERSION, physics=sorted(P), generated_iso=now.isoformat(), run_seconds=round(time.time() - t_run, 1), simulate_seconds=round(sim_s, 1),
+    try:
+        if diag.get("state_at") is not None:
+            name = statelib.name_for(next_t0)
+            size = statelib.save(out / name, next_t0, P, C.MODEL_VERSION, diag["state_at"])
+            sinfo.update(saved=name, saved_bytes=size)
+        keep = statelib.prune(out)
+        idx_p = out / "index.json"
+        idx = json.loads(idx_p.read_text())
+        idx["state_files"] = keep
+        idx_p.write_text(json.dumps(idx, indent=1))
+    except Exception as e:  # noqa: BLE001
+        traceback.print_exc()
+        sinfo["error"] = repr(e)[:200]
+    log(f"state: {sinfo}")
+    status = dict(ok=True, model_version=C.MODEL_VERSION, physics=sorted(P), state=sinfo, generated_iso=now.isoformat(), run_seconds=round(time.time() - t_run, 1), simulate_seconds=round(sim_s, 1),
                   window=dict(start_18pt_iso=start.isoformat(), t0_iso=t0.isoformat(), end_iso=end.isoformat(), step_min=C.STEP_MIN, out_step_min=C.OUT_STEP_MIN),
                   observed_until_iso=F["info"]["obs_until"], forecast_from_iso=F["info"]["obs_until"], rrfs_model=rr["model"],
                   sources_used=sorted(st.sources), sources_failed=st.failed, data_as_of=st.sources, notes=st.notes[:20] + F["info"]["flags"],
