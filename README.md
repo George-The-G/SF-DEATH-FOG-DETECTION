@@ -11,6 +11,23 @@ publishes a status page, can push phone alerts, and checks itself against field 
 * Status page on **GitHub Pages**; field reports through a **Google Form** (optional).
 * First run builds a **30-day baseline**: a replay of the detector over last month.
 
+## Live pages
+
+* **Status page (v2, live conditions):** https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/
+* **3-D microclimate preview (v3, proof of concept):** https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/ - San Francisco in 3-D with Potrero Hill streets coloured by death-fog chance per street side, and a timelapse of replayed real nights. It is a 20 m simulation of west-wind fog, not a forecast; see below.
+
+## v3: 3-D microclimate (proof of concept)
+
+A one-way chain, all in microclimate/ and developed on the 3-dev branch (the v3 page is copied from that branch into the published site):
+
+1. **Geometry:** DataSF building footprints + USGS 3DEP terrain on a 20 m grid for the whole city.
+2. **Wind:** GPU lattice-Boltzmann (XLB) flow for a west wind, then a fog tracer carried through that wind in four height bands. A 5 m nested run refines street-level wind in Potrero.
+3. **Streets:** per street side, sky view and shadows (pvlib sun path over 2 m surface), wind and fog deposition.
+4. **Wetness model:** dew, fog deposition, rain, evaporation and sun drying replayed over real nights from Open-Meteo history.
+5. **Viewer:** site/v3/ (three.js, static files).
+
+Known limits: only the west wind is simulated (other directions are approximated and flagged), the wetness constants are hand-set and not yet calibrated against field reports, and the 20 m grid barely resolves low-rise buildings. Details, validation and a go/no-go note are in MVP_REPORT.md and PROGRESS.md on 3-dev. Run with python -m microclimate <geometry|zone|meshes|wind|street|sun|replay|validate> (needs a CUDA GPU for the wind step; see equirements-mc.txt).
+
 ## Setup (about 10 minutes)
 
 1. Push this code to a **public** repo's `main` branch (private repos run out of free Actions minutes).
