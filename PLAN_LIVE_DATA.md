@@ -137,6 +137,12 @@ Done when: the backtest report exists and is summarised in PROGRESS.md.
 - Weather strip: show live values for the selected hour, and which station/model they come from.
 - Shadow access: ?live=1 loads site/v3/live/index.json directly before the UI exists.
 
+Built so far (preview, 2026-11-12, `?live=1` only; the page without `live` is unchanged, checked pixel-identical with Playwright):
+- app.js `bootLive()`: night list shows only "Live snapshot"; district+route ribbons (data/ribbons.bin) and city ribbons (live/ribbons_city.bin) are two meshes fed from the same frame-major day files (`ribbons.setNight(data, n, col0, stride)`); city streets stay drawn in the whole-city view (the district fade is not applied to them) and sit under the district/route ribbons; picking and tooltips cover the city samples.
+- Loading: day0 (27 frames) first, the bar then starts at the frame of `generated_iso`; day1/day2 and fog1/fog2 load in the background, the three fog PNGs are stitched into one tile sheet (so the shader interpolates across day boundaries) and the slider grows from 27 to 79 frames ("loading the next days..." text meanwhile).
+- Time bar (text-only additions, `#livebar` + `#livemark` created only in live mode, CSS block at the end of style.css): a yellow line at `observed_until_frame` with the words "observed" (left) and "forecast" (right) above the bar, a line "PREVIEW SNAPSHOT: not updating - Data as of <weekday HH:MM PT>" from status.json `generated_iso`, clock = hour + weekday + date. Not built yet: day labels on the bar, "data delayed" banner, About text, "City streets" chip, live weather source label.
+- Size (gz): existing page data 3.24 MB + live first paint 2.31 MB = 5.55 MB (budget about 5 MB; fallback if it matters: 60 m city spacing); days 1-2 add 1.31 MB in the background.
+
 ## 10. Order and effort
 1. Step 1 (1 day) -> 2. Step 2 (2-3 days, mostly unattended compute) -> 3. Step 3 (2 days) -> 4. Step 4 (2-3 days) -> 5. Section 5 (1-2 days) -> 6. Section 6 (1 day + 3 days shadow) -> 7. Section 7 (1-2 days; can run in parallel with section 6 shadow time).
 Total about 2.5-3.5 weeks of agent work. UI (section 9) afterwards.
