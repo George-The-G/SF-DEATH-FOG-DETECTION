@@ -46,6 +46,90 @@ def surface_tracer_values(data_dir):
     return np.take_along_axis(c, np.clip(k, 0, c.shape[2] - 1)[:, :, None], axis=2)[:, :, 0]
 
 
+Z_BINS = [0, 10, 20, 30, 45, 60, 80, 1000]  # street elevation bins (m above sea level) for the fog-height checks
+HILLS = {  # name: (lat, lon, summit elevation m ASL typed by hand; the 20 m grid lowers peaks by ~20 m)
+    "Twin Peaks": (37.7544, -122.4477, 277.0), "Mt Davidson": (37.7385, -122.4545, 283.0),
+    "Mt Sutro": (37.7599, -122.4586, 254.0), "Bernal Hill": (37.7439, -122.4150, 110.0)}
+
+
+def fog_active_top(top, s):
+    """Fog top summarised over the night as the inflow-weighted mean (weights s(t)); nan if no inflow."""
+    return float(np.average(top, weights=s)) if s.sum() > 0 else float("nan")
+
+
+def fog_height_checks(P, nights, fog, dry, data_dir):
+    """(g) fog height versus street elevation: before ('band0') and after ('profile') tables and sanity checks.
+    Expected directions, fixed before the results: g1 the model change must not alter low streets (< 30 m) by more than
+    2 W on average but wets the high streets (> 60 m) at least as much as before; g2 on nights whose fog top stays
+    below ~130 m the high streets (> 60 m) end drier than the low streets (< 20 m); g3 the hill summits (Twin Peaks,
+    Mt Davidson) get ~no fog on the shallowest fog night and are fog-exposed on the deepest."""
+    from pyproj import Transformer
+    from . import fogtop
+    z = P["z"]
+    modes = {m: {n["id"]: replay.run_night(P, n, fog_mode=m) for n in fog + dry} for m in ("band0", "profile")}
+    bins = list(zip(Z_BINS[:-1], Z_BINS[1:]))
+    sel = [(z > a) & (z <= b) for a, b in bins]
+    label = [f"{a}-{b}" if b < 1000 else f">{a}" for a, b in bins]
+    tab = {m: [float(np.mean([modes[m][n["id"]][0][DAWN][s].mean() for n in fog])) for s in sel] for m in modes}
+    cnt = [int(s.sum()) for s in sel]
+    low, high = (z <= 30), (z > 60)
+    d_low = float(np.mean([modes["profile"][n["id"]][0][DAWN][low].mean() - modes["band0"][n["id"]][0][DAWN][low].mean() for n in fog]))
+    d_high = float(np.mean([modes["profile"][n["id"]][0][DAWN][high].mean() - modes["band0"][n["id"]][0][DAWN][high].mean() for n in fog]))
+    rows = "; ".join(f"z {l} m (n={c}): {a:.1f} -> {b:.1f}" for l, c, a, b in zip(label, cnt, tab["band0"], tab["profile"]))
+    rec("g1_wetness_vs_elevation", "PASS" if abs(d_low) <= 2.0 and d_high >= 0 else "FAIL",
+        f"mean W at 09:00 over {len(fog)} fog nights, band0 -> profile, by street elevation: {rows}. Change for streets < 30 m: "
+        f"{d_low:+.1f} W, for streets > 60 m: {d_high:+.1f} W.", labels=label, n=cnt, band0=tab["band0"], profile=tab["profile"],
+        d_low=d_low, d_high=d_high)
+
+    info, per = {}, []
+    for n in fog + dry:
+        W, dg = modes["profile"][n["id"]]
+        top = dg["fog_top"]
+        t_act = fog_active_top(top, dg["s"])
+        Wb = modes["band0"][n["id"]][0]
+        per.append(dict(night=n["id"], kind=n["kind"], fog_top_active_max=t_act, fog_top_min=float(top.min()), fog_top_median=float(np.median(top)),
+                        fog_top_max=float(top.max()), W_low_b0=float(Wb[DAWN][z <= 20].mean()), W_high_b0=float(Wb[DAWN][z > 60].mean()),
+                        W_low=float(W[DAWN][z <= 20].mean()), W_high=float(W[DAWN][z > 60].mean())))
+    # controlled experiment: same weather, fog top forced shallow (SHALLOW_M) or deep (DEEP_M)
+    SHALLOW_M, DEEP_M = 90.0, 700.0
+    ctl = {k: [replay.run_night(P, n, fog_mode="profile", fog_top=v)[0][DAWN] for n in fog] for k, v in (("shallow", SHALLOW_M), ("deep", DEEP_M))}
+    cm = lambda k, s: float(np.mean([w[s].mean() for w in ctl[k]]))
+    d_hi = cm("deep", z > 60) - cm("shallow", z > 60)
+    d_lo = cm("deep", z <= 20) - cm("shallow", z <= 20)
+    ok = d_hi >= 3.0 and abs(d_lo) <= 1.0
+    txt = "; ".join(f"{p['night']}: inflow-weighted fog top {p['fog_top_active_max']:.0f} m (range {p['fog_top_min']:.0f}-{p['fog_top_max']:.0f}), "
+                    f"W low(<20 m) {p['W_low']:.1f} vs high(>60 m) {p['W_high']:.1f} (band0: {p['W_low_b0']:.1f} vs {p['W_high_b0']:.1f})"
+                    for p in per if p["kind"] == "fog")
+    rec("g2_low_fog_top_dries_high_streets", "PASS" if ok else "FAIL",
+        f"controlled test, same {len(fog)} fog nights with the fog top forced to {SHALLOW_M:.0f} m vs {DEEP_M:.0f} m: mean W at 09:00 of streets > 60 m "
+        f"{cm('shallow', z > 60):.1f} (shallow) vs {cm('deep', z > 60):.1f} (deep), +{d_hi:.1f} W; streets < 20 m {cm('shallow', z <= 20):.1f} vs {cm('deep', z <= 20):.1f} "
+        f"({d_lo:+.1f} W). Potrero streets span only 3-99 m, i.e. mostly below any estimated top, so the real nights differ little. Real nights: {txt}.",
+        shallow_m=SHALLOW_M, deep_m=DEEP_M, high_shallow=cm("shallow", z > 60), high_deep=cm("deep", z > 60), low_shallow=cm("shallow", z <= 20),
+        low_deep=cm("deep", z <= 20), per_night=per)
+
+    tf = Transformer.from_crs("EPSG:4326", "EPSG:32610", always_xy=True)
+    hx = {k: tf.transform(v[1], v[0]) for k, v in HILLS.items()}
+    xs = np.array([hx[k][0] for k in HILLS]); ys = np.array([hx[k][1] for k in HILLS]); zs = np.array([v[2] for v in HILLS.values()])
+    trc = fogtop.blend_bands(fogtop.sample_bands(xs, ys, zs + wetness.TRACER_Z_OFFSET_M), zs + wetness.TRACER_Z_OFFSET_M)
+    expo = wetness.fog_exposure(trc)
+    table, ranked = {}, sorted(per, key=lambda p: p["fog_top_active_max"] if p["kind"] == "fog" else 1e9)
+    for p in per:
+        if p["kind"] != "fog":
+            continue
+        ramp = fogtop.fog_top_ramp(p["fog_top_active_max"], zs)
+        table[p["night"]] = {k: dict(ramp=round(float(ramp[i]), 2), exposure=round(float(ramp[i] * expo[i]), 2)) for i, k in enumerate(HILLS)}
+    shal, deep = ranked[0]["night"], [p for p in ranked if p["kind"] == "fog"][-1]["night"]
+    tp = list(HILLS).index("Twin Peaks")
+    md = list(HILLS).index("Mt Davidson")
+    ok3 = table[shal]["Twin Peaks"]["ramp"] == 0.0 and table[shal]["Mt Davidson"]["ramp"] == 0.0 and table[deep]["Twin Peaks"]["ramp"] > 0.5
+    rec("g3_hills_dry_on_shallow_wet_on_deep", "PASS" if ok3 else "FAIL",
+        f"qualitative; the summit elevations are typed in by hand and this is largely by construction (street elevation vs estimated fog top). "
+        f"Shallowest fog night {shal} (top {ranked[0]['fog_top_active_max']:.0f} m): Twin Peaks ramp {table[shal]['Twin Peaks']['ramp']}, Mt Davidson {table[shal]['Mt Davidson']['ramp']}; "
+        f"deepest {deep}: Twin Peaks {table[deep]['Twin Peaks']['ramp']}, Mt Davidson {table[deep]['Mt Davidson']['ramp']}. Band-interpolated tracer at the summits: "
+        + ", ".join(f"{k} {trc[i]:.3f}" for i, k in enumerate(HILLS)) + ". Per night ramp x exposure: " + json.dumps(table),
+        table=table, tracer_at_hills={k: float(trc[i]) for i, k in enumerate(HILLS)})
+
+
 def run(cfg, data_dir, out_dir):
     results.clear()
     from pyproj import Transformer
@@ -99,7 +183,7 @@ def run(cfg, data_dir, out_dir):
         "max over the night of the 95th percentile of W across points: " + ", ".join(f"{k} {v:.1f}" for k, v in p95.items()), p95=p95)
 
     # (d)
-    tr = P["tracer"]
+    tr = base[fog[0]["id"]][1]["tracer"]  # the tracer actually used by the default FOG_HEIGHT_MODE
     hi, lo = tr >= np.percentile(tr, 80), tr <= np.percentile(tr, 20)
     ratios, cs = [], []
     for n in fog:
@@ -129,6 +213,8 @@ def run(cfg, data_dir, out_dir):
         "all four bands: no NaN, 0 <= c <= 1, steady-state drift over the last 2000 steps < 0.01 (" +
         ", ".join(f"b{b}: drift {v['drift']:.4f}" for b, v in libs.items()) + "). Exact mass conservation is not testable (ground deposition removes tracer).",
         bands=libs)
+
+    fog_height_checks(P, nights, fog, dry, data_dir)
 
     # (e) ablations at 09:00 on fog nights
     med_svf = np.full_like(P["svf"], np.median(P["svf"]))

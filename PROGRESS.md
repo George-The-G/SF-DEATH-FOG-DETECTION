@@ -63,3 +63,10 @@ Commands: python -m microclimate replay (writes site/v3/replay/), python -m micr
 - Note: site/ is in .gitignore, so site/v3 files are added with git add -f.
 
 - Viewer update (v3-dev): buildings now ship as data/buildings.bin (all ~169k footprints: instanced boxes + polygons; buildings.glb is no longer loaded). Fog is site/v3/fog.js: 6 stacked terrain-following noise-drifting sheets, sqrt visual stretch of the fog.png value (PX_REF 16), near-camera fade, street points drawn after the fog, Fog density slider. Checked merged build on 2026-10-01 at 04:00 (phone + desktop, both toggles, no console errors).
+
+
+## Fog height treatment (2026-11-11, v3-dev)
+- microclimate/fogtop.py (new), wetness.py, weather.py, fog.py, validate.py; tests_mc/test_fogheight.py. Switch `wetness.FOG_HEIGHT_MODE` = 'profile' (default) | 'band0' (old). Details, constants and the before/after elevation table are in MVP_REPORT.md 'Fog height treatment'.
+- Fog top (m ASL) = max(grid elev + 50 m, min(RH < 80 % crossing, first temperature inversion)) from Open-Meteo 1000-900 hPa levels (weather.fetch_extra caches <weather>_prof.json; missing data -> 300 m). Street wet weight = smoothstep ramp +/-40 m around the top; tracer = 4 band fields sampled at street z + 10 m and interpolated between band centres (fogtop.sample_bands works for any point table with x, y, z: pass data_dir or set wetness.DATA_DIR).
+- Fog bands 2 and 3 (270 deg) rerun with 6 transits: drift 0.0018 and 0.0090 (was 0.054, 0.127); validate d3 now PASS (band 3 marginal). Old fields kept as library/fog_2700_[23].bak.npz (not committed). fog.rebuild_bands / fog.converge_band do the rerun.
+- validate g1 (W vs elevation, band0 vs profile), g2 (fog top forced 90 vs 700 m), g3 (Twin Peaks / Mt Davidson dry on shallow, wet on deep fog nights; by construction) all PASS. Nothing calibrated; v2 observed fog nights not compared.

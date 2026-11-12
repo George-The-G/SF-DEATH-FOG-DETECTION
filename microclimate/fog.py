@@ -69,7 +69,7 @@ def inflow_faces(direction_deg):
     return [n for n, v in (("left", ux > 1e-6), ("right", ux < -1e-6), ("front", uy > 1e-6), ("back", uy < -1e-6)) if v]
 
 
-def run_band(u, solid, spec, direction_deg, band, speed_ms=5.0, kd=2.0, vd=0.02, loss_per_km=0.0, transits=3.0, log=print):
+def run_band(u, solid, spec, direction_deg, band, speed_ms=5.0, kd=2.0, vd=0.02, loss_per_km=0.0, transits=3.0, log=print, max_steps=120000):
     """u: [3,nx,ny,nz] velocity ratio (float16 ok). Returns steady concentration [nx,ny,nz] float16 and diagnostics."""
     nx, ny, nz = solid.shape
     dx = float(spec["cell_m"])
@@ -97,7 +97,7 @@ def run_band(u, solid, spec, direction_deg, band, speed_ms=5.0, kd=2.0, vd=0.02,
     S, F, ON = A(solid_i, wp.int32), A(fixed), A(on, wp.int32)
     mean_u = float(np.sqrt(uf[0] ** 2 + uf[1] ** 2)[~solid].mean()) + 1e-3
     steps = int(transits * (nx * dx) / max(mean_u, 1.0) / dt)
-    steps = min(max(steps, 4000), 120000)
+    steps = min(max(steps, 4000), max_steps)
     t0, prev = time.time(), None
     for s_ in range(steps):
         wp.launch(step, dim=(nx, ny, nz), inputs=[c, cn, UX, UY, UZ, S, F, ON, dt, dx, kd, vd, loss_per_km / 1000.0, nx, ny, nz], device=dev)
@@ -112,6 +112,45 @@ def run_band(u, solid, spec, direction_deg, band, speed_ms=5.0, kd=2.0, vd=0.02,
             "nan": bool(np.isnan(out).any()), "max": float(out.max()), "drift_last_2000_steps": drift,
             "mean_fluid_below_100m": float(out[:, :, :5][~solid[:, :, :5]].mean())}
     return out.astype(np.float16), diag
+
+
+def converge_band(u, solid, spec, direction_deg, band, tol=0.01, schedule=(6, 12, 24, 48, 96), max_steps=600000, **kw):
+    """Rerun run_band from zero with growing `transits` until the drift over the last 2000 steps is < tol.
+    The default 3 transits (run_band) leaves the high bands (300-800 m) unconverged because the tracer there leaks
+    slowly through the top boundary and the deposition-limited ground layer. Returns (c, diag, history)."""
+    hist = []
+    for tr in schedule:
+        c, diag = run_band(u, solid, spec, direction_deg, band, transits=tr, max_steps=max_steps, **kw)
+        diag["transits"] = tr
+        hist.append(diag)
+        print(json.dumps(diag), flush=True)
+        if diag["drift_last_2000_steps"] is not None and diag["drift_last_2000_steps"] < tol:
+            break
+    return c, diag, hist
+
+
+def rebuild_bands(cfg, grids_dir, lib_dir, bands=(2, 3), direction=270, tol=0.01):
+    """Back up fog_<dir>_<b>.npz/.json to *.bak.* once, then recompute those bands to convergence and overwrite."""
+    import shutil
+    grids_dir, lib_dir = Path(grids_dir), Path(lib_dir)
+    spec = json.load(open(grids_dir / "grid_spec.json"))
+    solid = np.load(grids_dir / "solid_20m.npz")["solid"]
+    lib = cfg["library"]
+    u = np.load(lib_dir / f"wind_{int(direction * 10):04d}.npz")["u"]
+    for bi in bands:
+        stem = f"fog_{int(direction * 10):04d}_{bi}"
+        for ext in (".npz", ".json"):
+            bak = lib_dir / f"{stem}.bak{ext}"
+            if not bak.exists():
+                shutil.copy2(lib_dir / f"{stem}{ext}", bak)
+        t0 = time.time()
+        c, diag, hist = converge_band(u, solid, spec, direction, lib["fog_bands_m"][bi], tol=tol, speed_ms=lib["ref_speed_ms"],
+                                      kd=lib["eddy_diffusivity_m2s"], vd=lib["deposition_velocity_ms"], loss_per_km=lib["fog_loss_per_km"])
+        diag["total_seconds_incl_retries"] = round(time.time() - t0, 1)
+        diag["attempts"] = [(h["transits"], h["drift_last_2000_steps"]) for h in hist]
+        np.savez_compressed(lib_dir / f"{stem}.npz", c=c)
+        json.dump(diag, open(lib_dir / f"{stem}.json", "w"))
+        print("DONE", bi, json.dumps(diag), flush=True)
 
 
 def build(cfg, grids_dir, lib_dir, directions=None):

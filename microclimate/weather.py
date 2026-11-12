@@ -11,17 +11,49 @@ PT = ZoneInfo("America/Los_Angeles")
 VARS = "temperature_2m,dew_point_2m,wind_speed_10m,wind_direction_10m,cloud_cover,cloud_cover_low,precipitation,shortwave_radiation"
 
 
+LEVELS_HPA = (1000, 975, 950, 925, 900, 850)
+# Extra hourly variables used by the fog-top estimator (fogtop.py). Fetched separately (and cached next to the main cache as
+# <name>_prof.json) so that older caches keep working; if the request fails the extras are simply absent and fogtop falls back.
+EXTRA_VARS = (["boundary_layer_height", "freezing_level_height"] + [f"temperature_{l}hPa" for l in LEVELS_HPA]
+              + [f"geopotential_height_{l}hPa" for l in LEVELS_HPA] + [f"relative_humidity_{l}hPa" for l in LEVELS_HPA[:5]])
+
+
+def fetch_extra(data, cache):
+    """Merge EXTRA_VARS into data['hourly'] (same hourly time axis). Never raises: on failure data is returned unchanged."""
+    ec = Path(cache).with_name(Path(cache).stem + "_prof.json")
+    try:
+        if ec.exists():
+            ex = json.load(open(ec))
+        else:
+            times = data["hourly"]["time"]
+            lat, lon = data.get("latitude"), data.get("longitude")
+            url = (f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly={','.join(EXTRA_VARS)}"
+                   f"&start_date={times[0][:10]}&end_date={times[-1][:10]}&timezone=UTC")
+            r = requests.get(url, timeout=90, headers={"User-Agent": "deathfog-v3-mvp/0.1"})
+            r.raise_for_status()
+            ex = r.json()
+            json.dump(ex, open(ec, "w"))
+        pos = {t: i for i, t in enumerate(ex["hourly"]["time"])}
+        for k in EXTRA_VARS:
+            if k in ex["hourly"]:
+                src = ex["hourly"][k]
+                data["hourly"][k] = [src[pos[t]] if t in pos else None for t in data["hourly"]["time"]]
+    except Exception as e:  # network/limits: optional data
+        print("weather extras unavailable:", e)
+    return data
+
+
 def fetch(lat, lon, cache, past_days=60):
     cache = Path(cache)
     if cache.exists():
-        return json.load(open(cache))
+        return fetch_extra(json.load(open(cache)), cache)
     url = (f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly={VARS}&past_days={past_days}"
            f"&forecast_days=1&wind_speed_unit=ms&timezone=UTC")
     r = requests.get(url, timeout=60, headers={"User-Agent": "deathfog-v3-mvp/0.1"})
     r.raise_for_status()
     data = r.json()
     json.dump(data, open(cache, "w"))
-    return data
+    return fetch_extra(data, cache)
 
 
 def table(data):
@@ -90,6 +122,10 @@ def night_series(data, start_utc, step_min=10):
     out = {"t_utc": [(start_utc + timedelta(minutes=step_min * i)) for i in range(n)]}
     for k in ("temperature_2m", "dew_point_2m", "wind_speed_10m", "cloud_cover", "cloud_cover_low", "precipitation", "shortwave_radiation"):
         out[k] = np.interp(tt, base, np.nan_to_num(c[k]))
+    for k in EXTRA_VARS:  # optional profile variables (NaN where unavailable)
+        if k in c:
+            out[k] = np.interp(tt, base, c[k]) if np.isfinite(c[k]).any() else np.full(n, np.nan)
+    out["elevation_m"] = float(data.get("elevation", 34.0))  # Open-Meteo grid-cell elevation (T2m/Td2m refer to it)
     th = np.radians(c["wind_direction_10m"])
     ex, ey = np.interp(tt, base, np.nan_to_num(np.sin(th))), np.interp(tt, base, np.nan_to_num(np.cos(th)))
     out["wind_dir"] = (np.degrees(np.arctan2(ex, ey)) + 360) % 360

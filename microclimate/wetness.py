@@ -46,7 +46,22 @@ USE_REFINED = True   # apply the nested 5 m wind correction (street_features.ref
 REFINE_NORM = 0.91   # raw refine_corr is over-damped (median 0.26, p95 0.91): divide by its p95 ...
 REFINE_MIN = 0.25    # ... and clip to [REFINE_MIN, 1]; NaN (no patch) -> 1.0. Absolute magnitudes stay uncalibrated.
 BAND_EDGES = [0, 150, 300, 500, 800]
-BAND_OFFSET_M = 30.0  # the band is picked from point elevation + 30 m
+BAND_OFFSET_M = 30.0  # 'band0' mode: the band is picked from point elevation + 30 m
+
+# ---- fog height vs street elevation (see fogtop.py). All hand-set proxies, none calibrated. ----
+FOG_HEIGHT_MODE = "profile"   # 'band0' = old behaviour (one hard-picked band, no fog top); 'profile' = fog top + vertical interpolation
+DATA_DIR = None               # data folder holding grids/ and library/ (None -> ~/deathfog-data); used to sample the fog fields
+BAND_CENTRES_M = [75.0, 225.0, 400.0, 650.0]  # centres of the four tracer source bands (above sea level)
+TRACER_Z_OFFSET_M = 10.0      # profile mode: tracer sampled at street elevation + 10 m, interpolated between band centres
+FOG_TOP_RAMP_M = 40.0         # half-width of the smooth wet/dry transition around the fog top (m)
+FOG_TOP_MIN_M = 50.0          # fog top is never below grid elevation + this (hourly NWP cannot resolve thinner fog)
+FOG_TOP_MAX_M = 900.0         # upper clamp of the fog top (m ASL)
+FOG_TOP_FALLBACK_M = 300.0    # fog top used when the pressure-level data are missing
+FOG_TOP_ABOVE_LAST_M = 100.0  # fog top when RH stays >= RH_CLOUD up to the highest level (900 hPa) = that level + this
+RH_CLOUD = 80.0               # % relative humidity that counts as inside the saturated marine layer
+INV_DT = 0.0                  # degC: T increase between consecutive pressure levels that marks the inversion base
+ELEV_WIND_GAIN = 0.10         # profile mode: fog-deposition wind factor grows by this fraction per 100 m street elevation above 30 m
+ELEV_WIND_REF_M = 30.0
 
 CONSTANTS = {k: v for k, v in dict(globals()).items() if k.isupper() and isinstance(v, (int, float))}
 
@@ -98,14 +113,14 @@ def lagged(series, idx_float):
     return np.interp(idx_float, np.arange(n), series, left=series[0])
 
 
-def step(W, svf, porous, f, local_fog, lit, dt_h, wind_ratio=1.0, use_sun=True):
+def step(W, svf, porous, f, local_fog, lit, dt_h, wind_ratio=1.0, use_sun=True, fog_gain=1.0):
     """One time step. W [N]; svf, porous [N]; f = dict of scalar forcing (temp, dew, wind, cloud_low, precip, sw);
     local_fog [N] = lagged inflow * exposure; lit bool [N] (direct sun). Returns (W_new, parts)."""
     wind = f["wind"] * wind_ratio
     dT = DT_MAX * svf * (1 - f["cloud_low"] / 100.0) * np.clip(1 - wind / WIND_CALM, 0, 1)
     ts = f["temp"] - dT
     dew = K_DEW * np.maximum(0.0, f["dew"] - ts) * porous
-    fog = K_FOG * local_fog * (0.5 + wind / 5.0) * porous
+    fog = K_FOG * local_fog * (0.5 + wind / 5.0) * fog_gain * porous
     rain = K_RAIN * (1 - np.exp(-max(f["precip"], 0.0) / RAIN_SAT)) * porous * np.ones_like(W)
     rh = magnus_rh(f["temp"], f["dew"])
     evap = (K_EVAP_BASE + K_EVAP_WIND * wind) * np.maximum(0.0, 1 - rh)
@@ -122,12 +137,24 @@ def sun_position(times_utc, lat=37.76, lon=-122.40):
     return sp["azimuth"].to_numpy(), sp["apparent_elevation"].to_numpy()
 
 
-def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0, refined=None):
-    """Run one night. pts: dict(x, svf, porous, tracer, wind_ratio, horizon [N,72] or None, band-selected tracer).
-    ser: weather.night_series dict. Overrides: tracer / svf arrays (ablations). Returns (W [n,N] float32, diag)."""
+def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0, refined=None, fog_mode=None, fog_top=None):
+    """Run one night. pts: dict(x, svf, porous, tracer, wind_ratio, horizon [N,72] or None, band-selected tracer; for the
+    'profile' mode also y, z). ser: weather.night_series dict. Overrides: tracer / svf arrays (ablations); fog_mode
+    ('band0' | 'profile', default FOG_HEIGHT_MODE); fog_top forces the fog top in profile mode. Returns (W [n,N] float32, diag)."""
     n = len(ser["temperature_2m"])
     N = len(pts["x"])
+    mode = FOG_HEIGHT_MODE if fog_mode is None else fog_mode
+    prof = mode == "profile"
     tr = pts["tracer"] if tracer is None else tracer
+    top = fog_gain = None
+    if prof:
+        from . import fogtop
+        if tracer is None:
+            tr = fogtop.points_tracer(pts, DATA_DIR)
+        top, top_info = fogtop.estimate_fog_top(ser)
+        if fog_top is not None:  # controlled experiments: force the fog top (scalar or [n], m ASL)
+            top = np.broadcast_to(np.asarray(fog_top, float), (n,)).copy()
+        fog_gain = 1.0 + ELEV_WIND_GAIN * np.maximum(np.asarray(pts["z"], float) - ELEV_WIND_REF_M, 0.0) / 100.0
     sv = pts["svf"] if svf is None else svf
     porous = pts["porous"]
     refined = USE_REFINED if refined is None else refined
@@ -147,15 +174,18 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
         f = dict(temp=ser["temperature_2m"][i], dew=ser["dew_point_2m"][i], wind=ser["wind_speed_10m"][i],
                  cloud_low=ser["cloud_cover_low"][i], precip=ser["precipitation"][i], sw=ser["shortwave_radiation"][i])
         local = lagged(s, i - lag_steps) * expo
+        if prof:  # street counts as inside the fog only while the (lagged) fog top is above it
+            local = local * fogtop.fog_top_ramp(lagged(top, i - lag_steps), pts["z"])
         lit = np.zeros(N, bool)
         if hor is not None and el[i] > 0:
             from .sun import sunlit
             lit = sunlit(hor, az[i], el[i])
-        W, parts = step(W, sv, porous, f, local, lit, dt_h, wr, use_sun)
+        W, parts = step(W, sv, porous, f, local, lit, dt_h, wr, use_sun, 1.0 if fog_gain is None else fog_gain)
         out[i] = W
         lit_all[i] = lit
         for k in dep:
             dep[k] += parts[k]
-    diag = dict(sun_az=az, sun_el=el, s=s, lit=lit_all, lag_steps=lag_steps, **{k + "_total": v for k, v in dep.items()})
+    diag = dict(sun_az=az, sun_el=el, s=s, lit=lit_all, lag_steps=lag_steps, fog_mode=mode, fog_top=top, tracer=np.asarray(tr, np.float32),
+                **{k + "_total": v for k, v in dep.items()})
     return out, diag
 

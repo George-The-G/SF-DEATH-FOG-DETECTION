@@ -25,7 +25,17 @@
   "USE_REFINED": true,
   "REFINE_NORM": 0.91,
   "REFINE_MIN": 0.25,
-  "BAND_OFFSET_M": 30.0
+  "BAND_OFFSET_M": 30.0,
+  "TRACER_Z_OFFSET_M": 10.0,
+  "FOG_TOP_RAMP_M": 40.0,
+  "FOG_TOP_MIN_M": 50.0,
+  "FOG_TOP_MAX_M": 900.0,
+  "FOG_TOP_FALLBACK_M": 300.0,
+  "FOG_TOP_ABOVE_LAST_M": 100.0,
+  "RH_CLOUD": 80.0,
+  "INV_DT": 0.0,
+  "ELEV_WIND_GAIN": 0.1,
+  "ELEV_WIND_REF_M": 30.0
  },
  "fog_sheet": "tile row 0 = north, column 0 = west; pixel = 255*s(t-lag)*tracer(band 0)",
  "nights": [
@@ -60,8 +70,8 @@
     "mean_inflow": 0.14,
     "tier": 0
    },
-   "w_dawn_mean": 23.3,
-   "w_dawn_p95": 44.5
+   "w_dawn_mean": 23.9,
+   "w_dawn_p95": 45.0
   },
   {
    "id": "2026-10-08",
@@ -94,8 +104,8 @@
     "mean_inflow": 0.39,
     "tier": 0
    },
-   "w_dawn_mean": 29.3,
-   "w_dawn_p95": 76.4
+   "w_dawn_mean": 29.8,
+   "w_dawn_p95": 77.5
   },
   {
    "id": "2026-10-01",
@@ -128,7 +138,7 @@
     "mean_inflow": 0.36,
     "tier": 0
    },
-   "w_dawn_mean": 81.2,
+   "w_dawn_mean": 82.1,
    "w_dawn_p95": 100.0
   },
   {
@@ -162,8 +172,8 @@
     "mean_inflow": 0.29,
     "tier": 0
    },
-   "w_dawn_mean": 61.2,
-   "w_dawn_p95": 94.7
+   "w_dawn_mean": 61.6,
+   "w_dawn_p95": 94.9
   },
   {
    "id": "2026-09-24",
@@ -196,8 +206,8 @@
     "mean_inflow": 0.21,
     "tier": 0
    },
-   "w_dawn_mean": 20.1,
-   "w_dawn_p95": 35.1
+   "w_dawn_mean": 20.7,
+   "w_dawn_p95": 35.5
   },
   {
    "id": "2026-09-22",
@@ -230,8 +240,8 @@
     "mean_inflow": 0.25,
     "tier": 0
    },
-   "w_dawn_mean": 18.7,
-   "w_dawn_p95": 47.8
+   "w_dawn_mean": 20.2,
+   "w_dawn_p95": 48.4
   },
   {
    "id": "2026-09-20",
@@ -264,8 +274,8 @@
     "mean_inflow": 0.45,
     "tier": 0
    },
-   "w_dawn_mean": 29.1,
-   "w_dawn_p95": 86.2
+   "w_dawn_mean": 31.8,
+   "w_dawn_p95": 87.6
   },
   {
    "id": "2026-10-16",
