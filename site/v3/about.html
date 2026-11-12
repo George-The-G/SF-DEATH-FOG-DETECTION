@@ -1,0 +1,46 @@
+<section class="ab-sec" aria-labelledby="ab-what">
+<h3 id="ab-what">What you are looking at</h3>
+<p>A replay of nine recent nights (7 foggy, 2 dry) showing how wet the street surface may have been along a few skate routes and one block of each side street. Colours are a modelled 0-100 wetness index, smoothed between sample points. It is a <b>proof of concept on a 20 m (66 ft) grid, not a forecast</b>.</p>
+</section>
+
+<section class="ab-sec" aria-labelledby="ab-how">
+<h3 id="ab-how">How it works</h3>
+<ol class="ab-steps">
+<li><b>Terrain and buildings.</b> The ground is the USGS 3DEP elevation model (about 10 m / 33 ft resolution, lidar-based), drawn as a coarse 60 m mesh. Buildings are about 177,000 city footprints extruded to their median roof height from 2023 lidar. They are simple boxes and outlines, not a lidar point cloud. Streets come from OpenStreetMap, sampled every 10 m, left and right side separately.</li>
+<li><b>Wind.</b> A GPU airflow solver (lattice-Boltzmann) runs one steady west wind over the whole city on 20 m cells, 800 m (2,600 ft) tall, at a reference 5 m/s (11 mph). It is scaled by each night's wind speed. Smaller 5 m patches (2.5 m in Potrero) with real building footprints give a street-level correction, but they are patches, not the whole city.</li>
+<li><b>Fog.</b> A fog "tracer" is carried through that wind in four height bands (0-150, 150-300, 300-500, 500-800 m above sea level) and settles onto the ground. Each night the fog top is estimated from the humidity and temperature profile, so higher hills can sit above shallow fog.</li>
+<li><b>Sun and shade.</b> For every street point the model finds how high the skyline is in 72 compass directions, using a 2 m building-and-terrain surface near the routes (20 m elsewhere). With the real sun position at each time step it gives sunlit or shaded, plus sky view, which drives night-time cooling and dew.</li>
+<li><b>Weather.</b> Hourly Open-Meteo history for one point in SF: temperature, dew point, wind speed and direction, low cloud, rain, sunshine, and temperature and humidity at several altitudes.</li>
+<li><b>Pavement wetness.</b> Every 10 minutes, per street side, a simple index adds dew (the cooled road falls below the dew point), fog deposition and rain, and removes water by evaporation (dry air, wind) and sun. Surface type from OpenStreetMap only changes one porosity factor (stone, sett, cobble, unpaved and gravel count as 0.6, everything else 1.0).</li>
+</ol>
+</section>
+
+<section class="ab-sec" aria-labelledby="ab-limits">
+<h3 id="ab-limits">Limits to keep in mind</h3>
+<ul class="ab-limits">
+<li><b>West wind only.</b> Other onshore directions reuse the west result and are flagged "approx. wind direction". Offshore winds give no fog arriving from the ocean.</li>
+<li><b>20 m cells miss most low-rise buildings</b> (median building 6.6 m / 22 ft tall), so city-scale street wind is nearly uniform.</li>
+<li><b>The street-level correction is patchy.</b> It is over-damped by numerical viscosity and uncalibrated, and the finest 2.5 m run exists only for Potrero.</li>
+<li><b>One weather point for the whole city.</b> Cloud and wind are not resolved neighbourhood by neighbourhood, and the data is model output, not sensors.</li>
+<li><b>Hand-set constants.</b> They were never tuned to measured wet roads, and the results have not been compared with real wetness. Checks so far are internal consistency only.</li>
+<li><b>Shade is computed only for the nine replayed nights</b>, not the whole year.</li>
+<li><b>Not modelled:</b> trees, parked cars, pavement heat storage or texture, drainage, and real street cleaning or spills.</li>
+<li><b>Building heights are from 2023.</b> New or demolished buildings are not reflected.</li>
+<li><b>Not a forecast and not safety advice.</b> Always judge the road yourself.</li>
+</ul>
+</section>
+
+<section class="ab-sec" aria-labelledby="ab-src">
+<h3 id="ab-src">Sources and credits</h3>
+<ul class="ab-src">
+<li><a href="https://data.sf.gov/d/ynuv-fyni" target="_blank" rel="noopener noreferrer">DataSF Building Footprints</a> (dataset ynuv-fyni, heights from 2023 lidar), City and County of San Francisco.</li>
+<li><a href="https://www.usgs.gov/3d-elevation-program" target="_blank" rel="noopener noreferrer">USGS 3D Elevation Program</a> (terrain).</li>
+<li><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors, ODbL (streets, surface tags).</li>
+<li><a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo.com</a> weather data, CC BY 4.0.</li>
+<li><a href="https://github.com/Autodesk/XLB" target="_blank" rel="noopener noreferrer">XLB</a> lattice-Boltzmann library (Apache-2.0) on <a href="https://github.com/NVIDIA/warp" target="_blank" rel="noopener noreferrer">NVIDIA Warp</a>.</li>
+<li><a href="https://pvlib-python.readthedocs.io/" target="_blank" rel="noopener noreferrer">pvlib-python</a> (sun position).</li>
+<li><a href="https://threejs.org/" target="_blank" rel="noopener noreferrer">three.js</a> (3-D viewer).</li>
+<li>Project code and full MVP report (<code>MVP_REPORT.md</code>): <a href="https://github.com/George-The-G/SF-DEATH-FOG-DETECTION/tree/v3-dev" target="_blank" rel="noopener noreferrer">GitHub, branch v3-dev</a>.</li>
+</ul>
+<p class="ab-date">Last updated 2026-11-11</p>
+</section>
