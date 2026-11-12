@@ -886,7 +886,7 @@ function ui2Build() {
   $('fpst').insertAdjacentHTML('beforebegin', '<span id="fptx"><span class="nm" id="fpnm"></span><span class="st" id="fpsub"></span></span>');
   const g = document.createElement('button'); g.id = 'gear'; g.type = 'button'; g.className = 'ib'; g.title = 'Settings'; g.setAttribute('aria-label', 'Settings'); g.innerHTML = UI2_GEAR;
   g.onclick = () => setSheet($('sheet').hidden); $('legend').after(g);
-  $('legend').querySelector('.ticks').innerHTML = '<span>dry</span><span>icy fog</span>';
+  $('legend').querySelector('.ticks').innerHTML = '<span>dry</span><span>wet</span>';
   const tr = document.createElement('div'); tr.id = 'trk';
   tr.innerHTML = '<div id="trkdays"></div><div class="rail"></div><div class="obs" id="trkobs"></div><div class="played" id="trkplay"></div><i class="now" id="trknow" hidden></i><i class="thumb" id="trkthumb"></i><i class="ld" id="trkld" hidden></i>';
   $('slider').before(tr); tr.appendChild($('slider'));
@@ -927,7 +927,7 @@ function ui2WxLine(i) { // one line: 66° dew 57° · SW 11 mph · cloud 47% · 
   const g = (a) => (a && a[i] != null ? a[i] : null), F = (c) => (c == null ? '--' : Math.round(c * 9 / 5 + 32));
   const ws = g(weather.wind_ms), c = g(weather.cloud_low_pct), p = g(weather.precip_mm), dot = '<span>·</span>';
   const wind = (weather.wind_dir ? compass(weather.wind_dir[i]) + ' ' : '') + (ws == null ? '--' : Math.round(ws * 2.23694)) + ' mph' + ($('wx-note').hidden ? '' : '*');
-  return `${F(g(weather.temp_c))}° <span>dew</span> ${F(g(weather.dewpoint_c))}° ${dot} ${wind} ${dot} ${UI2_CLOUD}${c == null ? '--' : Math.round(c)}%` + (p == null ? '' : ` ${dot} <span>rain</span> ${p < 0.05 ? '0' : p.toFixed(1)}`);
+  return `${F(g(weather.temp_c))}°F <span>dew</span> ${F(g(weather.dewpoint_c))}°F ${dot} ${wind} ${dot} ${UI2_CLOUD}${c == null ? '--' : Math.round(c)}%` + (p == null ? '' : ` ${dot} <span>rain</span> ${p < 0.05 ? '0' : p.toFixed(1)} mm/h`);
 }
 
 /* route profile: the route's samples grouped into 24 equal stretches along its length, mean wetness per stretch, drawn as hard-stop gradient */
