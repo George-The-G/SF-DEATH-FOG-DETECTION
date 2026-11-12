@@ -1,0 +1,1562 @@
+{
+ "270": {
+  "direction_deg": 270.0,
+  "finite": true,
+  "max_speed_ratio": 1.172075867652893,
+  "solid_nonzero": 0,
+  "a_pass": true,
+  "mass_balance": {
+   "outward_flux_by_face": {
+    "west": -25731.046875,
+    "east": 22434.056640625,
+    "south": -41.00918197631836,
+    "north": -43.296302795410156
+   },
+   "inflow": 25815.35235977173,
+   "net_over_inflow": -0.13098003358713897,
+   "top_up_flux": -3766.09033203125,
+   "closure_residual": -0.27686571740604277,
+   "inset_cells": 3
+  },
+  "b_pass": true,
+  "upwind_sea_cells": 181964,
+  "upwind_flow_from_deg": 269.985107421875,
+  "c_pass": true,
+  "near_ground_ratio_water_median": 1.0069009065628052,
+  "d_pass": true,
+  "places": {
+   "twin_peaks": {
+    "ij": [
+     427,
+     360
+    ],
+    "ground_elev_m": 220.0,
+    "speed_ratio_k_top_plus_3": 1.0351839065551758,
+    "speed_ratio_k_top_plus_2": 1.0
+   },
+   "golden_gate_gap": {
+    "ij": [
+     290,
+     659
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0303269624710083,
+    "speed_ratio_k_top_plus_2": 1.0117775201797485
+   },
+   "potrero": {
+    "ij": [
+     623,
+     390
+    ],
+    "ground_elev_m": 60.0,
+    "speed_ratio_k_top_plus_3": 1.0263994932174683,
+    "speed_ratio_k_top_plus_2": 1.0107768774032593
+   },
+   "sunset_flat": {
+    "ij": [
+     219,
+     351
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 1.0430271625518799,
+    "speed_ratio_k_top_plus_2": 1.01666259765625
+   },
+   "ocean_offshore": {
+    "ij": [
+     64,
+     389
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0137702226638794,
+    "speed_ratio_k_top_plus_2": 1.0059553384780884
+   },
+   "downtown": {
+    "ij": [
+     636,
+     559
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 0.9927674531936646,
+    "speed_ratio_k_top_plus_2": 1.0
+   },
+   "mt_davidson": {
+    "ij": [
+     397,
+     269
+    ],
+    "ground_elev_m": 260.0,
+    "speed_ratio_k_top_plus_3": 1.1133030652999878,
+    "speed_ratio_k_top_plus_2": 1.059582233428955
+   },
+   "bay_mid": {
+    "ij": [
+     769,
+     449
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0234652757644653,
+    "speed_ratio_k_top_plus_2": 1.008817195892334
+   }
+  },
+  "sea_ratio_k3": 1.0195622444152832,
+  "twin_peaks_crest": 1.0351839065551758,
+  "lee_1p5km_ratio": 0.999058723449707,
+  "e_pass": true,
+  "smooth_p999_dux": 0.26095667481422424,
+  "f_pass": true,
+  "pass": true,
+  "fog": {
+   "band0": {
+    "drift": 3.803335130214691e-05,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.3067864179611206,
+    "ok": true,
+    "transits": null
+   },
+   "band1": {
+    "drift": 0.003764132037758827,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.22950145602226257,
+    "ok": true,
+    "transits": null
+   },
+   "band2": {
+    "drift": 0.0018182694911956787,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.11006391048431396,
+    "ok": true,
+    "transits": 6
+   },
+   "band3": {
+    "drift": 0.009023427963256836,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.0103532699868083,
+    "ok": true,
+    "transits": 6
+   },
+   "monotone_with_height": true,
+   "g_pass": true
+  },
+  "g_pass": true
+ },
+ "180": {
+  "direction_deg": 180,
+  "finite": true,
+  "max_speed_ratio": 1.134854793548584,
+  "solid_nonzero": 0,
+  "a_pass": true,
+  "mass_balance": {
+   "outward_flux_by_face": {
+    "west": -165.90785217285156,
+    "east": -168.25796508789062,
+    "south": -26348.92578125,
+    "north": 22695.4296875
+   },
+   "inflow": 26683.091598510742,
+   "net_over_inflow": -0.14944527309696395,
+   "top_up_flux": -1616.560546875,
+   "closure_residual": -0.21002897798389034,
+   "inset_cells": 3
+  },
+  "b_pass": true,
+  "upwind_sea_cells": 177126,
+  "upwind_flow_from_deg": 179.98907470703125,
+  "c_pass": true,
+  "near_ground_ratio_water_median": 1.0098447799682617,
+  "d_pass": true,
+  "places": {
+   "twin_peaks": {
+    "ij": [
+     427,
+     360
+    ],
+    "ground_elev_m": 220.0,
+    "speed_ratio_k_top_plus_3": 1.0049241781234741,
+    "speed_ratio_k_top_plus_2": 1.0
+   },
+   "golden_gate_gap": {
+    "ij": [
+     290,
+     659
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0078465938568115,
+    "speed_ratio_k_top_plus_2": 1.0019813776016235
+   },
+   "potrero": {
+    "ij": [
+     623,
+     390
+    ],
+    "ground_elev_m": 60.0,
+    "speed_ratio_k_top_plus_3": 1.0566731691360474,
+    "speed_ratio_k_top_plus_2": 1.0215237140655518
+   },
+   "sunset_flat": {
+    "ij": [
+     219,
+     351
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 1.0391066074371338,
+    "speed_ratio_k_top_plus_2": 1.0146945714950562
+   },
+   "ocean_offshore": {
+    "ij": [
+     64,
+     389
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0361745357513428,
+    "speed_ratio_k_top_plus_2": 1.0127371549606323
+   },
+   "downtown": {
+    "ij": [
+     636,
+     559
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 0.9990605115890503,
+    "speed_ratio_k_top_plus_2": 1.0
+   },
+   "mt_davidson": {
+    "ij": [
+     397,
+     269
+    ],
+    "ground_elev_m": 260.0,
+    "speed_ratio_k_top_plus_3": 1.0996198654174805,
+    "speed_ratio_k_top_plus_2": 1.0537155866622925
+   },
+   "bay_mid": {
+    "ij": [
+     769,
+     449
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0351945161819458,
+    "speed_ratio_k_top_plus_2": 1.0127335786819458
+   }
+  },
+  "sea_ratio_k3": 1.0283468961715698,
+  "twin_peaks_crest": 1.0049241781234741,
+  "lee_1p5km_ratio": 1.001028299331665,
+  "e_pass": true,
+  "smooth_p999_dux": 0.0044116973876953125,
+  "smooth_ratio_vs_270": 0.01690586144552927,
+  "f_pass": true,
+  "corr_near_ground_speed_with_270": 0.0005832922774870782,
+  "pass": true,
+  "fog": {
+   "band0": {
+    "drift": 0.0002904161810874939,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.29899001121520996,
+    "ok": true,
+    "transits": 3
+   },
+   "band1": {
+    "drift": 0.0013896822929382324,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.30501267313957214,
+    "ok": true,
+    "transits": 3
+   },
+   "band2": {
+    "drift": 0.0006329119205474854,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.0886140689253807,
+    "ok": true,
+    "transits": 3
+   },
+   "band3": {
+    "drift": 0.0018697679042816162,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.002631894778460264,
+    "ok": true,
+    "transits": 3
+   },
+   "monotone_with_height": true,
+   "g_pass": true
+  },
+  "g_pass": true,
+  "roundtrip": {
+   "u": {
+    "mean_abs_err": 0.0,
+    "p99_err": 0.0,
+    "ref_mean_abs": 0.8385748863220215,
+    "rel_err": 0.0
+   },
+   "v": {
+    "mean_abs_err": 0.0,
+    "p99_err": 0.0,
+    "ref_mean_abs": 0.00348472548648715,
+    "rel_err": 0.0
+   },
+   "w": {
+    "mean_abs_err": 0.0,
+    "p99_err": 0.0,
+    "ref_mean_abs": 0.008310126140713692,
+    "rel_err": 0.0
+   },
+   "h_pass": true
+  },
+  "h_pass": true
+ },
+ "202.5": {
+  "direction_deg": 202.5,
+  "finite": true,
+  "max_speed_ratio": 1.1456921100616455,
+  "solid_nonzero": 0,
+  "a_pass": true,
+  "mass_balance": {
+   "outward_flux_by_face": {
+    "west": -9458.875,
+    "east": 8665.80078125,
+    "south": -23462.517578125,
+    "north": 19760.64453125
+   },
+   "inflow": 32921.392578125,
+   "net_over_inflow": -0.1365357572574776,
+   "top_up_flux": -995.2276000976562,
+   "closure_residual": -0.16676617955009188,
+   "inset_cells": 3
+  },
+  "b_pass": true,
+  "upwind_sea_cells": 170285,
+  "upwind_flow_from_deg": 202.4894256591797,
+  "c_pass": true,
+  "near_ground_ratio_water_median": 1.007826566696167,
+  "d_pass": true,
+  "places": {
+   "twin_peaks": {
+    "ij": [
+     427,
+     360
+    ],
+    "ground_elev_m": 220.0,
+    "speed_ratio_k_top_plus_3": 1.0065020322799683,
+    "speed_ratio_k_top_plus_2": 0.999908447265625
+   },
+   "golden_gate_gap": {
+    "ij": [
+     290,
+     659
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0218932628631592,
+    "speed_ratio_k_top_plus_2": 1.007752537727356
+   },
+   "potrero": {
+    "ij": [
+     623,
+     390
+    ],
+    "ground_elev_m": 60.0,
+    "speed_ratio_k_top_plus_3": 1.015549659729004,
+    "speed_ratio_k_top_plus_2": 1.0058412551879883
+   },
+   "sunset_flat": {
+    "ij": [
+     219,
+     351
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 1.0460178852081299,
+    "speed_ratio_k_top_plus_2": 1.0168203115463257
+   },
+   "ocean_offshore": {
+    "ij": [
+     64,
+     389
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.033064365386963,
+    "speed_ratio_k_top_plus_2": 1.01175057888031
+   },
+   "downtown": {
+    "ij": [
+     636,
+     559
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 0.9957563877105713,
+    "speed_ratio_k_top_plus_2": 0.999908447265625
+   },
+   "mt_davidson": {
+    "ij": [
+     397,
+     269
+    ],
+    "ground_elev_m": 260.0,
+    "speed_ratio_k_top_plus_3": 1.081012487411499,
+    "speed_ratio_k_top_plus_2": 1.0457662343978882
+   },
+   "bay_mid": {
+    "ij": [
+     769,
+     449
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0245991945266724,
+    "speed_ratio_k_top_plus_2": 1.0089173316955566
+   }
+  },
+  "sea_ratio_k3": 1.0215171575546265,
+  "twin_peaks_crest": 1.0065020322799683,
+  "lee_1p5km_ratio": 1.001563310623169,
+  "e_pass": true,
+  "smooth_p999_dux": 0.0068359375,
+  "smooth_ratio_vs_270": 0.026195679818753523,
+  "f_pass": true,
+  "corr_near_ground_speed_with_270": 0.04844249155434735,
+  "pass": true,
+  "fog": {
+   "band0": {
+    "drift": 3.0928640626370907e-07,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.33576104044914246,
+    "ok": true,
+    "transits": 3
+   },
+   "band1": {
+    "drift": 0.00011941790580749512,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.24605736136436462,
+    "ok": true,
+    "transits": 3
+   },
+   "band2": {
+    "drift": 0.00010925158858299255,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.08185411244630814,
+    "ok": true,
+    "transits": 3
+   },
+   "band3": {
+    "drift": 6.938893903907228e-18,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.0023396241012960672,
+    "ok": true,
+    "transits": 6
+   },
+   "monotone_with_height": true,
+   "g_pass": true
+  },
+  "g_pass": true,
+  "roundtrip": {
+   "u": {
+    "mean_abs_err": 0.0007455392042174935,
+    "p99_err": 0.0048828125,
+    "ref_mean_abs": 0.8385748863220215,
+    "rel_err": 0.0008890550234355032
+   },
+   "v": {
+    "mean_abs_err": 3.886660488205962e-05,
+    "p99_err": 0.0006256103515625,
+    "ref_mean_abs": 0.00348472548648715,
+    "rel_err": 0.011153419502079487
+   },
+   "w": {
+    "mean_abs_err": 8.386094850720838e-05,
+    "p99_err": 0.00144195556640625,
+    "ref_mean_abs": 0.008310126140713692,
+    "rel_err": 0.010091417469084263
+   },
+   "h_pass": true
+  },
+  "h_pass": true
+ },
+ "225": {
+  "direction_deg": 225,
+  "finite": true,
+  "max_speed_ratio": 1.1193987131118774,
+  "solid_nonzero": 0,
+  "a_pass": true,
+  "mass_balance": {
+   "outward_flux_by_face": {
+    "west": -17788.056640625,
+    "east": 14862.19921875,
+    "south": -17229.20703125,
+    "north": 15247.048828125
+   },
+   "inflow": 35017.263671875,
+   "net_over_inflow": -0.14015988430706527,
+   "top_up_flux": -878.4495849609375,
+   "closure_residual": -0.16524607017219575,
+   "inset_cells": 3
+  },
+  "b_pass": true,
+  "upwind_sea_cells": 140713,
+  "upwind_flow_from_deg": 224.99656677246094,
+  "c_pass": true,
+  "near_ground_ratio_water_median": 1.004759669303894,
+  "d_pass": true,
+  "places": {
+   "twin_peaks": {
+    "ij": [
+     427,
+     360
+    ],
+    "ground_elev_m": 220.0,
+    "speed_ratio_k_top_plus_3": 1.0171890258789062,
+    "speed_ratio_k_top_plus_2": 0.9998931884765625
+   },
+   "golden_gate_gap": {
+    "ij": [
+     290,
+     659
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0251330137252808,
+    "speed_ratio_k_top_plus_2": 1.0092524290084839
+   },
+   "potrero": {
+    "ij": [
+     623,
+     390
+    ],
+    "ground_elev_m": 60.0,
+    "speed_ratio_k_top_plus_3": 1.0244359970092773,
+    "speed_ratio_k_top_plus_2": 1.0095930099487305
+   },
+   "sunset_flat": {
+    "ij": [
+     219,
+     351
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 1.048274278640747,
+    "speed_ratio_k_top_plus_2": 1.0175518989562988
+   },
+   "ocean_offshore": {
+    "ij": [
+     64,
+     389
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0313687324523926,
+    "speed_ratio_k_top_plus_2": 1.010999083518982
+   },
+   "downtown": {
+    "ij": [
+     636,
+     559
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 0.9930149912834167,
+    "speed_ratio_k_top_plus_2": 0.9995483160018921
+   },
+   "mt_davidson": {
+    "ij": [
+     397,
+     269
+    ],
+    "ground_elev_m": 260.0,
+    "speed_ratio_k_top_plus_3": 1.054792046546936,
+    "speed_ratio_k_top_plus_2": 1.0313220024108887
+   },
+   "bay_mid": {
+    "ij": [
+     769,
+     449
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0109703540802002,
+    "speed_ratio_k_top_plus_2": 1.0040653944015503
+   }
+  },
+  "sea_ratio_k3": 1.0144264698028564,
+  "twin_peaks_crest": 1.0171890258789062,
+  "lee_1p5km_ratio": 0.9999222159385681,
+  "e_pass": true,
+  "smooth_p999_dux": 0.00830078125,
+  "smooth_ratio_vs_270": 0.03180903977991499,
+  "f_pass": true,
+  "corr_near_ground_speed_with_270": 0.0779075624219306,
+  "pass": true,
+  "fog": {
+   "band0": {
+    "drift": 1.2607313692569733e-05,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.3546193242073059,
+    "ok": true,
+    "transits": 3
+   },
+   "band1": {
+    "drift": 0.000283852219581604,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.22590568661689758,
+    "ok": true,
+    "transits": 3
+   },
+   "band2": {
+    "drift": 0.004200462251901627,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.07934435456991196,
+    "ok": true,
+    "transits": 3
+   },
+   "band3": {
+    "drift": 1.6940658945086007e-21,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.004628677386790514,
+    "ok": true,
+    "transits": 6
+   },
+   "monotone_with_height": true,
+   "g_pass": true
+  },
+  "g_pass": true,
+  "roundtrip": {
+   "u": {
+    "mean_abs_err": 0.0007376300636678934,
+    "p99_err": 0.0048828125,
+    "ref_mean_abs": 0.8385748863220215,
+    "rel_err": 0.0008796233450993896
+   },
+   "v": {
+    "mean_abs_err": 3.8882757507963106e-05,
+    "p99_err": 0.0006256103515625,
+    "ref_mean_abs": 0.00348472548648715,
+    "rel_err": 0.011158054694533348
+   },
+   "w": {
+    "mean_abs_err": 8.369236456928775e-05,
+    "p99_err": 0.0014495849609375,
+    "ref_mean_abs": 0.008310126140713692,
+    "rel_err": 0.010071130469441414
+   },
+   "h_pass": true
+  },
+  "h_pass": true
+ },
+ "247.5": {
+  "direction_deg": 247.5,
+  "finite": true,
+  "max_speed_ratio": 1.1440997123718262,
+  "solid_nonzero": 0,
+  "a_pass": true,
+  "mass_balance": {
+   "outward_flux_by_face": {
+    "west": -24062.546875,
+    "east": 19301.1484375,
+    "south": -9105.5390625,
+    "north": 8715.84765625
+   },
+   "inflow": 33168.0859375,
+   "net_over_inflow": -0.15530259579815406,
+   "top_up_flux": -970.0927734375,
+   "closure_residual": -0.18455037256964113,
+   "inset_cells": 3
+  },
+  "b_pass": true,
+  "upwind_sea_cells": 162327,
+  "upwind_flow_from_deg": 247.5047607421875,
+  "c_pass": true,
+  "near_ground_ratio_water_median": 1.0068275928497314,
+  "d_pass": true,
+  "places": {
+   "twin_peaks": {
+    "ij": [
+     427,
+     360
+    ],
+    "ground_elev_m": 220.0,
+    "speed_ratio_k_top_plus_3": 1.020582675933838,
+    "speed_ratio_k_top_plus_2": 1.00081205368042
+   },
+   "golden_gate_gap": {
+    "ij": [
+     290,
+     659
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0323406457901,
+    "speed_ratio_k_top_plus_2": 1.011293888092041
+   },
+   "potrero": {
+    "ij": [
+     623,
+     390
+    ],
+    "ground_elev_m": 60.0,
+    "speed_ratio_k_top_plus_3": 1.01554274559021,
+    "speed_ratio_k_top_plus_2": 1.0058361291885376
+   },
+   "sunset_flat": {
+    "ij": [
+     219,
+     351
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 1.0496591329574585,
+    "speed_ratio_k_top_plus_2": 1.0192842483520508
+   },
+   "ocean_offshore": {
+    "ij": [
+     64,
+     389
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0295312404632568,
+    "speed_ratio_k_top_plus_2": 1.0105829238891602
+   },
+   "downtown": {
+    "ij": [
+     636,
+     559
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 0.9942258596420288,
+    "speed_ratio_k_top_plus_2": 0.9981765151023865
+   },
+   "mt_davidson": {
+    "ij": [
+     397,
+     269
+    ],
+    "ground_elev_m": 260.0,
+    "speed_ratio_k_top_plus_3": 1.062857747077942,
+    "speed_ratio_k_top_plus_2": 1.0343666076660156
+   },
+   "bay_mid": {
+    "ij": [
+     769,
+     449
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0080087184906006,
+    "speed_ratio_k_top_plus_2": 1.0032014846801758
+   }
+  },
+  "sea_ratio_k3": 1.0194276571273804,
+  "twin_peaks_crest": 1.020582675933838,
+  "lee_1p5km_ratio": 1.0016491413116455,
+  "e_pass": true,
+  "smooth_p999_dux": 0.00830078125,
+  "smooth_ratio_vs_270": 0.03180903977991499,
+  "f_pass": true,
+  "corr_near_ground_speed_with_270": 0.11192246016710264,
+  "pass": true,
+  "fog": {
+   "band0": {
+    "drift": 5.483999848365784e-05,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.3640487492084503,
+    "ok": true,
+    "transits": 3
+   },
+   "band1": {
+    "drift": 0.00027570128440856934,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.23356609046459198,
+    "ok": true,
+    "transits": 3
+   },
+   "band2": {
+    "drift": 0.0002010837197303772,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.07954025268554688,
+    "ok": true,
+    "transits": 3
+   },
+   "band3": {
+    "drift": 1.734723475976807e-18,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.003115063300356269,
+    "ok": true,
+    "transits": 6
+   },
+   "monotone_with_height": true,
+   "g_pass": true
+  },
+  "g_pass": true,
+  "roundtrip": {
+   "u": {
+    "mean_abs_err": 0.0007458303589373827,
+    "p99_err": 0.0048828125,
+    "ref_mean_abs": 0.8385748863220215,
+    "rel_err": 0.0008894022321328521
+   },
+   "v": {
+    "mean_abs_err": 3.887988714268431e-05,
+    "p99_err": 0.0006246566772460938,
+    "ref_mean_abs": 0.00348472548648715,
+    "rel_err": 0.011157231405377388
+   },
+   "w": {
+    "mean_abs_err": 8.389483991777524e-05,
+    "p99_err": 0.00144195556640625,
+    "ref_mean_abs": 0.008310126140713692,
+    "rel_err": 0.010095495730638504
+   },
+   "h_pass": true
+  },
+  "h_pass": true
+ },
+ "292.5": {
+  "direction_deg": 292.5,
+  "finite": true,
+  "max_speed_ratio": 1.1433379650115967,
+  "solid_nonzero": 0,
+  "a_pass": true,
+  "mass_balance": {
+   "outward_flux_by_face": {
+    "west": -24073.70703125,
+    "east": 19412.7421875,
+    "south": 8266.572265625,
+    "north": -9553.439453125
+   },
+   "inflow": 33627.146484375,
+   "net_over_inflow": -0.17687590691091454,
+   "top_up_flux": -964.2473754882812,
+   "closure_residual": -0.20555057830880802,
+   "inset_cells": 3
+  },
+  "b_pass": true,
+  "upwind_sea_cells": 206204,
+  "upwind_flow_from_deg": 292.4710693359375,
+  "c_pass": true,
+  "near_ground_ratio_water_median": 1.0079315900802612,
+  "d_pass": true,
+  "places": {
+   "twin_peaks": {
+    "ij": [
+     427,
+     360
+    ],
+    "ground_elev_m": 220.0,
+    "speed_ratio_k_top_plus_3": 1.0054906606674194,
+    "speed_ratio_k_top_plus_2": 0.999908447265625
+   },
+   "golden_gate_gap": {
+    "ij": [
+     290,
+     659
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0280579328536987,
+    "speed_ratio_k_top_plus_2": 1.0098427534103394
+   },
+   "potrero": {
+    "ij": [
+     623,
+     390
+    ],
+    "ground_elev_m": 60.0,
+    "speed_ratio_k_top_plus_3": 1.031749963760376,
+    "speed_ratio_k_top_plus_2": 1.0119967460632324
+   },
+   "sunset_flat": {
+    "ij": [
+     219,
+     351
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 1.0471866130828857,
+    "speed_ratio_k_top_plus_2": 1.0178202390670776
+   },
+   "ocean_offshore": {
+    "ij": [
+     64,
+     389
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0293430089950562,
+    "speed_ratio_k_top_plus_2": 1.0109390020370483
+   },
+   "downtown": {
+    "ij": [
+     636,
+     559
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 0.9964228272438049,
+    "speed_ratio_k_top_plus_2": 0.999908447265625
+   },
+   "mt_davidson": {
+    "ij": [
+     397,
+     269
+    ],
+    "ground_elev_m": 260.0,
+    "speed_ratio_k_top_plus_3": 1.0372148752212524,
+    "speed_ratio_k_top_plus_2": 1.0185662508010864
+   },
+   "bay_mid": {
+    "ij": [
+     769,
+     449
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0147150754928589,
+    "speed_ratio_k_top_plus_2": 1.0047428607940674
+   }
+  },
+  "sea_ratio_k3": 1.0228346586227417,
+  "twin_peaks_crest": 1.0054906606674194,
+  "lee_1p5km_ratio": 0.9972061514854431,
+  "e_pass": true,
+  "smooth_p999_dux": 0.00830078125,
+  "smooth_ratio_vs_270": 0.03180903977991499,
+  "f_pass": true,
+  "corr_near_ground_speed_with_270": 0.1234271498143044,
+  "pass": true,
+  "fog": {
+   "band0": {
+    "drift": 1.1057592928409576e-05,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.39836981892585754,
+    "ok": true,
+    "transits": 3
+   },
+   "band1": {
+    "drift": 0.00016105175018310547,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.22847114503383636,
+    "ok": true,
+    "transits": 3
+   },
+   "band2": {
+    "drift": 0.00021580979228019714,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.07356837391853333,
+    "ok": true,
+    "transits": 3
+   },
+   "band3": {
+    "drift": 1.1102230246251565e-16,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.002977939322590828,
+    "ok": true,
+    "transits": 6
+   },
+   "monotone_with_height": true,
+   "g_pass": true
+  },
+  "g_pass": true,
+  "roundtrip": {
+   "u": {
+    "mean_abs_err": 0.0007455392042174935,
+    "p99_err": 0.0048828125,
+    "ref_mean_abs": 0.8385748863220215,
+    "rel_err": 0.0008890550234355032
+   },
+   "v": {
+    "mean_abs_err": 3.886660488205962e-05,
+    "p99_err": 0.0006256103515625,
+    "ref_mean_abs": 0.00348472548648715,
+    "rel_err": 0.011153419502079487
+   },
+   "w": {
+    "mean_abs_err": 8.386094850720838e-05,
+    "p99_err": 0.00144195556640625,
+    "ref_mean_abs": 0.008310126140713692,
+    "rel_err": 0.010091417469084263
+   },
+   "h_pass": true
+  },
+  "h_pass": true
+ },
+ "315": {
+  "direction_deg": 315,
+  "finite": true,
+  "max_speed_ratio": 1.1183724403381348,
+  "solid_nonzero": 0,
+  "a_pass": true,
+  "mass_balance": {
+   "outward_flux_by_face": {
+    "west": -17808.19921875,
+    "east": 15018.0615234375,
+    "south": 14456.16796875,
+    "north": -18051.1015625
+   },
+   "inflow": 35859.30078125,
+   "net_over_inflow": -0.17805900142930578,
+   "top_up_flux": -870.7203979492188,
+   "closure_residual": -0.20234057912265832,
+   "inset_cells": 3
+  },
+  "b_pass": true,
+  "upwind_sea_cells": 204387,
+  "upwind_flow_from_deg": 314.9851379394531,
+  "c_pass": true,
+  "near_ground_ratio_water_median": 1.0095990896224976,
+  "d_pass": true,
+  "places": {
+   "twin_peaks": {
+    "ij": [
+     427,
+     360
+    ],
+    "ground_elev_m": 220.0,
+    "speed_ratio_k_top_plus_3": 1.0089019536972046,
+    "speed_ratio_k_top_plus_2": 0.9998931884765625
+   },
+   "golden_gate_gap": {
+    "ij": [
+     290,
+     659
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.007544994354248,
+    "speed_ratio_k_top_plus_2": 1.003058910369873
+   },
+   "potrero": {
+    "ij": [
+     623,
+     390
+    ],
+    "ground_elev_m": 60.0,
+    "speed_ratio_k_top_plus_3": 1.0251260995864868,
+    "speed_ratio_k_top_plus_2": 1.0099378824234009
+   },
+   "sunset_flat": {
+    "ij": [
+     219,
+     351
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 1.0434412956237793,
+    "speed_ratio_k_top_plus_2": 1.0161672830581665
+   },
+   "ocean_offshore": {
+    "ij": [
+     64,
+     389
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0310211181640625,
+    "speed_ratio_k_top_plus_2": 1.0106513500213623
+   },
+   "downtown": {
+    "ij": [
+     636,
+     559
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 0.9977523684501648,
+    "speed_ratio_k_top_plus_2": 0.9992057681083679
+   },
+   "mt_davidson": {
+    "ij": [
+     397,
+     269
+    ],
+    "ground_elev_m": 260.0,
+    "speed_ratio_k_top_plus_3": 0.9857653379440308,
+    "speed_ratio_k_top_plus_2": 0.9957841038703918
+   },
+   "bay_mid": {
+    "ij": [
+     769,
+     449
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0116631984710693,
+    "speed_ratio_k_top_plus_2": 1.0040674209594727
+   }
+  },
+  "sea_ratio_k3": 1.0272032022476196,
+  "twin_peaks_crest": 1.0089019536972046,
+  "lee_1p5km_ratio": 0.999944806098938,
+  "e_pass": true,
+  "smooth_p999_dux": 0.0087890625,
+  "smooth_ratio_vs_270": 0.033680159766968816,
+  "f_pass": true,
+  "corr_near_ground_speed_with_270": 0.0879774715775258,
+  "pass": true,
+  "fog": {
+   "band0": {
+    "drift": 0.00016054511070251465,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.4364772439002991,
+    "ok": true,
+    "transits": 3
+   },
+   "band1": {
+    "drift": 0.0002560913562774658,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.23378507792949677,
+    "ok": true,
+    "transits": 3
+   },
+   "band2": {
+    "drift": 0.0039950087666511536,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.05945323035120964,
+    "ok": true,
+    "transits": 3
+   },
+   "band3": {
+    "drift": 7.450580596923828e-09,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.004146508872509003,
+    "ok": true,
+    "transits": 6
+   },
+   "monotone_with_height": true,
+   "g_pass": true
+  },
+  "g_pass": true,
+  "roundtrip": {
+   "u": {
+    "mean_abs_err": 0.0007376300636678934,
+    "p99_err": 0.0048828125,
+    "ref_mean_abs": 0.8385748863220215,
+    "rel_err": 0.0008796233450993896
+   },
+   "v": {
+    "mean_abs_err": 3.8882757507963106e-05,
+    "p99_err": 0.0006256103515625,
+    "ref_mean_abs": 0.00348472548648715,
+    "rel_err": 0.011158054694533348
+   },
+   "w": {
+    "mean_abs_err": 8.369236456928775e-05,
+    "p99_err": 0.0014495849609375,
+    "ref_mean_abs": 0.008310126140713692,
+    "rel_err": 0.010071130469441414
+   },
+   "h_pass": true
+  },
+  "h_pass": true
+ },
+ "337.5": {
+  "direction_deg": 337.5,
+  "finite": true,
+  "max_speed_ratio": 1.1445122957229614,
+  "solid_nonzero": 0,
+  "a_pass": true,
+  "mass_balance": {
+   "outward_flux_by_face": {
+    "west": -9475.3359375,
+    "east": 8656.111328125,
+    "south": 18895.6015625,
+    "north": -24519.576171875
+   },
+   "inflow": 33994.912109375,
+   "net_over_inflow": -0.18953422200415446,
+   "top_up_flux": -986.5094604492188,
+   "closure_residual": -0.21855354869855007,
+   "inset_cells": 3
+  },
+  "b_pass": true,
+  "upwind_sea_cells": 217748,
+  "upwind_flow_from_deg": 337.4956970214844,
+  "c_pass": true,
+  "near_ground_ratio_water_median": 1.010022521018982,
+  "d_pass": true,
+  "places": {
+   "twin_peaks": {
+    "ij": [
+     427,
+     360
+    ],
+    "ground_elev_m": 220.0,
+    "speed_ratio_k_top_plus_3": 1.009387493133545,
+    "speed_ratio_k_top_plus_2": 1.0001901388168335
+   },
+   "golden_gate_gap": {
+    "ij": [
+     290,
+     659
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0099585056304932,
+    "speed_ratio_k_top_plus_2": 1.003968596458435
+   },
+   "potrero": {
+    "ij": [
+     623,
+     390
+    ],
+    "ground_elev_m": 60.0,
+    "speed_ratio_k_top_plus_3": 1.0449897050857544,
+    "speed_ratio_k_top_plus_2": 1.0171635150909424
+   },
+   "sunset_flat": {
+    "ij": [
+     219,
+     351
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 1.03395676612854,
+    "speed_ratio_k_top_plus_2": 1.0122870206832886
+   },
+   "ocean_offshore": {
+    "ij": [
+     64,
+     389
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.033155083656311,
+    "speed_ratio_k_top_plus_2": 1.0117477178573608
+   },
+   "downtown": {
+    "ij": [
+     636,
+     559
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 1.0082635879516602,
+    "speed_ratio_k_top_plus_2": 1.0000993013381958
+   },
+   "mt_davidson": {
+    "ij": [
+     397,
+     269
+    ],
+    "ground_elev_m": 260.0,
+    "speed_ratio_k_top_plus_3": 0.9947671890258789,
+    "speed_ratio_k_top_plus_2": 0.9994092583656311
+   },
+   "bay_mid": {
+    "ij": [
+     769,
+     449
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.030405044555664,
+    "speed_ratio_k_top_plus_2": 1.0110052824020386
+   }
+  },
+  "sea_ratio_k3": 1.0283223390579224,
+  "twin_peaks_crest": 1.009387493133545,
+  "lee_1p5km_ratio": 0.9986163973808289,
+  "e_pass": true,
+  "smooth_p999_dux": 0.00732421875,
+  "smooth_ratio_vs_270": 0.028066799805807348,
+  "f_pass": true,
+  "corr_near_ground_speed_with_270": 0.05808976604304946,
+  "pass": true,
+  "fog": {
+   "band0": {
+    "drift": 9.575486183166504e-05,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.43779456615448,
+    "ok": true,
+    "transits": 3
+   },
+   "band1": {
+    "drift": 0.00014021992683410645,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.27717965841293335,
+    "ok": true,
+    "transits": 3
+   },
+   "band2": {
+    "drift": 0.00012022256851196289,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.04654478281736374,
+    "ok": true,
+    "transits": 3
+   },
+   "band3": {
+    "drift": 3.944304526105059e-31,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.001295490306802094,
+    "ok": true,
+    "transits": 6
+   },
+   "monotone_with_height": true,
+   "g_pass": true
+  },
+  "g_pass": true,
+  "roundtrip": {
+   "u": {
+    "mean_abs_err": 0.0007458303589373827,
+    "p99_err": 0.0048828125,
+    "ref_mean_abs": 0.8385748863220215,
+    "rel_err": 0.0008894022321328521
+   },
+   "v": {
+    "mean_abs_err": 3.887988714268431e-05,
+    "p99_err": 0.0006246566772460938,
+    "ref_mean_abs": 0.00348472548648715,
+    "rel_err": 0.011157231405377388
+   },
+   "w": {
+    "mean_abs_err": 8.389483991777524e-05,
+    "p99_err": 0.00144195556640625,
+    "ref_mean_abs": 0.008310126140713692,
+    "rel_err": 0.010095495730638504
+   },
+   "h_pass": true
+  },
+  "h_pass": true
+ },
+ "360": {
+  "direction_deg": 360,
+  "finite": true,
+  "max_speed_ratio": 1.1338913440704346,
+  "solid_nonzero": 0,
+  "a_pass": true,
+  "mass_balance": {
+   "outward_flux_by_face": {
+    "west": -165.61927795410156,
+    "east": -168.1428680419922,
+    "south": 21647.1171875,
+    "north": -27456.369140625
+   },
+   "inflow": 27790.131286621094,
+   "net_over_inflow": -0.2210502007264177,
+   "top_up_flux": -1607.0107421875,
+   "closure_residual": -0.27887687040325937,
+   "inset_cells": 3
+  },
+  "b_pass": true,
+  "upwind_sea_cells": 225820,
+  "upwind_flow_from_deg": 0.020050048828125,
+  "c_pass": true,
+  "near_ground_ratio_water_median": 1.0098381042480469,
+  "d_pass": true,
+  "places": {
+   "twin_peaks": {
+    "ij": [
+     427,
+     360
+    ],
+    "ground_elev_m": 220.0,
+    "speed_ratio_k_top_plus_3": 1.0273727178573608,
+    "speed_ratio_k_top_plus_2": 1.0
+   },
+   "golden_gate_gap": {
+    "ij": [
+     290,
+     659
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0274020433425903,
+    "speed_ratio_k_top_plus_2": 1.009826898574829
+   },
+   "potrero": {
+    "ij": [
+     623,
+     390
+    ],
+    "ground_elev_m": 60.0,
+    "speed_ratio_k_top_plus_3": 1.0351907014846802,
+    "speed_ratio_k_top_plus_2": 1.0137114524841309
+   },
+   "sunset_flat": {
+    "ij": [
+     219,
+     351
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 1.0283598899841309,
+    "speed_ratio_k_top_plus_2": 1.0098036527633667
+   },
+   "ocean_offshore": {
+    "ij": [
+     64,
+     389
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0342191457748413,
+    "speed_ratio_k_top_plus_2": 1.0127350091934204
+   },
+   "downtown": {
+    "ij": [
+     636,
+     559
+    ],
+    "ground_elev_m": 40.0,
+    "speed_ratio_k_top_plus_3": 1.0051121711730957,
+    "speed_ratio_k_top_plus_2": 1.0
+   },
+   "mt_davidson": {
+    "ij": [
+     397,
+     269
+    ],
+    "ground_elev_m": 260.0,
+    "speed_ratio_k_top_plus_3": 1.031268835067749,
+    "speed_ratio_k_top_plus_2": 1.0127265453338623
+   },
+   "bay_mid": {
+    "ij": [
+     769,
+     449
+    ],
+    "ground_elev_m": 0.0,
+    "speed_ratio_k_top_plus_3": 1.0322699546813965,
+    "speed_ratio_k_top_plus_2": 1.011762022972107
+   }
+  },
+  "sea_ratio_k3": 1.028346300125122,
+  "twin_peaks_crest": 1.0273727178573608,
+  "lee_1p5km_ratio": 1.0068812370300293,
+  "e_pass": true,
+  "smooth_p999_dux": 0.00440216064453125,
+  "smooth_ratio_vs_270": 0.016869316133282124,
+  "f_pass": true,
+  "corr_near_ground_speed_with_270": 0.01485484398360176,
+  "pass": true,
+  "fog": {
+   "band0": {
+    "drift": 9.749829769134521e-05,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.33313289284706116,
+    "ok": true,
+    "transits": 3
+   },
+   "band1": {
+    "drift": 0.00016802549362182617,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.3205188512802124,
+    "ok": true,
+    "transits": 3
+   },
+   "band2": {
+    "drift": 1.0702759027481079e-05,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.06701298803091049,
+    "ok": true,
+    "transits": 3
+   },
+   "band3": {
+    "drift": 0.001758769154548645,
+    "finite": true,
+    "min": 0.0,
+    "max": 1.0,
+    "solid_nonzero": 0,
+    "mean_below_100m": 0.0017801666399464011,
+    "ok": true,
+    "transits": 3
+   },
+   "monotone_with_height": true,
+   "g_pass": true
+  },
+  "g_pass": true,
+  "roundtrip": {
+   "u": {
+    "mean_abs_err": 0.0,
+    "p99_err": 0.0,
+    "ref_mean_abs": 0.8385748863220215,
+    "rel_err": 0.0
+   },
+   "v": {
+    "mean_abs_err": 0.0,
+    "p99_err": 0.0,
+    "ref_mean_abs": 0.00348472548648715,
+    "rel_err": 0.0
+   },
+   "w": {
+    "mean_abs_err": 0.0,
+    "p99_err": 0.0,
+    "ref_mean_abs": 0.008310126140713692,
+    "rel_err": 0.0
+   },
+   "h_pass": true
+  },
+  "h_pass": true
+ }
+}

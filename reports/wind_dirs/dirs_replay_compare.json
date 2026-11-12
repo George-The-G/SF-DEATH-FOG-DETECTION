@@ -1,0 +1,1019 @@
+[
+ {
+  "night": "2026-11-10",
+  "kind": "fog",
+  "mean_dir": 313.8,
+  "mean_wind_ms": 2.17,
+  "approx_old": true,
+  "approx_new": false,
+  "dirs_used": [
+   180.0,
+   202.5,
+   225.0,
+   247.5,
+   270.0,
+   292.5,
+   315.0,
+   337.5,
+   360.0
+  ],
+  "dawn_mean_old_all": 27.15,
+  "dawn_mean_new_all": 32.17,
+  "dawn_mean_old_potrero": 26.42,
+  "dawn_mean_new_potrero": 34.3,
+  "dawn_abs_diff_mean": 5.54,
+  "dawn_abs_diff_p95": 15.24,
+  "dawn_abs_diff_max": 19.08,
+  "night_peak_W_old": 32.23,
+  "night_peak_W_new": 37.17,
+  "zones": {
+   "potrero": {
+    "points": 14116,
+    "old_mean": 26.4,
+    "new_mean": 34.3,
+    "old_p95": 45.7,
+    "new_p95": 50.1,
+    "mean_change": 7.9,
+    "mean_abs_change": 8.0,
+    "p95_abs_change": 16.0
+   },
+   "ggh": {
+    "points": 7094,
+    "old_mean": 28.6,
+    "new_mean": 27.9,
+    "old_p95": 49.6,
+    "new_p95": 48.4,
+    "mean_change": -0.7,
+    "mean_abs_change": 0.7,
+    "p95_abs_change": 1.2
+   }
+  },
+  "routes": {
+   "potrero": {
+    "points": 176,
+    "old_mean": 35.4,
+    "new_mean": 38.0,
+    "old_p95": 49.6,
+    "new_p95": 52.2,
+    "mean_change": 2.7,
+    "mean_abs_change": 2.7,
+    "p95_abs_change": 4.8
+   },
+   "ggh-yellow": {
+    "points": 556,
+    "old_mean": 25.3,
+    "new_mean": 24.7,
+    "old_p95": 49.9,
+    "new_p95": 48.7,
+    "mean_change": -0.6,
+    "mean_abs_change": 0.6,
+    "p95_abs_change": 1.3
+   },
+   "ggh-orange": {
+    "points": 462,
+    "old_mean": 27.5,
+    "new_mean": 26.9,
+    "old_p95": 50.4,
+    "new_p95": 49.2,
+    "mean_change": -0.5,
+    "mean_abs_change": 0.5,
+    "p95_abs_change": 1.3
+   },
+   "ggh-green": {
+    "points": 300,
+    "old_mean": 34.7,
+    "new_mean": 33.9,
+    "old_p95": 50.1,
+    "new_p95": 48.9,
+    "mean_change": -0.7,
+    "mean_abs_change": 0.7,
+    "p95_abs_change": 1.2
+   },
+   "ggh-red": {
+    "points": 296,
+    "old_mean": 34.4,
+    "new_mean": 33.6,
+    "old_p95": 50.9,
+    "new_p95": 49.7,
+    "mean_change": -0.8,
+    "mean_abs_change": 0.8,
+    "p95_abs_change": 1.2
+   },
+   "ggh-purple": {
+    "points": 338,
+    "old_mean": 33.3,
+    "new_mean": 32.6,
+    "old_p95": 48.8,
+    "new_p95": 47.6,
+    "mean_change": -0.8,
+    "mean_abs_change": 0.8,
+    "p95_abs_change": 1.2
+   }
+  },
+  "dawn_frac_points_changed_gt5": 0.397
+ },
+ {
+  "night": "2026-10-08",
+  "kind": "fog",
+  "mean_dir": 253.0,
+  "mean_wind_ms": 3.43,
+  "approx_old": false,
+  "approx_new": false,
+  "dirs_used": [
+   180.0,
+   202.5,
+   225.0,
+   247.5,
+   270.0,
+   292.5,
+   315.0,
+   337.5,
+   360.0
+  ],
+  "dawn_mean_old_all": 23.42,
+  "dawn_mean_new_all": 20.3,
+  "dawn_mean_old_potrero": 28.65,
+  "dawn_mean_new_potrero": 25.71,
+  "dawn_abs_diff_mean": 13.05,
+  "dawn_abs_diff_p95": 36.56,
+  "dawn_abs_diff_max": 63.34,
+  "night_peak_W_old": 26.11,
+  "night_peak_W_new": 23.47,
+  "zones": {
+   "potrero": {
+    "points": 14116,
+    "old_mean": 28.7,
+    "new_mean": 25.7,
+    "old_p95": 67.7,
+    "new_p95": 38.6,
+    "mean_change": -2.9,
+    "mean_abs_change": 17.9,
+    "p95_abs_change": 40.5
+   },
+   "ggh": {
+    "points": 7094,
+    "old_mean": 13.0,
+    "new_mean": 9.5,
+    "old_p95": 39.0,
+    "new_p95": 34.7,
+    "mean_change": -3.5,
+    "mean_abs_change": 3.5,
+    "p95_abs_change": 4.9
+   }
+  },
+  "routes": {
+   "potrero": {
+    "points": 176,
+    "old_mean": 47.7,
+    "new_mean": 29.5,
+    "old_p95": 71.6,
+    "new_p95": 40.3,
+    "mean_change": -18.2,
+    "mean_abs_change": 18.5,
+    "p95_abs_change": 40.0
+   },
+   "ggh-yellow": {
+    "points": 556,
+    "old_mean": 12.7,
+    "new_mean": 9.3,
+    "old_p95": 36.4,
+    "new_p95": 32.5,
+    "mean_change": -3.5,
+    "mean_abs_change": 3.5,
+    "p95_abs_change": 4.7
+   },
+   "ggh-orange": {
+    "points": 462,
+    "old_mean": 13.6,
+    "new_mean": 10.2,
+    "old_p95": 36.9,
+    "new_p95": 32.6,
+    "mean_change": -3.4,
+    "mean_abs_change": 3.4,
+    "p95_abs_change": 4.6
+   },
+   "ggh-green": {
+    "points": 300,
+    "old_mean": 13.1,
+    "new_mean": 9.4,
+    "old_p95": 32.5,
+    "new_p95": 28.4,
+    "mean_change": -3.8,
+    "mean_abs_change": 3.8,
+    "p95_abs_change": 4.6
+   },
+   "ggh-red": {
+    "points": 296,
+    "old_mean": 10.6,
+    "new_mean": 6.7,
+    "old_p95": 25.2,
+    "new_p95": 20.3,
+    "mean_change": -3.9,
+    "mean_abs_change": 3.9,
+    "p95_abs_change": 4.9
+   },
+   "ggh-purple": {
+    "points": 338,
+    "old_mean": 9.9,
+    "new_mean": 6.2,
+    "old_p95": 24.4,
+    "new_p95": 19.6,
+    "mean_change": -3.7,
+    "mean_abs_change": 3.7,
+    "p95_abs_change": 4.9
+   }
+  },
+  "dawn_frac_points_changed_gt5": 0.614
+ },
+ {
+  "night": "2026-10-01",
+  "kind": "fog",
+  "mean_dir": 258.5,
+  "mean_wind_ms": 2.59,
+  "approx_old": false,
+  "approx_new": false,
+  "dirs_used": [
+   180.0,
+   202.5,
+   225.0,
+   247.5,
+   270.0,
+   292.5,
+   315.0,
+   337.5,
+   360.0
+  ],
+  "dawn_mean_old_all": 79.11,
+  "dawn_mean_new_all": 83.33,
+  "dawn_mean_old_potrero": 84.75,
+  "dawn_mean_new_potrero": 91.07,
+  "dawn_abs_diff_mean": 6.88,
+  "dawn_abs_diff_p95": 26.12,
+  "dawn_abs_diff_max": 51.73,
+  "night_peak_W_old": 81.97,
+  "night_peak_W_new": 85.57,
+  "zones": {
+   "potrero": {
+    "points": 14116,
+    "old_mean": 84.7,
+    "new_mean": 91.1,
+    "old_p95": 100.0,
+    "new_p95": 100.0,
+    "mean_change": 6.3,
+    "mean_abs_change": 10.3,
+    "p95_abs_change": 29.2
+   },
+   "ggh": {
+    "points": 7094,
+    "old_mean": 67.9,
+    "new_mean": 67.9,
+    "old_p95": 99.5,
+    "new_p95": 99.8,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.2,
+    "p95_abs_change": 1.1
+   }
+  },
+  "routes": {
+   "potrero": {
+    "points": 176,
+    "old_mean": 98.3,
+    "new_mean": 94.3,
+    "old_p95": 100.0,
+    "new_p95": 100.0,
+    "mean_change": -4.1,
+    "mean_abs_change": 4.3,
+    "p95_abs_change": 21.0
+   },
+   "ggh-yellow": {
+    "points": 556,
+    "old_mean": 63.3,
+    "new_mean": 63.3,
+    "old_p95": 99.5,
+    "new_p95": 99.8,
+    "mean_change": -0.0,
+    "mean_abs_change": 0.2,
+    "p95_abs_change": 1.2
+   },
+   "ggh-orange": {
+    "points": 462,
+    "old_mean": 71.0,
+    "new_mean": 71.0,
+    "old_p95": 99.5,
+    "new_p95": 99.8,
+    "mean_change": -0.0,
+    "mean_abs_change": 0.2,
+    "p95_abs_change": 1.3
+   },
+   "ggh-green": {
+    "points": 300,
+    "old_mean": 77.7,
+    "new_mean": 77.7,
+    "old_p95": 99.5,
+    "new_p95": 99.9,
+    "mean_change": -0.0,
+    "mean_abs_change": 0.2,
+    "p95_abs_change": 1.2
+   },
+   "ggh-red": {
+    "points": 296,
+    "old_mean": 75.5,
+    "new_mean": 75.5,
+    "old_p95": 99.5,
+    "new_p95": 100.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.1,
+    "p95_abs_change": 0.5
+   },
+   "ggh-purple": {
+    "points": 338,
+    "old_mean": 72.5,
+    "new_mean": 72.6,
+    "old_p95": 99.5,
+    "new_p95": 100.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.1,
+    "p95_abs_change": 0.5
+   }
+  },
+  "dawn_frac_points_changed_gt5": 0.364
+ },
+ {
+  "night": "2026-09-30",
+  "kind": "fog",
+  "mean_dir": 257.5,
+  "mean_wind_ms": 2.77,
+  "approx_old": false,
+  "approx_new": false,
+  "dirs_used": [
+   180.0,
+   202.5,
+   225.0,
+   247.5,
+   270.0,
+   292.5,
+   315.0,
+   337.5,
+   360.0
+  ],
+  "dawn_mean_old_all": 58.2,
+  "dawn_mean_new_all": 59.17,
+  "dawn_mean_old_potrero": 64.3,
+  "dawn_mean_new_potrero": 65.9,
+  "dawn_abs_diff_mean": 7.11,
+  "dawn_abs_diff_p95": 18.59,
+  "dawn_abs_diff_max": 27.36,
+  "night_peak_W_old": 63.06,
+  "night_peak_W_new": 63.8,
+  "zones": {
+   "potrero": {
+    "points": 14116,
+    "old_mean": 64.3,
+    "new_mean": 65.9,
+    "old_p95": 95.0,
+    "new_p95": 90.9,
+    "mean_change": 1.6,
+    "mean_abs_change": 10.5,
+    "p95_abs_change": 20.4
+   },
+   "ggh": {
+    "points": 7094,
+    "old_mean": 46.1,
+    "new_mean": 45.8,
+    "old_p95": 78.0,
+    "new_p95": 76.4,
+    "mean_change": -0.3,
+    "mean_abs_change": 0.3,
+    "p95_abs_change": 1.9
+   }
+  },
+  "routes": {
+   "potrero": {
+    "points": 176,
+    "old_mean": 80.0,
+    "new_mean": 71.6,
+    "old_p95": 100.0,
+    "new_p95": 94.9,
+    "mean_change": -8.4,
+    "mean_abs_change": 8.6,
+    "p95_abs_change": 16.9
+   },
+   "ggh-yellow": {
+    "points": 556,
+    "old_mean": 42.8,
+    "new_mean": 42.5,
+    "old_p95": 79.3,
+    "new_p95": 77.6,
+    "mean_change": -0.3,
+    "mean_abs_change": 0.3,
+    "p95_abs_change": 1.8
+   },
+   "ggh-orange": {
+    "points": 462,
+    "old_mean": 48.9,
+    "new_mean": 48.5,
+    "old_p95": 79.6,
+    "new_p95": 78.1,
+    "mean_change": -0.4,
+    "mean_abs_change": 0.4,
+    "p95_abs_change": 1.9
+   },
+   "ggh-green": {
+    "points": 300,
+    "old_mean": 53.7,
+    "new_mean": 53.3,
+    "old_p95": 75.0,
+    "new_p95": 74.1,
+    "mean_change": -0.3,
+    "mean_abs_change": 0.3,
+    "p95_abs_change": 1.7
+   },
+   "ggh-red": {
+    "points": 296,
+    "old_mean": 51.2,
+    "new_mean": 51.0,
+    "old_p95": 70.6,
+    "new_p95": 70.2,
+    "mean_change": -0.2,
+    "mean_abs_change": 0.2,
+    "p95_abs_change": 0.9
+   },
+   "ggh-purple": {
+    "points": 338,
+    "old_mean": 48.7,
+    "new_mean": 48.5,
+    "old_p95": 67.5,
+    "new_p95": 67.2,
+    "mean_change": -0.2,
+    "mean_abs_change": 0.2,
+    "p95_abs_change": 0.9
+   }
+  },
+  "dawn_frac_points_changed_gt5": 0.517
+ },
+ {
+  "night": "2026-09-24",
+  "kind": "fog",
+  "mean_dir": 263.9,
+  "mean_wind_ms": 3.81,
+  "approx_old": false,
+  "approx_new": false,
+  "dirs_used": [
+   180.0,
+   202.5,
+   225.0,
+   247.5,
+   270.0,
+   292.5,
+   315.0,
+   337.5,
+   360.0
+  ],
+  "dawn_mean_old_all": 27.4,
+  "dawn_mean_new_all": 26.56,
+  "dawn_mean_old_potrero": 21.68,
+  "dawn_mean_new_potrero": 21.01,
+  "dawn_abs_diff_mean": 1.88,
+  "dawn_abs_diff_p95": 4.86,
+  "dawn_abs_diff_max": 8.5,
+  "night_peak_W_old": 31.68,
+  "night_peak_W_new": 30.81,
+  "zones": {
+   "potrero": {
+    "points": 14116,
+    "old_mean": 21.7,
+    "new_mean": 21.0,
+    "old_p95": 35.4,
+    "new_p95": 33.2,
+    "mean_change": -0.7,
+    "mean_abs_change": 2.2,
+    "p95_abs_change": 5.5
+   },
+   "ggh": {
+    "points": 7094,
+    "old_mean": 38.8,
+    "new_mean": 37.6,
+    "old_p95": 48.3,
+    "new_p95": 47.2,
+    "mean_change": -1.1,
+    "mean_abs_change": 1.1,
+    "p95_abs_change": 1.5
+   }
+  },
+  "routes": {
+   "potrero": {
+    "points": 176,
+    "old_mean": 30.1,
+    "new_mean": 27.4,
+    "old_p95": 38.8,
+    "new_p95": 36.3,
+    "mean_change": -2.7,
+    "mean_abs_change": 2.7,
+    "p95_abs_change": 5.3
+   },
+   "ggh-yellow": {
+    "points": 556,
+    "old_mean": 37.7,
+    "new_mean": 36.5,
+    "old_p95": 47.0,
+    "new_p95": 45.6,
+    "mean_change": -1.3,
+    "mean_abs_change": 1.3,
+    "p95_abs_change": 1.5
+   },
+   "ggh-orange": {
+    "points": 462,
+    "old_mean": 38.6,
+    "new_mean": 37.4,
+    "old_p95": 47.1,
+    "new_p95": 45.8,
+    "mean_change": -1.2,
+    "mean_abs_change": 1.2,
+    "p95_abs_change": 1.5
+   },
+   "ggh-green": {
+    "points": 300,
+    "old_mean": 40.6,
+    "new_mean": 39.4,
+    "old_p95": 47.7,
+    "new_p95": 46.6,
+    "mean_change": -1.2,
+    "mean_abs_change": 1.2,
+    "p95_abs_change": 1.4
+   },
+   "ggh-red": {
+    "points": 296,
+    "old_mean": 40.2,
+    "new_mean": 39.0,
+    "old_p95": 47.3,
+    "new_p95": 46.4,
+    "mean_change": -1.2,
+    "mean_abs_change": 1.2,
+    "p95_abs_change": 1.4
+   },
+   "ggh-purple": {
+    "points": 338,
+    "old_mean": 39.5,
+    "new_mean": 38.4,
+    "old_p95": 46.0,
+    "new_p95": 44.9,
+    "mean_change": -1.1,
+    "mean_abs_change": 1.1,
+    "p95_abs_change": 1.4
+   }
+  },
+  "dawn_frac_points_changed_gt5": 0.044
+ },
+ {
+  "night": "2026-09-22",
+  "kind": "fog",
+  "mean_dir": 240.5,
+  "mean_wind_ms": 1.98,
+  "approx_old": true,
+  "approx_new": false,
+  "dirs_used": [
+   180.0,
+   202.5,
+   225.0,
+   247.5,
+   270.0,
+   292.5,
+   315.0,
+   337.5,
+   360.0
+  ],
+  "dawn_mean_old_all": 22.22,
+  "dawn_mean_new_all": 29.04,
+  "dawn_mean_old_potrero": 19.72,
+  "dawn_mean_new_potrero": 30.33,
+  "dawn_abs_diff_mean": 12.16,
+  "dawn_abs_diff_p95": 31.76,
+  "dawn_abs_diff_max": 46.43,
+  "night_peak_W_old": 25.78,
+  "night_peak_W_new": 31.93,
+  "zones": {
+   "potrero": {
+    "points": 14116,
+    "old_mean": 19.7,
+    "new_mean": 30.3,
+    "old_p95": 44.9,
+    "new_p95": 41.3,
+    "mean_change": 10.6,
+    "mean_abs_change": 17.8,
+    "p95_abs_change": 33.5
+   },
+   "ggh": {
+    "points": 7094,
+    "old_mean": 27.2,
+    "new_mean": 26.5,
+    "old_p95": 45.7,
+    "new_p95": 42.6,
+    "mean_change": -0.7,
+    "mean_abs_change": 1.0,
+    "p95_abs_change": 5.3
+   }
+  },
+  "routes": {
+   "potrero": {
+    "points": 176,
+    "old_mean": 36.7,
+    "new_mean": 31.2,
+    "old_p95": 46.5,
+    "new_p95": 39.8,
+    "mean_change": -5.5,
+    "mean_abs_change": 7.2,
+    "p95_abs_change": 15.7
+   },
+   "ggh-yellow": {
+    "points": 556,
+    "old_mean": 26.2,
+    "new_mean": 25.4,
+    "old_p95": 44.5,
+    "new_p95": 40.5,
+    "mean_change": -0.9,
+    "mean_abs_change": 1.1,
+    "p95_abs_change": 5.0
+   },
+   "ggh-orange": {
+    "points": 462,
+    "old_mean": 27.0,
+    "new_mean": 25.9,
+    "old_p95": 44.6,
+    "new_p95": 40.7,
+    "mean_change": -1.1,
+    "mean_abs_change": 1.2,
+    "p95_abs_change": 5.2
+   },
+   "ggh-green": {
+    "points": 300,
+    "old_mean": 27.3,
+    "new_mean": 26.7,
+    "old_p95": 43.5,
+    "new_p95": 40.1,
+    "mean_change": -0.7,
+    "mean_abs_change": 0.8,
+    "p95_abs_change": 4.4
+   },
+   "ggh-red": {
+    "points": 296,
+    "old_mean": 26.3,
+    "new_mean": 26.3,
+    "old_p95": 41.6,
+    "new_p95": 40.9,
+    "mean_change": -0.0,
+    "mean_abs_change": 0.5,
+    "p95_abs_change": 1.1
+   },
+   "ggh-purple": {
+    "points": 338,
+    "old_mean": 26.0,
+    "new_mean": 25.9,
+    "old_p95": 41.4,
+    "new_p95": 40.6,
+    "mean_change": -0.1,
+    "mean_abs_change": 0.7,
+    "p95_abs_change": 1.9
+   }
+  },
+  "dawn_frac_points_changed_gt5": 0.59
+ },
+ {
+  "night": "2026-09-20",
+  "kind": "fog",
+  "mean_dir": 237.9,
+  "mean_wind_ms": 2.27,
+  "approx_old": true,
+  "approx_new": false,
+  "dirs_used": [
+   180.0,
+   202.5,
+   225.0,
+   247.5,
+   270.0,
+   292.5,
+   315.0,
+   337.5,
+   360.0
+  ],
+  "dawn_mean_old_all": 49.0,
+  "dawn_mean_new_all": 52.99,
+  "dawn_mean_old_potrero": 30.15,
+  "dawn_mean_new_potrero": 37.14,
+  "dawn_abs_diff_mean": 22.16,
+  "dawn_abs_diff_p95": 57.69,
+  "dawn_abs_diff_max": 86.69,
+  "night_peak_W_old": 50.78,
+  "night_peak_W_new": 54.87,
+  "zones": {
+   "potrero": {
+    "points": 14116,
+    "old_mean": 30.1,
+    "new_mean": 37.1,
+    "old_p95": 76.8,
+    "new_p95": 68.3,
+    "mean_change": 7.0,
+    "mean_abs_change": 32.3,
+    "p95_abs_change": 62.4
+   },
+   "ggh": {
+    "points": 7094,
+    "old_mean": 86.5,
+    "new_mean": 84.5,
+    "old_p95": 99.8,
+    "new_p95": 99.8,
+    "mean_change": -2.0,
+    "mean_abs_change": 2.0,
+    "p95_abs_change": 2.8
+   }
+  },
+  "routes": {
+   "potrero": {
+    "points": 176,
+    "old_mean": 58.6,
+    "new_mean": 38.3,
+    "old_p95": 81.1,
+    "new_p95": 63.2,
+    "mean_change": -20.3,
+    "mean_abs_change": 22.8,
+    "p95_abs_change": 45.3
+   },
+   "ggh-yellow": {
+    "points": 556,
+    "old_mean": 85.8,
+    "new_mean": 83.8,
+    "old_p95": 100.0,
+    "new_p95": 99.9,
+    "mean_change": -2.1,
+    "mean_abs_change": 2.1,
+    "p95_abs_change": 2.8
+   },
+   "ggh-orange": {
+    "points": 462,
+    "old_mean": 84.0,
+    "new_mean": 81.9,
+    "old_p95": 99.8,
+    "new_p95": 99.9,
+    "mean_change": -2.1,
+    "mean_abs_change": 2.1,
+    "p95_abs_change": 2.7
+   },
+   "ggh-green": {
+    "points": 300,
+    "old_mean": 81.3,
+    "new_mean": 79.2,
+    "old_p95": 98.7,
+    "new_p95": 96.2,
+    "mean_change": -2.2,
+    "mean_abs_change": 2.2,
+    "p95_abs_change": 2.6
+   },
+   "ggh-red": {
+    "points": 296,
+    "old_mean": 82.5,
+    "new_mean": 80.4,
+    "old_p95": 99.6,
+    "new_p95": 99.8,
+    "mean_change": -2.1,
+    "mean_abs_change": 2.1,
+    "p95_abs_change": 2.5
+   },
+   "ggh-purple": {
+    "points": 338,
+    "old_mean": 83.9,
+    "new_mean": 81.8,
+    "old_p95": 99.6,
+    "new_p95": 99.7,
+    "mean_change": -2.1,
+    "mean_abs_change": 2.1,
+    "p95_abs_change": 2.8
+   }
+  },
+  "dawn_frac_points_changed_gt5": 0.626
+ },
+ {
+  "night": "2026-10-16",
+  "kind": "dry",
+  "mean_dir": 303.7,
+  "mean_wind_ms": 1.75,
+  "approx_old": true,
+  "approx_new": false,
+  "dirs_used": [
+   180.0,
+   202.5,
+   225.0,
+   247.5,
+   270.0,
+   292.5,
+   315.0,
+   337.5,
+   360.0
+  ],
+  "dawn_mean_old_all": 0.0,
+  "dawn_mean_new_all": 0.0,
+  "dawn_mean_old_potrero": 0.0,
+  "dawn_mean_new_potrero": 0.0,
+  "dawn_abs_diff_mean": 0.0,
+  "dawn_abs_diff_p95": 0.0,
+  "dawn_abs_diff_max": 0.0,
+  "night_peak_W_old": 0.0,
+  "night_peak_W_new": 0.0,
+  "zones": {
+   "potrero": {
+    "points": 14116,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh": {
+    "points": 7094,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   }
+  },
+  "routes": {
+   "potrero": {
+    "points": 176,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh-yellow": {
+    "points": 556,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh-orange": {
+    "points": 462,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh-green": {
+    "points": 300,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh-red": {
+    "points": 296,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh-purple": {
+    "points": 338,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   }
+  },
+  "dawn_frac_points_changed_gt5": 0.0
+ },
+ {
+  "night": "2026-10-03",
+  "kind": "dry",
+  "mean_dir": 259.8,
+  "mean_wind_ms": 1.73,
+  "approx_old": false,
+  "approx_new": false,
+  "dirs_used": [
+   180.0,
+   202.5,
+   225.0,
+   247.5,
+   270.0,
+   292.5,
+   315.0,
+   337.5,
+   360.0
+  ],
+  "dawn_mean_old_all": 0.0,
+  "dawn_mean_new_all": 0.0,
+  "dawn_mean_old_potrero": 0.0,
+  "dawn_mean_new_potrero": 0.0,
+  "dawn_abs_diff_mean": 0.0,
+  "dawn_abs_diff_p95": 0.0,
+  "dawn_abs_diff_max": 0.0,
+  "night_peak_W_old": 0.0,
+  "night_peak_W_new": 0.0,
+  "zones": {
+   "potrero": {
+    "points": 14116,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh": {
+    "points": 7094,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   }
+  },
+  "routes": {
+   "potrero": {
+    "points": 176,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh-yellow": {
+    "points": 556,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh-orange": {
+    "points": 462,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh-green": {
+    "points": 300,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh-red": {
+    "points": 296,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   },
+   "ggh-purple": {
+    "points": 338,
+    "old_mean": 0.0,
+    "new_mean": 0.0,
+    "old_p95": 0.0,
+    "new_p95": 0.0,
+    "mean_change": 0.0,
+    "mean_abs_change": 0.0,
+    "p95_abs_change": 0.0
+   }
+  },
+  "dawn_frac_points_changed_gt5": 0.0
+ }
+]
