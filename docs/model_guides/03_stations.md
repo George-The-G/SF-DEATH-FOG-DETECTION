@@ -14,13 +14,32 @@ Write `reports/live_check/stations_<date>.md`: id, name, lat, lon, elevation, va
 - `live/config.py`: `STATIONS = {id: dict(kind, name, lat, lon, elev_m, vars)}`.
 - `live/fetch.py`: `ndbc(id)`; `coops()` and `nws()` take a list. One station failing is non-fatal and listed in `status.json`.
 
-## Step 3: placement in the model
-For every station compute once: grid `x, y` (EPSG:32610), whether it is inside the 20 m domain, terrain height there, and the nearest street point.
-- Model value at the station = lattice value moved to the station height (-6.5 K/km for temperature and dew point) and, for wind inside the domain, multiplied by the wind ratio of the nearest street point's cell at roof level.
-- Hourly difference per station (observation minus model) with the existing 3-hour rolling median.
-- Quality control: drop a station-hour that differs from the median of the others by more than 5 K, or a wind ratio outside 0.33-3.
-- Correction field on the lattice: `corr(p) = sum_i w_i * off_i / (sum_i w_i + W0)`, `w_i = exp(-(d_i / L)^2)`, `L = 6 km`, `W0 = 0.3`. Wind: the same on log speed ratio and on direction offset. Fade after the last observation with the existing e-folding times.
-- Controlled by `C.NUDGE_SPATIAL` (default False until the user approves). With today's stations and a very large `L` it must reproduce the current citywide correction.
+## Step 3: stations as anchors through the simulation (user decisions 2026-11-12)
+Principle: a station is a reality anchor at its own position and height. It corrects the inputs of the physics (the macro wind that drives the simulated fields, the vertical profile), not a region of the map directly. Decisions: use the IEM mirror (optional source, the build must run without it); use hill stations as data points at their real height, wind included; pier and bridge winds are full anchors at their own location.
+
+### 3a. One-off extraction (offline, on the PC with the wind library)
+For every accepted wind station inside the 20 m grid: the simulated wind vector (u, v as a ratio of inflow speed) at the station's x, y and sensor height above sea level (ground or deck elevation + sensor height; 10 m when unknown; Golden Gate Bridge deck about 67 m), for each of the nine library directions (180 to 360 by 22.5). Save as `station_wind.npz` (`ids`, `dirs`, `uv[D, S, 2]`, `z_used`), published as an extra release asset like `live_extra.npz`. `python -m microclimate.live stationwind`.
+Stations outside the grid (airports, Oakland and Marin hills, buoys) have no simulated vector: they anchor the forecast lattice wind at their own location and level instead (hill stations: the wind aloft and the inversion check in guide 08), and never scale street wind.
+
+### 3b. Regions
+`C.WIND_REGIONS`: 3 or 4 regions with a centre and a smooth weight (Gaussian, about 3 km, normalised so the weights sum to 1 everywhere): Golden Gate gap and north-west, west side, east waterfront and downtown, south. With fewer than two reporting anchors in a region, that region uses the citywide fit.
+
+### 3c. Hourly fit of the macro wind
+Unknowns per region r: inflow speed `U_r` and direction `th_r`. Predicted wind at in-grid station i: `sum_r w_r(x_i) * U_r * uv_blend_i(th_r)`, where `uv_blend_i(th)` is the linear blend of the two neighbouring library directions (as `dirlib.weights`). Minimise the squared vector error over stations plus a prior term pulling `(U_r, th_r)` to the forecast wind for that region (weight so that one good station counts about as much as the forecast; first guess), plus a smoothness term between neighbouring regions. Directions outside 180-360 cannot be represented: clamp, and flag the hour `offshore: library cannot represent`.
+Quality control before the fit: drop a station-hour whose vector differs from the median of the others by more than 8 m/s.
+Time: 3-hour rolling median of the fitted values; after the last observation fade to the forecast with `C.WIND_E_FOLD_H`.
+
+### 3d. The field the model uses at this step
+Per street point: direction weights `Wt[i, p] = sum_r w_r(x_p) * dirweights(th_r)` (so the tracer blend and wind ratio vary across the city) and speed `U(p) = sum_r w_r(x_p) * U_r`. `wetness.simulate` accepts per-point direction weights (`Wt` of shape [D, N] per step from `forcing_fn`, key `dir_w`) in place of the single citywide direction. Blending is smooth by construction; never switch fields at a hard edge.
+Known approximation (state it in the hand-back and the About text): each library field is a complete flow for one uniform wind, so a regional blend is not exactly mass-conserving and the fog exposure, which depends on the whole upwind path, is approximate near region boundaries. A blend cannot create patterns that are in none of the nine fields (east wind, sea-breeze front, calm pool).
+
+### 3e. Residuals
+For each station and hour keep observed minus fitted (vector). Do not spread residuals over the map. Write them to `stations.json` and the archive: they show where the simulated fields are wrong.
+
+### 3f. Temperature and humidity
+No simulation layer exists for these yet, so anchors act through the vertical physics: compare each station with the lattice value moved to the station height (profile from guide 08 when on, else -6.5 K/km); fit one sea-level offset and one lapse-rate adjustment per hour from all stations (hill stations give the lapse rate and the inversion), and apply them through each street's own height. A distance-weighted horizontal correction (`L = 6 km`, pulled to zero away from stations) is the fallback only when fewer than three stations report.
+
+Controlled by `C.NUDGE_ANCHORS` (default False until the user approves). With it False the build is identical to today.
 
 ## Step 4: data for the page
 `live/stations.json` (small, loaded on demand): for each station id, name, kind, lat, lon, x, y, z, and for each hour of the observed part: observed T, dew point, wind speed and direction, visibility, ceiling, sea temperature where present; model value before correction; model value after correction.
@@ -30,12 +49,14 @@ Also per station a 24-hour summary: mean absolute error before and after correct
 Markers on the 3-D view at the station positions; tap for observed versus model at the selected hour and the 24-hour error; a "Stations" layer switch in settings. Do not build until the mockup is confirmed twice.
 
 ## Step 6: check
-Extend `python -m microclimate.live check`: leave-one-station-out error over `--since 30d` for raw model, citywide correction, spatial correction. Table per station and variable.
+Extend `python -m microclimate.live check`: leave-one-station-out error over `--since 30d` (vector wind error, temperature, dew point) for raw model, today's citywide correction, and the anchor fit. Table per station and variable.
 
 ## Tests
-- One station: correction equals its offset at the station and decays with distance; far away it tends to zero.
-- Outlier dropped. Large `L` equals the citywide mean.
+- Synthetic truth: stations generated from a known inflow (one region) are fitted back to within 0.3 m/s and 5 degrees; with two regions given different inflows, each region recovers its own.
+- No stations: the fit returns the forecast. Outlier dropped. Offshore hour flagged.
+- Per-point direction weights sum to 1; with one region they equal today's citywide weights and the output is identical.
+- Temperature: stations generated from a known offset and lapse rate are recovered.
 - `stations.json` schema and that model-after equals observation within the rolling-median tolerance at a lone station.
 
 ## Done when
-The leave-one-out table is in the hand-back and `stations.json` is produced by the scheduled build. `NUDGE_SPATIAL` stays off until the user says otherwise.
+The leave-one-out table is in the hand-back and `stations.json` is produced by the scheduled build. `NUDGE_ANCHORS` stays off until the user says otherwise.
