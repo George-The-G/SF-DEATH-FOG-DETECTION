@@ -3,3 +3,6 @@ state/
 site/
 __pycache__/
 *.pyc
+.venv/
+*.tar.gz
+bench/
