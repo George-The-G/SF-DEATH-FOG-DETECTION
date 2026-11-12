@@ -1,0 +1,149 @@
+{
+ "schema": 2,
+ "live": true,
+ "id": "live",
+ "label": "Live (beta): tonight + 2 days (updated Thu 10:52 PT)",
+ "kind": "live",
+ "step_min": 60,
+ "n_frames": 79,
+ "start_iso": "2026-11-11T12:00:00-08:00",
+ "end_iso": "2026-11-14T18:00:00-08:00",
+ "start_18pt_iso": "2026-11-11T18:00:00-08:00",
+ "frame_files": [
+  "day0.u8",
+  "day1.u8",
+  "day2.u8"
+ ],
+ "frame_ranges": [
+  [
+   0,
+   27
+  ],
+  [
+   27,
+   53
+  ],
+  [
+   53,
+   79
+  ]
+ ],
+ "frame_layout": "uint8 [frames, ribbons_n + ribbons_city_n], frame-major, 255 = missing; columns = data/ribbons.bin samples then ribbons_city.bin samples",
+ "fog_files": [
+  "fog0.png",
+  "fog1.png",
+  "fog2.png"
+ ],
+ "fog": "fog0.png",
+ "fog_grid": {
+  "row0": "north",
+  "w": 214,
+  "h": 203,
+  "cols": 8,
+  "rows": [
+   4,
+   4,
+   4
+  ],
+  "frame_min": 60,
+  "x0": 540100,
+  "y0": 4171500,
+  "cell_m": 80,
+  "tiles_per_file": [
+   27,
+   26,
+   26
+  ]
+ },
+ "weather": "weather.json",
+ "ribbons": "../data/ribbons.bin",
+ "ribbons_n": 19444,
+ "ribbons_city": "ribbons_city.bin",
+ "ribbons_city_meta": "ribbons_city_meta.json",
+ "ribbons_city_n": 72985,
+ "streets_r": "day0.u8",
+ "observed_until_iso": "2026-11-12T13:00:00-08:00",
+ "observed_until_frame": 25,
+ "data_as_of": "2026-11-12T18:52:38.628014+00:00",
+ "status": "status.json",
+ "approx_direction": false,
+ "model": "wetness proxy, hand-set constants (not calibrated): an index, not a measurement",
+ "constants": {
+  "DT_MAX": 4.0,
+  "WIND_CALM": 6.0,
+  "GAP_FOG": 4.0,
+  "CLOUD_FOG": 40.0,
+  "TRACER_REF": 0.03,
+  "FOG_EXP": 0.5,
+  "K_DEW": 8.0,
+  "K_FOG": 20.0,
+  "K_RAIN": 60.0,
+  "RAIN_SAT": 1.0,
+  "K_EVAP_BASE": 5.0,
+  "K_EVAP_WIND": 2.0,
+  "K_SUN": 80.0,
+  "K_DIFF": 10.0,
+  "LAG_MAX_H": 3.0,
+  "WIND_LAG_MIN": 1.5,
+  "X_WEST": 540100.0,
+  "USE_REFINED": true,
+  "REFINE_NORM": 0.91,
+  "REFINE_MIN": 0.25,
+  "BAND_OFFSET_M": 30.0,
+  "TRACER_Z_OFFSET_M": 10.0,
+  "FOG_TOP_RAMP_M": 40.0,
+  "FOG_TOP_MIN_M": 50.0,
+  "FOG_TOP_MAX_M": 900.0,
+  "FOG_TOP_FALLBACK_M": 300.0,
+  "FOG_TOP_ABOVE_LAST_M": 100.0,
+  "RH_CLOUD": 80.0,
+  "INV_DT": 0.0,
+  "ELEV_WIND_GAIN": 0.1,
+  "ELEV_WIND_REF_M": 30.0
+ },
+ "info": {
+  "mean_flow_dir": 236.5,
+  "block_flow_dirs": [
+   81.2,
+   90.5,
+   314.0,
+   265.2,
+   282.8,
+   236.4,
+   206.3,
+   220.7,
+   241.4,
+   223.7,
+   200.4,
+   201.3,
+   202.1,
+   204.3,
+   193.1,
+   211.0,
+   250.7,
+   276.8,
+   283.2,
+   275.6,
+   283.1,
+   281.4,
+   126.8,
+   114.5,
+   225.3,
+   229.3,
+   221.2
+  ],
+  "dirs_used": [
+   180.0,
+   202.5,
+   225.0,
+   247.5,
+   270.0,
+   292.5,
+   315.0,
+   337.5,
+   360.0
+  ],
+  "points": 285809,
+  "w_mean_last_frame": 28.18
+ }
+}
