@@ -23,8 +23,17 @@ def main(argv):
         from . import wind
         order = [270, 247.5, 292.5, 225, 315, 202.5, 337.5, 360]
         wind.build(cfg, DATA / "grids", DATA / "library", directions=order)
+    elif cmd == "street":
+        from . import street
+        print(json.dumps(street.build(cfg, DATA / "grids", DATA / "library"), indent=1))
+    elif cmd == "sun":
+        from . import sun
+        if "--check" in argv:
+            sun.check(cfg, DATA / "raw", DATA / "grids")
+        else:
+            print(json.dumps(sun.build(cfg, DATA / "raw", DATA / "grids"), indent=1))
     else:
-        print("commands: geometry, zone, meshes, wind")
+        print("commands: geometry, zone, meshes, wind, street, sun [--check]")
 
 
 if __name__ == "__main__":
