@@ -138,7 +138,7 @@ def write(cfg, data_dir, out_dir, until=None):
         entries.append({
             "id": d, "label": f"{d0:%a} {d0.day} {d0:%b}, {nt['kind']} night", "kind": nt["kind"], "step_min": step_min,
             "n_frames": n, "start_iso": local[0].isoformat(), "streets": f"{d}/streets.u8", "fog": f"{d}/fog.png",
-            "fog_grid": {"w": FOG_W, "h": FOG_H, "cols": FOG_COLS, "rows": rows, "frame_min": frame_min, "x0": 540100, "y0": 4171500,
+            "fog_grid": {"row0": "north", "w": FOG_W, "h": FOG_H, "cols": FOG_COLS, "rows": rows, "frame_min": frame_min, "x0": 540100, "y0": 4171500,
                          "cell_m": FOG_CELL},
             "weather": f"{d}/weather.json", "approx_direction": meta["approx_direction"],
             "info": {k: round(v, 2) if isinstance(v, float) else v for k, v in meta.items()},
