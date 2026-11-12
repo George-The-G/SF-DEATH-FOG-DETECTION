@@ -1,5 +1,5 @@
 """Publish a finished live build, or record why it was not.
-usage: finalize.py <new dir> <out dir> <exit code> <message>
+usage: finalize.py <new dir> <out dir> <exit code> [message]
 Success (exit 0 and status.json ok): the new files replace the old ones, status.json last, with scheduled: true so the page shows
 the real data age and the delayed banner. Failure: the previous output stays and its status.json gains last_run_failed + the reason."""
 import datetime as dt
@@ -9,7 +9,8 @@ import shutil
 import sys
 from pathlib import Path
 
-new, out, rc, msg = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3]), (sys.argv[4] if len(sys.argv) > 4 else " \)
+new, out, rc = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
+msg = sys.argv[4] if len(sys.argv) > 4 else ""
 out.mkdir(parents=True, exist_ok=True)
 now = dt.datetime.now(dt.timezone.utc).isoformat()
 
