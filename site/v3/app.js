@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createFog } from './fog.js';
+import { createFogVol } from './fog2.js'; // beta volumetric fog, used only with ?beta=1&fog=vol (falls back to fog.js sheets by itself)
 import { createRibbons } from './ribbons.js';
 import { createSkater } from './skater.js';
 import { ICON_SKATE_PLAY, ICON_FOG_PLAY, ICON_FOG_PAUSE } from './icons.js';
@@ -95,6 +96,13 @@ moon.position.set(-6000, 9000, 5000); scene.add(moon);
 const amb = new THREE.AmbientLight(0x202840, 0.8); scene.add(amb);
 const skater = createSkater({ THREE, reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches }); // shown only during the route flyover
 scene.add(skater.group);
+/* Beta sky and perf HUD (sky.js, loaded only with ?beta=1&sky=1 and/or &hud=1): live sun, moon, stars for the time on screen. The normal page never fetches it. */
+let SKY = null;
+if (BETA && (QP.get('sky') === '1' || QP.get('hud') === '1')) {
+  import('./sky.js').then((m) => m.createSky({ THREE, scene, camera, renderer, starsUrl: 'stars.bin', sky: QP.get('sky') === '1', hud: QP.get('hud') === '1' }))
+    .then((s) => { SKY = s; if (FOGV) s.setExtra(() => fog.info()); if (night) skyTime(curF); }).catch((e) => console.warn('sky unavailable', e));
+}
+function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) fog.setLight(SKY.light); } }
 
 let meta = null, pts = null, terrainH = null, T = null;
 const CITY = { target: new THREE.Vector3(8300, 0, -8000), pos: new THREE.Vector3(3900, 8800, 7600) };
@@ -527,7 +535,8 @@ function applyUrlRoute() { // ?route=<id> selects and flies to it, &fly=1 starts
 }
 
 /* ------------------------------------------------------------------ fog layer (see fog.js) */
-const fog = createFog({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast });
+const FOGV = BETA && QP.get('fog') === 'vol';
+const fog = (FOGV ? createFogVol : createFog)({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast });
 
 /* ------------------------------------------------------------------ replay data */
 let index = null, base = '', night = null, streets = null, weather = null, fogGrid = null;
@@ -636,6 +645,7 @@ function applyTime(force) {
   if (document.activeElement !== $('slider') || force) $('slider').value = f;
   const key = Math.round(f * 20);
   curF = f;
+  skyTime(f);
   if (BX) BX.frame(f);
   if (useRib) { rib.setFrame(f); if (rib2) rib2.setFrame(f); } // three uniform writes, nothing else
   if (force || key !== lastFrameKey) {
@@ -652,6 +662,7 @@ function applyTime(force) {
       $('wx-temp').textContent = gF(weather.temp_c) + ' °F'; $('wx-dew').textContent = gF(weather.dewpoint_c) + ' °F';
       $('wx-wind').textContent = (weather.wind_ms && weather.wind_ms[i] != null ? (weather.wind_ms[i] * 2.23694).toFixed(0) : '--') + ' mph ' + (weather.wind_dir ? compass(weather.wind_dir[i]) : '');
       $('wx-cloud').textContent = g(weather.cloud_low_pct, 0) + ' %';
+      if (FOGV) fog.setWeather({ top: weather.fog_top_m ? weather.fog_top_m[i] : null });
       const s = weather.sun_el ? weather.sun_el[i] : null; $('wx-sun').textContent = s == null ? '--' : (s > 0 ? 'up ' : 'down ') + minus(s.toFixed(0)) + '°';
       const t = $('wx-temp').textContent.replace(' ', ''), dp = $('wx-dew').textContent.replace(' °F', '°F'), wd = $('wx-wind').textContent.trim() + ($('wx-note').hidden ? '' : '*');
       if (LV && LV.el) liveWx(i);
@@ -798,7 +809,8 @@ function frame(ts) {
     if (vis) L.el.style.transform = `translate(-50%,-100%) translate(${clamp((v3.x * .5 + .5) * innerWidth, 70, innerWidth - 70)}px, ${(1 - (v3.y * .5 + .5)) * innerHeight}px)`;
   }
   if (BX) BX.render(ts);
-  renderer.render(scene, camera);
+  if (SKY) SKY.update(ts);
+  if (FOGV) fog.renderFrame(renderer, scene, camera); else renderer.render(scene, camera);
 }
 
 /* ------------------------------------------------------------------ live preview (?live=1), see PLAN_LIVE_DATA.md section 9
