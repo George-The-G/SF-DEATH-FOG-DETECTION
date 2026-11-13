@@ -36,7 +36,7 @@ class TestSettings(unittest.TestCase):
 
     def test_public_settings_are_unchanged_and_stage_1_is_the_beta(self):
         self.assertEqual((C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE), ((), False, False))
-        self.assertEqual(C.BETA, dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False, wind_east=True))     # stage 1 (2026-11-12) + east wind (guide 14)
+        self.assertEqual(C.BETA, dict(physics=("sun_clear",), nudge_anchors=True, carry_state=True, wind_east=True))     # stage 2 (carried state, 2026-11-13) + east wind (guide 14)
         self.assertEqual(wetness.check_physics(C.BETA["physics"]), frozenset({"sun_clear"}))
 
     def test_beta_settings_never_reach_the_public_build(self):
@@ -47,16 +47,16 @@ class TestSettings(unittest.TestCase):
 
     def test_public_settings_never_reach_the_beta_build(self):
         C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE = ("film",), True, True
-        self.assertEqual(build.settings(True), dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False, wind_east=True))
+        self.assertEqual(build.settings(True), dict(physics=("sun_clear",), nudge_anchors=True, carry_state=True, wind_east=True))
         C.BETA.update(nudge_anchors=False)
         self.assertFalse(build.settings(True)["nudge_anchors"])
         self.assertEqual(build.settings(True, physics=("film",))["physics"], ("film",))          # an explicit argument still wins (tests, command line)
 
     def test_label_says_what_the_preview_has(self):
-        self.assertEqual(build.beta_label(build.settings(True)), "clear-sky sun (GOES sunlight), station anchors, east wind (street wind only)")
+        self.assertEqual(build.beta_label(build.settings(True)), "clear-sky sun (GOES sunlight), station anchors, carried state, east wind (street wind only)")
         C.SUN_DSR_OLD, C.SUN_DSR = C.SUN_DSR, False
         try:
-            self.assertEqual(build.beta_label(build.settings(True)), "clear-sky sun, station anchors, east wind (street wind only)")
+            self.assertEqual(build.beta_label(build.settings(True)), "clear-sky sun, station anchors, carried state, east wind (street wind only)")
         finally:
             C.SUN_DSR = C.SUN_DSR_OLD
             del C.SUN_DSR_OLD
