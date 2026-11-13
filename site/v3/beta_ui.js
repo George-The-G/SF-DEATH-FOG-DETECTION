@@ -47,6 +47,7 @@ export async function init(ctx) {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
   syncColorUi();
   if (S.color === 'sun') loadSun().then(() => { colorMode(X.curF, true); });
+  if (S.color === 'ts') loadTs().then(() => { colorMode(X.curF, true); });
 }
 
 export function openSettings(id) {
@@ -76,9 +77,10 @@ function buildSettings() {
     const g = h(`<section class="bx-grp" id="bx-g-color"><div class="bx-gh">Colour and light<em id="bx-clnote"></em></div>
       <div class="bx-crow"><div class="seg bx-seg" id="bx-color" role="group" aria-label="Street colour">
         <button type="button" data-c="slick">${A.film ? 'Slippery' : 'Wet'}</button>
-        <button type="button" data-c="sun"${A.sun ? '' : ' disabled'}>${A.sun ? 'Sunshine' : 'Sunshine · not in this run'}</button></div>
+        <button type="button" data-c="sun"${A.sun ? '' : ' disabled'}>${A.sun ? 'Sunshine' : 'Sunshine · not in this run'}</button>
+        ${X.beta ? `<button type="button" data-c="ts"${A.tsurf ? '' : ' disabled title="Road temperature is not available in this run"'}>Road temp</button>` : ''}</div>
       </div>
-        <p class="bx-hint">On a touch screen, press and hold a street for its details. A short tap does nothing.</p>
+        <p class="bx-hint">On a touch screen, press and hold a street for its details. A short tap does nothing.${X.beta && !A.tsurf ? ' Road temperature is not available in this run.' : ''}</p>
       <div class="tgs bx-one"><label class="${A.sun ? '' : 'na'}"><input type="checkbox" id="bx-light"${A.sun ? ' checked' : ' disabled'}><span><i class="bx-tt"><b>Light the scene by the sun</b><small>${A.sun ? 'Day and night follow the selected hour' : 'No sun data in this run'}</small></i></span></label></div></section>`);
     parts.push(g);
   }
@@ -105,6 +107,7 @@ function buildSettings() {
     const b = e.target.closest('button'); if (!b || b.disabled) return;
     S.color = b.dataset.c; syncColorUi();
     if (S.color === 'sun') loadSun().then(() => { colorMode(X.curF, true); });
+    else if (S.color === 'ts') loadTs().then(() => { colorMode(X.curF, true); });
     else colorMode(X.curF, true);
   });
   const lt = $('bx-light'); if (lt) lt.addEventListener('change', () => { S.light = lt.checked; lightApply(X.curF, true); });
@@ -114,7 +117,8 @@ function buildSettings() {
 function syncColorUi() {
   const col = $('bx-color'); if (!col) return;
   [...col.children].forEach((b) => b.classList.toggle('on', b.dataset.c === S.color));
-  const n = $('bx-clnote'); if (n) n.textContent = S.color === 'sun' ? (sunErr ? 'could not load' : sunArr ? (modeOn ? 'W/m² on the street' : 'night: showing slick') : 'loading…') : '';
+  const n = $('bx-clnote'); if (n) n.textContent = S.color === 'sun' ? (sunErr ? 'could not load' : sunArr ? (modeOn ? 'W/m² on the street' : 'night: showing slick') : 'loading…')
+    : S.color === 'ts' ? (tsErr ? 'could not load' : tsArr ? tsNote() : 'loading…') : '';
 }
 
 /* beta tag at the start of the status line: opens About (its first section is the beta note) */
@@ -128,6 +132,8 @@ function buildTag() {
 
 /* ------------------------------------------------------------------ colour mode (slick | sunshine), legend, night fallback */
 let sunArr = null, sunP = null, sunErr = false, modeOn = false, ramp0 = null;
+let tsArr = null, tsP = null, tsErr = false, tsOn = false;   // road temperature (beta): same layout as the sun files, u8 = (degC + 10) * 4
+const TSRAMP = 'linear-gradient(90deg,#3b6fe0 0%,#5fb4e8 28%,#e8e6c8 52%,#f2a65a 76%,#e5533d 100%)';   // 40 to 80 F, as in ribbons.js tempramp
 const SUNRAMP = 'linear-gradient(90deg,#24304d 0%,#5b4f7e 22%,#b5674a 48%,#f0a23a 72%,#ffe08a 100%)';
 function elAt(f) {
   const a = A.sun ? X.idx.sun.sun_el : null; if (!a) return -90;
@@ -149,17 +155,42 @@ function loadSun() {
   syncColorUi();
   return sunP;
 }
+function loadTs() {
+  if (tsArr) return Promise.resolve(true);
+  if (tsP) return tsP;
+  const idx = X.idx, LV = X.LV;
+  tsP = (async () => {
+    if (!A.tsurf || !LV) throw new Error('no road temperature files in this run');
+    const nF = idx.n_frames, ST = LV.ST, all = new Uint8Array(nF * ST);
+    const bufs = await Promise.all(idx.tsurf.files.map((f) => X.getBuf(X.base + f + LV.V)));
+    let o = 0; for (const b of bufs) { all.set(new Uint8Array(b), o); o += b.byteLength; }
+    if (o !== nF * ST) throw new Error(`road temperature files have ${o} bytes, expected ${nF * ST}`);
+    X.rib.setAlt(all, nF, 0, ST, 'ts'); if (X.rib2) X.rib2.setAlt(all, nF, LV.S1, ST, 'ts');
+    tsArr = all; tsErr = false; syncColorUi(); return true;
+  })().catch((e) => { console.warn('road temperature data', e); tsErr = true; tsP = null; S.color = 'slick'; syncColorUi(); colorMode(X.curF, true); return false; });
+  syncColorUi();
+  return tsP;
+}
+function tsNote() { // warm-up note from status.json pavement {days, spin_up}
+  const p = X.status && X.status.pavement;
+  return p && p.spin_up ? `warming up: day ${Math.min((p.days | 0) + 1, 3)} of 3` : '°F, modelled';
+}
 function colorMode(f, force) {
+  const wantTs = S.color === 'ts' && !!tsArr;
   const want = S.color === 'sun' && !!sunArr && elAt(f) > 0;
-  if (!force && want === modeOn) return;
-  modeOn = want;
-  X.rib.setMode(want ? 1 : 0); if (X.rib2) X.rib2.setMode(want ? 1 : 0);
+  if (!force && want === modeOn && wantTs === tsOn) return;
+  modeOn = want; tsOn = wantTs;
+  const mode = wantTs ? 2 : want ? 1 : 0;
+  X.rib.setMode(mode); if (X.rib2) X.rib2.setMode(mode);
   legend(); syncColorUi();
 }
 function legend() {
   const rp = $('ramp'), lg = $('legend'), tk = lg.querySelector('.ticks'); if (!rp || !tk) return;
   if (ramp0 == null) ramp0 = rp.style.background;
-  if (modeOn) {
+  if (tsOn) {
+    rp.style.background = TSRAMP; tk.innerHTML = '<span>40°F</span><span>80°F+</span>';
+    lg.setAttribute('aria-label', 'Legend: modelled road temperature, 40 to 80 degrees Fahrenheit and above. Open settings');
+  } else if (modeOn) {
     rp.style.background = SUNRAMP; tk.innerHTML = '<span>0</span><span>900 W/m²</span>';
     lg.setAttribute('aria-label', 'Legend: sunshine on the street, 0 to 900 watts per square metre. Open settings');
   } else {
@@ -263,6 +294,14 @@ function tipHtml(k, v, when) {
   const G = X.G, name = esc(G.names[G.st[k]] || ''), f = X.curF, i = Math.round(f);
   const route = X.selRoute >= 0 && ((G.mask[k] >> X.ROUTES()[X.selRoute].def.index) & 1);
   const tail = `${when}${route ? ' · on route' : G.cls[k] ? ' · district street' : ''} · modelled`;
+  if (tsOn && tsArr) {
+    const ra = roadAir(f, k), dew = X.weather && X.weather.dewpoint_c ? X.weather.dewpoint_c[i] : null;
+    if (ra.road == null) return `<div class="bx-tipc"><div class="big"><span>road temperature not available · ${name}</span></div><div class="wh">${tail}</div></div>`;
+    let rows = '';
+    if (ra.air != null) rows += `<dt>Air</dt><dd>${Math.round(F2(ra.air))}°F</dd><dt>Road minus air</dt><dd>${Math.round(F2(ra.road) - F2(ra.air)) >= 0 ? '+' : ''}${Math.round(F2(ra.road) - F2(ra.air))}°F</dd>`;
+    if (dew != null) { const d = Math.round(F2(ra.road) - F2(dew)); rows += `<dt>Dew point</dt><dd>${Math.round(F2(dew))}°F</dd><dt>Road above dew point</dt><dd>${d >= 0 ? '+' : ''}${d}°F${d < 0 ? ', dew can form' : ''}</dd>`; }
+    return `<div class="bx-tipc"><div class="big"><b>${Math.round(F2(ra.road))}</b><span>°F road · ${name}</span></div><dl>${rows}</dl><div class="wh">${tail} · not measured</div></div>`;
+  }
   if (modeOn && sunArr) {
     const ST = X.LV.ST, a = Math.floor(f), b = Math.min(a + 1, X.idx.n_frames - 1), u = f - a;
     const w = (sunArr[a * ST + k] * (1 - u) + sunArr[b * ST + k] * u) * (X.idx.sun.unit_wm2 || 10);

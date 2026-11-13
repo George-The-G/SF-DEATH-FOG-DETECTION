@@ -76,19 +76,24 @@ const frag = (glslRamp) => `
     gl_FragColor = vec4(c, a);
   }`;
 
-/* Beta preview only (createRibbons({ alt: true })): a second frame-major texture (sunshine, u8 = W/m2 / 10) and a uMode uniform (0 = wetness / slick ramp, 1 = sun ramp).
+/* Beta preview only (createRibbons({ alt: true })): a second and third frame-major texture (sunshine, u8 = W/m2 / 10; road temperature, u8 = (degC + 10) * 4) and a uMode uniform (0 = wetness / slick ramp, 1 = sun ramp, 2 = road temperature ramp).
    The public page builds the shaders above unchanged. */
 const SUN_GLSL = `
   vec3 sunramp(float v){ float t = clamp(v / 90., 0., 1.);
     vec3 a = vec3(.1412,.1882,.3020), b = vec3(.3569,.3098,.4941), c = vec3(.7098,.4039,.2902), d = vec3(.9412,.6353,.2275), e = vec3(1.,.8784,.5412);
     if (t < .22) return mix(a, b, t / .22); if (t < .48) return mix(b, c, (t - .22) / .26); if (t < .72) return mix(c, d, (t - .48) / .24); return mix(d, e, (t - .72) / .28); }
+  vec3 tempramp(float v){ float f = (v / 4. - 10.) * 1.8 + 32.; float t = clamp((f - 40.) / 40., 0., 1.);
+    vec3 a = vec3(.2314,.4353,.8784), b = vec3(.3725,.7059,.9098), c = vec3(.9098,.9020,.7843), d = vec3(.9490,.6510,.3529), e = vec3(.8980,.3255,.2392);
+    if (t < .28) return mix(a, b, t / .28); if (t < .52) return mix(b, c, (t - .28) / .24); if (t < .76) return mix(c, d, (t - .52) / .24); return mix(d, e, (t - .76) / .24); }
 `;
-const altVert = (v) => v.replace('uniform sampler2D uWet;', 'uniform sampler2D uWet, uSun; uniform float uMode;')
-  .replace('float w0 = texelFetch(uWet, ivec2(ix, int(uFa + .5) * R + iy), 0).r * 255.;', 'float w0 = (uMode > .5 ? texelFetch(uSun, ivec2(ix, int(uFa + .5) * R + iy), 0).r : texelFetch(uWet, ivec2(ix, int(uFa + .5) * R + iy), 0).r) * 255.;')
-  .replace('float w1 = texelFetch(uWet, ivec2(ix, int(uFb + .5) * R + iy), 0).r * 255.;', 'float w1 = (uMode > .5 ? texelFetch(uSun, ivec2(ix, int(uFb + .5) * R + iy), 0).r : texelFetch(uWet, ivec2(ix, int(uFb + .5) * R + iy), 0).r) * 255.;');
+const altSample = (tex, fr) => `texelFetch(${tex}, ivec2(ix, int(${fr} + .5) * R + iy), 0).r`;
+const altPick = (fr) => `(uMode > 1.5 ? ${altSample('uTs', fr)} : uMode > .5 ? ${altSample('uSun', fr)} : ${altSample('uWet', fr)}) * 255.`;
+const altVert = (v) => v.replace('uniform sampler2D uWet;', 'uniform sampler2D uWet, uSun, uTs; uniform float uMode;')
+  .replace('float w0 = texelFetch(uWet, ivec2(ix, int(uFa + .5) * R + iy), 0).r * 255.;', `float w0 = ${altPick('uFa')};`)
+  .replace('float w1 = texelFetch(uWet, ivec2(ix, int(uFb + .5) * R + iy), 0).r * 255.;', `float w1 = ${altPick('uFb')};`);
 const altFrag = (f) => f.replace('uniform float uDistFade, uDistVis, uDash, uWidth;', 'uniform float uDistFade, uDistVis, uDash, uWidth, uMode;')
   .replace('void main(){', SUN_GLSL + 'void main(){')
-  .replace('vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : ramp(vWet);', 'vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : (uMode > .5 ? sunramp(vWet) : ramp(vWet));');
+  .replace('vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : ramp(vWet);', 'vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : (uMode > 1.5 ? tempramp(vWet) : uMode > .5 ? sunramp(vWet) : ramp(vWet));');
 
 export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, alt = false }) {
   const uniforms = {
@@ -97,7 +102,7 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, a
     uDistFade: { value: 1 }, uDistVis: { value: 1 }, uDepthK: { value: 16 }, uSelW: { value: 2.5 },
     uCols: { value: Array.from({ length: 16 }, () => new THREE.Color(0x5ef2ff)) }, uThin: { value: 0.5 }, uLane: { value: 5 }, uDash: { value: 30 },
   };
-  if (alt) { uniforms.uSun = { value: null }; uniforms.uMode = { value: 0 }; }
+  if (alt) { uniforms.uSun = { value: null }; uniforms.uTs = { value: null }; uniforms.uMode = { value: 0 }; }
   const material = new THREE.ShaderMaterial({
     uniforms, vertexShader: alt ? altVert(VERT) : VERT, fragmentShader: alt ? altFrag(frag(glslRamp)) : frag(glslRamp),
     transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
@@ -105,7 +110,7 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, a
   });
   // placeholder 1x1 texture until a night is set
   const blank = new THREE.DataTexture(new Uint8Array([SENTINEL]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType);
-  blank.needsUpdate = true; uniforms.uWet.value = blank; if (alt) uniforms.uSun.value = blank;
+  blank.needsUpdate = true; uniforms.uWet.value = blank; if (alt) { uniforms.uSun.value = blank; uniforms.uTs.value = blank; }
 
   let mesh = null, geom = null, tex = null, S = 0, nF = 0, u8 = null, widthM = 6.5, c0 = 0, stw = 0;
   const samples = { S: 0, src: null, side: null, st: null, mask: null, cls: null, pos: null };
@@ -177,16 +182,17 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, a
   };
 
   /* beta only: second data set with the same layout as setNight (sunshine); uMode picks which texture the street colours come from */
-  let texAlt = null;
-  api.setAlt = (data, nFrames, col0 = 0, stride = S) => {
+  let texAlt = null, texTs = null;
+  api.setAlt = (data, nFrames, col0 = 0, stride = S, kind = 'sun') => { // kind 'sun' (uMode 1) or 'ts' road temperature (uMode 2)
     if (!alt) throw new Error('ribbons built without alt');
     if (data.length !== nFrames * stride) throw new Error(`alt data has ${data.length} bytes, expected ${nFrames * stride}`);
     const R = Math.ceil(S / TEXW), H = R * nFrames, buf = new Uint8Array(TEXW * H).fill(SENTINEL);
     for (let f = 0; f < nFrames; f++) buf.set(data.subarray(f * stride + col0, f * stride + col0 + S), f * R * TEXW);
-    if (texAlt) texAlt.dispose();
-    texAlt = new THREE.DataTexture(buf, TEXW, H, THREE.RedFormat, THREE.UnsignedByteType);
-    texAlt.minFilter = texAlt.magFilter = THREE.NearestFilter; texAlt.generateMipmaps = false; texAlt.flipY = false; texAlt.unpackAlignment = 1; texAlt.needsUpdate = true;
-    uniforms.uSun.value = texAlt;
+    const ts = kind === 'ts';
+    if (ts ? texTs : texAlt) (ts ? texTs : texAlt).dispose();
+    const t = new THREE.DataTexture(buf, TEXW, H, THREE.RedFormat, THREE.UnsignedByteType);
+    t.minFilter = t.magFilter = THREE.NearestFilter; t.generateMipmaps = false; t.flipY = false; t.unpackAlignment = 1; t.needsUpdate = true;
+    if (ts) { texTs = t; uniforms.uTs.value = t; } else { texAlt = t; uniforms.uSun.value = t; }
   };
   api.setMode = (m) => { if (alt) uniforms.uMode.value = m; };
 
