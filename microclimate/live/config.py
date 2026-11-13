@@ -80,6 +80,74 @@ BAY_BOX = (-122.37, 37.74, -122.31, 37.78)      # central bay between San Franci
 CLOUD_ARCHIVE_DIR = os.environ.get("DEATHFOG_CLOUD_ARCHIVE_DIR") or None   # folder with recent run_<yyyymmddThhmm>.npz files (a checkout of branch live-archive, guide 02 part B) read for lead times; None = no archive yet
 CLOUDSCORE_PREV_ENV = "DEATHFOG_CLOUDSCORE_PREV"               # path of the previous rolling cloud_score.json (set by live_ci/refresh.sh)
 
+# ---- stations as anchors (guide 03) ----
+NUDGE_ANCHORS = False                # True: the station fit drives the per-point wind (regional inflow + direction weights) and the street temperature / dew point
+                                     # (sea-level offset + lapse adjustment). False: today's model, bit-identical; stations are still fetched, fitted and written to stations.json.
+STATION_FETCH_DEADLINE_S = 14.0      # all extra station requests run in parallel and are abandoned after this long
+STATION_TIMEOUT_S = 8.0              # one request (no retries)
+STATION_MAX_AGE_MIN = 90             # a station-hour is used only when its newest report in that hour is not older than the hour
+STATION_WIND_FILE = "station_wind.npz"          # simulated vectors at the in-grid wind stations (python -m microclimate.live stationwind); optional release asset
+STATIONS_FILE = "stations.json"
+IEM_OBHISTORY = "https://mesonet.agron.iastate.edu/api/1/obhistory.json"
+NDBC_URL = "https://www.ndbc.noaa.gov/data/realtime2/{id}.txt"
+NWS_OBS_URL = "https://api.weather.gov/stations/{id}/observations"
+# id -> dict(kind: coops|ndbc|iem|nws|metar, src: id at the source, name, lat, lon, elev_m (ground, or deck / water surface), sensor_m (wind sensor height above that),
+#            vars: what it carries, hill: True for the RAWS stations (data points at their real height; wind aloft and inversion, never street wind)).
+# The "Recommended list" of reports/live_check/stations_2026-11-12.md; ground elevations from that report, sensor heights 10 m when unknown (first guess).
+STATIONS = {
+    "FTPC1": dict(kind="coops", src="9414290", name="Fort Point (CO-OPS)", lat=37.8060, lon=-122.4660, elev_m=3.0, sensor_m=10.0, vars=("T", "wind")),
+    "GGBC1": dict(kind="iem", src="GGBC1", name="Golden Gate Bridge centre", lat=37.8187, lon=-122.4784, elev_m=67.0, sensor_m=0.0, vars=("wind",)),   # IEM lists -95 m: wrong; deck about 67 m
+    "PXOC1": dict(kind="coops", src="9414311", name="San Francisco Pier 1", lat=37.7980, lon=-122.3930, elev_m=3.0, sensor_m=10.0, vars=("T", "wind")),
+    "PXSC1": dict(kind="coops", src="9414296", name="Pier 17 (visibility)", lat=37.8030, lon=-122.3970, elev_m=3.0, sensor_m=10.0, vars=("T", "Td", "vis")),
+    "OBXC1": dict(kind="coops", src="9414797", name="Oakland Berth 38", lat=37.8040, lon=-122.3410, elev_m=3.0, sensor_m=10.0, vars=("T", "Td", "vis")),
+    "OKXC1": dict(kind="coops", src="9414776", name="Oakland Berth 34", lat=37.8110, lon=-122.3330, elev_m=3.0, sensor_m=10.0, vars=("T", "wind")),
+    "OMHC1": dict(kind="coops", src="9414769", name="Oakland Middle Harbor", lat=37.8010, lon=-122.3300, elev_m=3.0, sensor_m=10.0, vars=("wind",)),
+    "AAMC1": dict(kind="coops", src="9414750", name="Alameda", lat=37.7720, lon=-122.3000, elev_m=2.0, sensor_m=10.0, vars=("T", "wind")),
+    "LNDC1": dict(kind="coops", src="9414763", name="Oakland Berth 67", lat=37.7950, lon=-122.2810, elev_m=3.0, sensor_m=10.0, vars=("T", "wind")),
+    "SFOC1": dict(kind="nws", src="SFOC1", name="San Francisco downtown", lat=37.7706, lon=-122.4269, elev_m=46.0, sensor_m=0.0, vars=("T", "Td")),
+    "OAMC1": dict(kind="nws", src="OAMC1", name="Oakland Museum", lat=37.7981, lon=-122.2634, elev_m=9.0, sensor_m=0.0, vars=("T", "Td")),
+    "D3169": dict(kind="nws", src="D3169", name="DW3169 Oakland", lat=37.8321, lon=-122.2500, elev_m=29.0, sensor_m=0.0, vars=("T", "Td", "wind")),
+    "KSFO": dict(kind="metar", src="KSFO", name="San Francisco Intl", lat=37.6196, lon=-122.3656, elev_m=3.0, sensor_m=10.0, vars=("T", "Td", "wind", "vis")),
+    "KOAK": dict(kind="metar", src="KOAK", name="Oakland Intl", lat=37.7178, lon=-122.2330, elev_m=3.0, sensor_m=10.0, vars=("T", "Td", "wind", "vis")),
+    "KHAF": dict(kind="metar", src="KHAF", name="Half Moon Bay", lat=37.5136, lon=-122.4996, elev_m=20.0, sensor_m=10.0, vars=("T", "Td", "wind", "vis")),
+    "ONOC1": dict(kind="iem", src="ONOC1", name="Oakland North RAWS", lat=37.8653, lon=-122.2208, elev_m=409.0, sensor_m=6.0, vars=("T", "Td", "wind"), hill=True),
+    "OKSC1": dict(kind="iem", src="OKSC1", name="Oakland South RAWS", lat=37.7881, lon=-122.1436, elev_m=323.0, sensor_m=6.0, vars=("T", "Td", "wind"), hill=True),
+    "HSPC1": dict(kind="iem", src="HSPC1", name="Spring Valley RAWS", lat=37.5625, lon=-122.4364, elev_m=314.0, sensor_m=6.0, vars=("T", "Td", "wind"), hill=True),
+    "MDEC1": dict(kind="iem", src="MDEC1", name="Middle Peak", lat=37.9278, lon=-122.5872, elev_m=587.0, sensor_m=6.0, vars=("T", "Td", "wind"), hill=True),
+    "46026": dict(kind="ndbc", src="46026", name="Buoy 46026 (offshore)", lat=37.750, lon=-122.838, elev_m=0.0, sensor_m=5.0, vars=("wind", "sst")),
+    "46237": dict(kind="ndbc", src="46237", name="Buoy 46237 (SF Bar)", lat=37.788, lon=-122.634, elev_m=0.0, sensor_m=5.0, vars=("T", "sst")),
+}
+GGB_DECK_M = 67.0                    # Golden Gate Bridge deck above sea level
+
+# wind regions (3b): Gaussian weights normalised to sum to 1 everywhere (softmax of -d^2 / 2 sigma^2); first guesses
+WIND_REGION_SIGMA_M = 3000.0
+WIND_REGIONS = {                     # name -> (lat, lon) of the centre
+    "gap_nw": (37.800, -122.462),    # Golden Gate gap, Presidio, Marina, north-west
+    "west": (37.762, -122.485),      # Richmond and Sunset
+    "east_downtown": (37.783, -122.405),   # east waterfront and downtown
+    "south": (37.728, -122.432),     # Bernal, Excelsior, Visitacion Valley
+}
+WIND_REGION_NEIGHBOURS = (("gap_nw", "west"), ("gap_nw", "east_downtown"), ("west", "east_downtown"), ("west", "south"), ("east_downtown", "south"))
+WIND_REGION_MIN_ANCHORS = 2          # a region with fewer in-grid anchors (weight >= WIND_ANCHOR_MIN_W) uses the citywide fit
+WIND_ANCHOR_MIN_W = 0.25
+WIND_OBS_SIGMA_MS = 1.0              # one station vector component (first guess)
+WIND_PRIOR_SIGMA_MS = 1.5            # prior on the inflow speed: one good station counts about as much as the forecast (first guess)
+WIND_PRIOR_SIGMA_DEG = 15.0
+WIND_SMOOTH_SIGMA_MS = 2.5           # difference between neighbouring regions
+WIND_SMOOTH_SIGMA_DEG = 25.0
+WIND_QC_MS = 8.0                     # drop a station-hour whose vector is farther than this from the median of the others
+WIND_U_MIN_MS, WIND_U_MAX_MS = 0.3, 25.0
+
+# temperature / dew point (3f)
+LAPSE_T_K_PER_KM = -6.5              # lattice value moved to a height with this lapse rate (guide 08 profile not built yet)
+LAPSE_TD_K_PER_KM = -2.0             # dew point (first guess)
+T_FIT_MIN_STATIONS = 3               # fewer: distance-weighted horizontal correction instead
+T_PRIOR_OFFSET_K = 3.0               # ridge on the sea-level offset (first guess)
+T_PRIOR_LAPSE_K_PER_KM = 4.0         # ridge on the lapse adjustment
+T_LAPSE_ADJ_CLIP = (-8.0, 12.0)      # K/km (inversion: positive)
+T_HORIZ_L_M = 6000.0
+T_HORIZ_W0 = 0.25                    # weight of "zero correction" in the horizontal fallback (pulls to zero away from stations)
+
 # ---- paths ----
 STATIC_DEFAULT = os.path.join(os.path.expanduser("~"), "deathfog-data", "live", "live_static.npz")
 
