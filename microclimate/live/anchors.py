@@ -3,7 +3,8 @@
 Wind (3b-3d): per hour, fit the inflow speed U_r and direction th_r of a few city regions so that the simulated wind vectors of the library
 (station_wind.npz: velocity / inflow speed at the station, per library direction) match the in-grid station winds. The prior pulls each region to the
 forecast wind, a smoothness term ties neighbouring regions, and a region with fewer than two anchors takes the citywide fit.
-Directions are carried as th in [90, 450) (so 10 degrees is 370); the library covers 180..360 only, anything else is clamped and flagged offshore.
+Directions are carried as th in [90, 450) (so 10 degrees is 370); the west library covers 180..360 only, anything else is clamped and flagged offshore.
+With C.WIND_EAST (guide 14) the library also holds 22.5..135 (157.5 is a gap, blended 135..180) and th is carried in [180, 540) (so 10 degrees is 370, 150 is 510).
 Temperature / dew point (3f): per hour a sea-level offset a and a lapse adjustment b fitted to (station - lattice value moved to the station height).
 """
 import numpy as np
@@ -13,14 +14,23 @@ from . import config as C
 
 
 # ------------------------------------------------------------------ directions and vectors
+def carry_range():
+    """(low, high) of the carried direction: [90, 450) for the west library, [180, 540) with C.WIND_EAST (the east set makes 0..180 contiguous with 180..360)."""
+    return (180.0, 540.0) if C.WIND_EAST else (90.0, 450.0)
+
+
 def wrap_dir(d):
-    """Any direction (deg) -> [90, 450): north-east winds (0..90) are carried as 360..450 so that the library range 180..360 is contiguous."""
+    """Any direction (deg) -> [90, 450): north-east winds (0..90) are carried as 360..450 so that the library range 180..360 is contiguous.
+    With C.WIND_EAST -> [180, 540): everything below 180 is carried as +360."""
     d = np.asarray(d, float) % 360.0
-    return np.where(d < 90.0, d + 360.0, d)
+    lo = carry_range()[0]
+    return np.where(d < lo, d + 360.0, d)
 
 
 def eff_dir(th):
     """Direction the library can represent."""
+    if C.WIND_EAST:
+        return np.clip(th, 180.0, 540.0)
     return np.clip(th, 180.0, 360.0)
 
 
@@ -134,7 +144,8 @@ def fit_hour(obs_uv, W, uvlib, dirs, Uf, thf, nbrs):
     def res1(p):
         d = (obs - predict(p[:1], p[1:], ones, uvl, dirs)).ravel() / so
         return np.concatenate([d, [(p[0] - Uc0) / sU, (p[1] - thc0) / sT]])
-    p1, _ = lm(res1, [Uc0, thc0], [lo_u, 90.0], [hi_u, 450.0])
+    lo_t, hi_t = carry_range()
+    p1, _ = lm(res1, [Uc0, thc0], [lo_u, lo_t], [hi_u, hi_t])
     Uc, thc = float(p1[0]), float(p1[1])
     # regions with at least WIND_REGION_MIN_ANCHORS reporting anchors fit their own inflow
     cnt = (Wk >= C.WIND_ANCHOR_MIN_W).sum(axis=1)
@@ -159,7 +170,7 @@ def fit_hour(obs_uv, W, uvlib, dirs, Uf, thf, nbrs):
                 if active[a] or active[b]:
                     parts.append([(Ua[a] - Ua[b]) / C.WIND_SMOOTH_SIGMA_MS, (ta[a] - ta[b]) / C.WIND_SMOOTH_SIGMA_DEG])
             return np.concatenate([np.atleast_1d(np.asarray(q, float)) for q in parts])
-        p2, _ = lm(res2, np.concatenate([U[ia], th[ia]]), np.concatenate([np.full(na, lo_u), np.full(na, 90.0)]), np.concatenate([np.full(na, hi_u), np.full(na, 450.0)]))
+        p2, _ = lm(res2, np.concatenate([U[ia], th[ia]]), np.concatenate([np.full(na, lo_u), np.full(na, lo_t)]), np.concatenate([np.full(na, hi_u), np.full(na, hi_t)]))
         U, th = unpack(p2)
         out["mode"] = "regional"
     out["U"], out["th"], out["active"] = U, th, active

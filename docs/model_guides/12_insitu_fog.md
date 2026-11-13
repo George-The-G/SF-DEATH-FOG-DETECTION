@@ -1,4 +1,5 @@
 # Guide 12: in-place fog for any wind direction (switch `insitu_fog`; needs guide 08)
+Note (guide 14): the east wind fields (22.5..135, `WIND_EAST`) are in the live build for street wind only. Their tracer rows are zero and `wetness.onshore_weight` is zero for wind from 0..180, so east / offshore wind still gives no fog. This guide is where that changes; 157.5 is an accepted gap of the library.
 
 Problem: `onshore_weight` is zero for wind from 0-180 degrees, so winter fog from the bay side and fog that forms in place never wet a street.
 
