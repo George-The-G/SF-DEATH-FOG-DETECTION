@@ -32,6 +32,9 @@ def main(argv):
             fog.build_dirs(cfg, DATA / "grids", DATA / "library", dirs)
         if "--validate" in argv:
             validate_dirs.run(DATA, dirs)
+    elif cmd == "winddir":  # winddir --dir <deg> [--force|--validate|--status]: ONE direction, atomic, resumable, status json (see winddir.py)
+        from . import winddir
+        sys.exit(winddir.main(cfg, DATA, argv[1:]))
     elif cmd == "street":
         from . import street
         print(json.dumps(street.build(cfg, DATA / "grids", DATA / "library"), indent=1))

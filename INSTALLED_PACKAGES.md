@@ -19,3 +19,4 @@ Notes: the first table rows above were written by install_tools.bat; the Node.js
 | 2026-11-12 | (wind direction library) no new packages | - | only existing .venv packages used | - |
 
 | 2026-11-12 | pytest 9.2.0 (+pluggy 1.7.0, iniconfig 2.3.1, colorama 0.4.6) | 9.2.0 | pip into the main repo .venv (C:\Users\George\source\repos\SF-DEATH-FOG-DETECTION\.venv), live-data step 1 | delete the .venv folder or pip uninstall pytest pluggy iniconfig colorama |
+| 2026-11-12 | (east wind directions, winddir runner) no new packages | - | only existing .venv packages used | - |
