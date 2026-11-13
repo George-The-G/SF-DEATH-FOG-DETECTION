@@ -9,7 +9,7 @@ const PX_REF = 16;          // sprite value that maps to full density after the 
 const TOP_MIN_M = 80, TOP_MAX_M = 300; // visual slab thickness limits (m). fog_top_m is often a 62 m floor or 900 m cap value, not a real top
 const TIERS = [null,        // 0 = old sheets
   { scale: 0.5, steps: 5, oct: 1, ms: 0 },
-  { scale: 0.5, steps: 8, oct: 2, ms: 0 },
+  { scale: 0.5, steps: 10, oct: 2, ms: 0 },
   { scale: 1.0, steps: 12, oct: 3, ms: 4 }];
 
 const VERT = `varying vec2 vUv; void main(){ vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); }`;
@@ -65,13 +65,13 @@ const FOG_FS = `
       if (d < .003) continue;
       float prof = pow(1. - hh, 1.15) * smoothstep(0., .03, hh + .02);
       vec3 wp = vec3(p.x, p.y / uEX, p.z);
-      float n = .6 * vn3(wp * vec3(1. / 900., 1. / 260., 1. / 900.) + vec3(uTime * .012, 0., uTime * .004));
+      float n = .6 * vn3(wp * vec3(1. / 900., 1. / 260., 1. / 900.) + vec3(uTime * .003, 0., uTime * .001)); // only the large shapes drift, slowly; finer octaves are static so nothing shimmers
       float wsum = .6;
       if (uOct > 1) { n += .3 * vn3(wp * vec3(1. / 330., 1. / 110., 1. / 330.) + 4.7); wsum += .3; }
       if (uOct > 2) { n += .15 * vn3(wp / 120. + 9.1); wsum += .15; }
       n /= wsum;
-      float shape = smoothstep(.25 * (1. - d), .95, n + .18 * d);
-      float dens = d * prof * (.3 + 1.1 * shape);
+      float shape = smoothstep(.05, 1., n + .3 * d); // wide soft edge: thin fog no longer flickers across a hard threshold
+      float dens = d * prof * (.5 + .8 * shape);
       float sig = dens * .0105 / uEX * 2.2 * 1.5;
       float lt = exp(-d * .0105 * 2.2 / uEX * .5 * (uH * (1. - hh)) / max(uSun.y, .18) * .6 * 1.5);
       vec3 L = uAmb * (.55 + .45 * (1. - hh)) + uSunCol * lt * ph * uSunI;
@@ -85,9 +85,20 @@ const FOG_FS = `
   }`;
 
 const COMP_FS = `
-  precision highp float; varying vec2 vUv; uniform sampler2D uScene, uFog;
+  precision highp float; varying vec2 vUv; uniform sampler2D uScene, uFog, uDepthC; uniform vec2 uFogTexel; uniform float uNearC, uFarC, uBlur;
+  float lin(vec2 uv){ float d = texture2D(uDepthC, uv).r; return -(uNearC * uFarC) / ((uFarC - uNearC) * d - uFarC); }
   void main(){
     vec4 s = texture2D(uScene, vUv), f = texture2D(uFog, vUv);
+    if (uBlur > 0.) { // depth-aware 3x3 blur of the fog buffer: smooths the dither grain without smearing fog across building edges
+      float dc = lin(vUv); vec4 acc = f; float ws = 1.;
+      for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+        if (i == 0 && j == 0) continue;
+        vec2 uv2 = vUv + vec2(float(i), float(j)) * uFogTexel * 1.25;
+        float w = exp(-abs(lin(uv2) - dc) / (dc * .04 + 1.)) * (i == 0 || j == 0 ? .8 : .55);
+        acc += texture2D(uFog, uv2) * w; ws += w;
+      }
+      f = acc / ws;
+    }
     gl_FragColor = vec4(s.rgb * (1. - f.a) + f.rgb, 1.);
     gl_FragColor = linearToOutputTexel(gl_FragColor);
   }`;
@@ -107,7 +118,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   };
   const fogMat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: VERT, fragmentShader: FOG_FS, depthTest: false, depthWrite: false });
   const fogScene = new THREE.Scene(); const fogMesh = new THREE.Mesh(quadGeo, fogMat); fogMesh.frustumCulled = false; fogScene.add(fogMesh);
-  const CU = { uScene: { value: null }, uFog: { value: null } };
+  const CU = { uScene: { value: null }, uFog: { value: null }, uDepthC: { value: null }, uFogTexel: { value: new THREE.Vector2() }, uNearC: { value: 8 }, uFarC: { value: 90000 }, uBlur: { value: 1 } };
   const compMat = new THREE.ShaderMaterial({ uniforms: CU, vertexShader: VERT, fragmentShader: COMP_FS, depthTest: false, depthWrite: false });
   const compScene = new THREE.Scene(); const compMesh = new THREE.Mesh(quadGeo, compMat); compMesh.frustumCulled = false; compScene.add(compMesh);
 
@@ -125,7 +136,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     const dt = new THREE.DepthTexture(w, h); dt.format = THREE.DepthFormat; dt.type = THREE.UnsignedIntType;
     sceneRT = new THREE.WebGLRenderTarget(w, h, { samples: P.ms, depthTexture: dt, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.UnsignedByteType });
     fogRT = new THREE.WebGLRenderTarget(Math.max(2, Math.round(w * P.scale)), Math.max(2, Math.round(h * P.scale)), { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
-    U.uDepth.value = sceneRT.depthTexture; CU.uScene.value = sceneRT.texture; CU.uFog.value = fogRT.texture;
+    U.uDepth.value = sceneRT.depthTexture; CU.uScene.value = sceneRT.texture; CU.uFog.value = fogRT.texture; CU.uDepthC.value = sceneRT.depthTexture; CU.uFogTexel.value.set(1 / fogRT.width, 1 / fogRT.height);
   }
 
   function setTier(n, why) {
@@ -161,7 +172,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     if (tier === 0 || !ready || !want) { renderer.render(scn, camera); return; }
     const P = TIERS[tier]; ensureRT(renderer);
     U.uInvProj.value.copy(camera.projectionMatrixInverse); U.uCamRot.value.setFromMatrix4(camera.matrixWorld); U.uCam.value.copy(camera.position);
-    U.uNear.value = camera.near; U.uFar.value = camera.far; U.uSteps.value = P.steps; U.uOct.value = P.oct; U.uJit.value = (frameAcc++ % 8) * .125;
+    U.uNear.value = CU.uNearC.value = camera.near; U.uFar.value = CU.uFarC.value = camera.far; CU.uBlur.value = qs.get('blur') === '0' ? 0 : 1; U.uSteps.value = P.steps; U.uOct.value = P.oct; U.uJit.value = 0; // static dither: a per-frame jitter shimmered on phones even with the simulation paused
     const prev = renderer.getRenderTarget();
     renderer.setRenderTarget(sceneRT); renderer.render(scn, camera);
     renderer.setRenderTarget(fogRT); renderer.render(fogScene, ortho);
@@ -183,7 +194,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     setLight(L) {
       if (!L) return;
       const lin = (a) => a.map((x) => Math.pow(Math.max(x, 0), 2.2));
-      const hor = lin(L.hor), zen = lin(L.zen), fl = [.012, .018, .03]; // night floor so fog never disappears
+      const hor = lin(L.hor), zen = lin(L.zen), fl = [.15, .2, .31]; // night floor close to the daytime fog colour so night fog stays visible
       U.uAmb.value.set(...hor.map((h, i) => Math.max(h * .65 + zen[i] * .35, fl[i]) * 1.3));
       U.uSun.value.set(...L.sunDir); U.uSunCol.value.set(...L.sunCol); U.uSunI.value = Math.max(L.sunDir[1], 0) > 0 ? 1.1 : 0;
       U.uMoon.value.set(...L.moonDir); U.uMoonCol.value.set(.35, .42, .6).multiplyScalar(.28 * L.illum);

@@ -49,7 +49,7 @@ export function ephemeris(ms) {
 }
 
 /* ------------------------------------------------------------------ sky colour model: zenith and horizon colour by sun elevation (day, golden hour, sunset, civil, nautical, astronomical twilight) */
-const KEYS = [[-18, [.004, .007, .02], [.02, .03, .07]], [-12, [.012, .022, .075], [.11, .13, .27]], [-6, [.04, .07, .2], [.55, .31, .4]], [-1, [.09, .16, .38], [1, .52, .28]], [4, [.18, .33, .62], [.98, .72, .52]], [20, [.17, .38, .82], [.6, .75, .93]], [60, [.14, .34, .8], [.55, .72, .92]]];
+const KEYS = [[-18, [.001, .002, .008], [.012, .018, .045]], [-12, [.004, .008, .03], [.07, .09, .2]], [-6, [.016, .032, .1], [.5, .29, .38]], [-1, [.09, .16, .38], [1, .52, .28]], [4, [.18, .33, .62], [.98, .72, .52]], [20, [.17, .38, .82], [.6, .75, .93]], [60, [.14, .34, .8], [.55, .72, .92]]];
 function skyKeys(el) {
   if (el <= KEYS[0][0]) return [KEYS[0][1], KEYS[0][2]];
   for (let i = 1; i < KEYS.length; i++) if (el <= KEYS[i][0]) {
@@ -117,8 +117,8 @@ const STAR_VS = `
     vec3 d = uM * position;
     vec4 vv = viewMatrix * vec4(d, 0.);
     gl_Position = projectionMatrix * vec4(vv.xyz, 1.); gl_Position.z = gl_Position.w * .999;
-    float br = clamp(pow(10., -.32 * (aMag - 1.)), .1, 2.);
-    gl_PointSize = uDpr * clamp(1.2 + (4. - aMag) * .55, 1., 4.6) * uSize;
+    float br = clamp(pow(10., -.32 * (aMag - 1.)), .28, 2.);
+    gl_PointSize = uDpr * clamp(1.4 + (4. - aMag) * .55, 1.5, 4.6) * uSize;
     float ext = .35 + .65 * smoothstep(0., .3, d.y);      // atmospheric extinction near the horizon
     vA = br * ext * uVis * smoothstep(-.01, .06, d.y);
     float k = clamp((aBv + .3) / 2., 0., 1.);
@@ -186,7 +186,7 @@ export async function createSky({ THREE, scene, camera, renderer, starsUrl, sky 
     const [zen, hor] = skyKeys(E.sun.alt), sc = sunColour(E.sun.alt), el = E.sun.alt;
     uni.uSun.value.set(...E.sunDir); uni.uMoon.value.set(...E.moonDir); uni.uSunCol.value.set(...sc); uni.uZen.value.set(...zen); uni.uHor.value.set(...hor);
     uni.uMoonE.value = E.elong; uni.uSunEl.value = el; uni.uIllum.value = E.illum;
-    uni.uExpo.value = el > 4 ? 1 : el < -16 ? 2.6 : Math.exp(Math.log(2.6) * (4 - el) / 20);
+    uni.uExpo.value = el > 4 ? 1 : el < -16 ? 1.5 : Math.exp(Math.log(1.5) * (4 - el) / 20);
     su.uM.value.set(...E.eq2w); su.uVis.value = Math.min(1, Math.max(0, -(el + 5) / 7));
     L = { zen, hor, sunDir: E.sunDir, sunCol: sc, moonDir: E.moonDir, illum: E.illum, sunEl: el };
     textra = `sun ${el.toFixed(1)}° az ${E.sun.az.toFixed(0)}°  moon ${E.moon.alt.toFixed(1)}° ${(E.illum * 100).toFixed(0)}% lit`;
