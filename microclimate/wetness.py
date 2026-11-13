@@ -80,6 +80,8 @@ def check_physics(physics):
     bad = sorted(P - set(KNOWN_PHYSICS))
     if bad:
         raise ValueError(f"unknown physics switch(es) {bad}; known: {list(KNOWN_PHYSICS)}")
+    if "pavement" in P and not {"sun_clear", "film"} <= P:   # guide 07 uses the street sunlight S (guide 06) and the water film (guide 05)
+        raise ValueError(f"physics switch 'pavement' needs 'sun_clear' and 'film' as well (missing: {sorted({'sun_clear', 'film'} - P)})")
     return P
 
 
@@ -115,6 +117,24 @@ HSR_MAX_H = 240.0      # hours_since_rain when there is no history
 WASH_MM_H = 1.0        # rain in one hour that washes the street (resets rain_since_wash; guide 13 may change it)
 RSW_MAX_MM = 50.0      # upper limit of rain_since_wash
 RAIN_Q_MM = 0.02       # hourly rain history is kept in units of this (uint8, up to 5.1 mm/h)
+# ---- guide 07 (pavement heat): textbook values, no road-temperature measurement exists, all unverified ----
+SIGMA_SB = 5.670374e-8  # W/m2/K4 Stefan-Boltzmann
+PAV_ALBEDO = 0.12      # asphalt
+PAV_EMISS = 0.95       # surface emissivity
+PAV_EA_COEF = 1.24     # clear-sky emissivity eps_a = PAV_EA_COEF * (e_a_hPa / Ta_K) ^ (1/7)
+PAV_CLOUD_LW = 0.22    # cloud adds this * c^2 to the clear-sky downward longwave
+CLOUD_HIGH_WEIGHT = 0.5   # middle and high cloud count this much as low cloud in the effective cloud fraction (guide 10 part B, first guess)
+PAV_HC0 = 5.8          # W/m2/K, heat transfer coefficient at no wind
+PAV_HC1 = 4.1          # W/m2/K per m/s of the local street wind
+PAV_GAMMA = 0.066      # kPa/K psychrometric constant
+PAV_LV = 2.45e6        # J/kg latent heat of vaporisation (1 mm of water = 1 kg/m2)
+PAV_OMEGA = 7.27e-5    # 1/s, earth rotation rate (force-restore)
+PAV_DEEP_S = 86400.0   # s, time scale of the deep layer
+PAV_CD = (2.35e5, 2.9e5, 2.35e5, 2.35e5)   # J/m2/K force-restore heat capacity by surface class: asphalt, concrete, porous (= asphalt), other (= asphalt)
+PAV_SUBSTEP_MIN = 5.0  # minutes per sub-step
+PAV_DTS_MAX = 3.0      # K, largest change of the surface temperature in one sub-step
+TS_U8_OFFSET_C = 10.0  # tsurf file: u8 = round((ts + 10) * 4)
+TS_U8_PER_K = 4.0
 
 
 def es_kpa(t):
@@ -138,11 +158,73 @@ def storage_cap(surf, slope):
     return (np.asarray(CAP_MM, float)[np.asarray(surf, int)] * (1.0 - np.minimum(np.abs(np.asarray(slope, float)), CAP_SLOPE_MAX) / CAP_SLOPE_DIV)).astype(np.float32)
 
 
-def step_film(Fm, svf, porous, f, local_fog, cap, dt_h, wind_ratio=1.0):
+def step_pavement(ts, tdeep, F, svf, porous, S, temp, dew, wind, cloud_pct, dt_h, cd, substep_min=PAV_SUBSTEP_MIN):
+    """Guide 07: surface energy balance and force-restore heat store for one model step (all inputs broadcast to [N]; temperatures in degC, F = water on the
+    road in mm, S = street sunlight W/m2, wind = local street wind m/s, cloud_pct = effective cloud fraction in percent, cd = heat capacity J/m2/K).
+    Sub-steps of about `substep_min` minutes. Evaporation only while there is water, scaled to dry the surface exactly; condensation (LE < 0, only when ts is below
+    the dew point) adds water on porous streets. Returns (ts, tdeep, F, dict(evap, dew (mm this step), energy (J/m2: the net flux G summed over the step)))."""
+    ts = np.asarray(ts, np.float64)
+    tdeep = np.asarray(tdeep, np.float64)
+    F = np.asarray(F, np.float64)
+    temp = np.asarray(temp, np.float64) * np.ones_like(ts)
+    ta_k = temp + 273.15
+    ea = es_kpa(np.asarray(dew, np.float64) * np.ones_like(ts))     # kPa
+    eps_a = PAV_EA_COEF * (ea * 10.0 / ta_k) ** (1.0 / 7.0)
+    lta = SIGMA_SB * ta_k ** 4
+    c = np.clip(np.asarray(cloud_pct, np.float64) / 100.0, 0.0, 1.0)
+    l_sky = eps_a * lta * (1.0 + PAV_CLOUD_LW * c * c)
+    l_down = svf * l_sky + (1.0 - svf) * PAV_EMISS * lta
+    absorbed = (1.0 - PAV_ALBEDO) * np.asarray(S, np.float64)
+    hc = PAV_HC0 + PAV_HC1 * np.maximum(np.asarray(wind, np.float64), 0.0)
+    nsub = max(1, int(round(dt_h * 60.0 / substep_min)))
+    dts = dt_h * 3600.0 / nsub
+    evap = np.zeros_like(ts)
+    dew_mm = np.zeros_like(ts)
+    energy = np.zeros_like(ts)
+    for _ in range(nsub):
+        ts_k = ts + 273.15
+        nlw = PAV_EMISS * l_down - PAV_EMISS * SIGMA_SB * ts_k ** 4
+        H = hc * (ts - temp)
+        le = hc * (es_kpa(ts) - ea) / PAV_GAMMA
+        le = np.where(le > 0.0, np.minimum(le, np.maximum(F, 0.0) * PAV_LV / dts), le * porous)
+        G = absorbed + nlw - H - le
+        d_ts = np.clip((2.0 * G / cd - PAV_OMEGA * (ts - tdeep)) * dts, -PAV_DTS_MAX, PAV_DTS_MAX)
+        tdeep = tdeep + (ts - tdeep) / PAV_DEEP_S * dts
+        ts = ts + d_ts
+        mm = le * dts / PAV_LV
+        F = F - mm
+        evap += np.maximum(mm, 0.0)
+        dew_mm += np.maximum(-mm, 0.0)
+        energy += G * dts
+    return ts, tdeep, F, dict(evap=evap, dew=dew_mm, energy=energy)
+
+
+def effective_cloud_pct(f):
+    """Effective cloud fraction in percent for the longwave sky: low cloud plus CLOUD_HIGH_WEIGHT of the extra middle / high cloud when the total is given
+    (as guide 10 part B); low cloud alone otherwise."""
+    cl = np.asarray(f["cloud_low"], np.float64)
+    if "cloud" in f:
+        return np.clip(cl + CLOUD_HIGH_WEIGHT * np.maximum(np.asarray(f["cloud"], np.float64) - cl, 0.0), 0.0, 100.0)
+    return cl
+
+
+def step_film(Fm, svf, porous, f, local_fog, cap, dt_h, wind_ratio=1.0, pav=None):
     """One time step of the film model (switch `film`). Fm [N] = water on the road in mm; f as in step() plus f['sw_eff'] (W/m2 effective sunlight);
     cap [N] mm storage. Rates in mm/h: fog deposition, dew, rain (the precipitation rate itself), minus evaporation (vapour deficit and wind) and
-    sun drying. Water above cap runs off. Returns (Fm_new, parts) with parts in mm (this step): fog, dew, rain, evap (actual), sun (actual), runoff."""
+    sun drying. Water above cap runs off. Returns (Fm_new, parts) with parts in mm (this step): fog, dew, rain, evap (actual), sun (actual), runoff.
+    pav (switch `pavement`): dict(ts, tdeep, cd): dew, evaporation and sun drying come from step_pavement (surface energy balance, f['sw_eff'] = S) instead of
+    the terms above; fog, rain, storage and runoff stay. parts then also holds the new ts and tdeep and sun = 0."""
     wind = f["wind"] * wind_ratio
+    if pav is not None:
+        one = np.ones_like(Fm)
+        fog = FOG_LWC * (V_SETTLE + C_TURB * wind) * 3.6 * local_fog * porous * one
+        rain = np.maximum(f["precip"], 0.0) * porous * one
+        ts, tdeep, F2, pp = step_pavement(pav["ts"], pav["tdeep"], Fm + (fog + rain) * dt_h, svf, porous, f["sw_eff"], f["temp"], f["dew"], wind,
+                                          effective_cloud_pct(f), dt_h, pav["cd"])
+        runoff = np.maximum(F2 - cap, 0.0)
+        out = np.clip(F2, 0.0, cap)
+        return out.astype(np.float32), dict(fog=fog * dt_h, dew=pp["dew"], rain=rain * dt_h, evap=pp["evap"], sun=np.zeros_like(out), runoff=runoff,
+                                            ts=ts.astype(np.float32), tdeep=tdeep.astype(np.float32))
     dT = DT_MAX * svf * (1 - f["cloud_low"] / 100.0) * np.clip(1 - wind / WIND_CALM, 0, 1)
     ts = f["temp"] - dT
     one = np.ones_like(Fm)
@@ -260,7 +342,7 @@ DEFAULT_DIRS = (180.0, 202.5, 225.0, 247.5, 270.0, 292.5, 315.0, 337.5, 360.0)  
 
 def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0, refined=None, fog_mode=None, fog_top=None, use_dirs=None,
              tracer_dirs=None, dirs_deg=None, forcing_fn=None, lag_block_h=None, out_every=1, keep_lit=True, s_series=None, physics=None,
-             state0=None, save_at=None):
+             state0=None, save_at=None, ts0=None):
     """Run one window. pts: dict(x, svf, porous, tracer, wind_ratio, horizon [N,72] or None, band-selected tracer; for the
     'profile' mode also y, z). ser: weather.series / night_series dict (scalar series: coast forcing, fog source, fog top).
     Overrides: tracer / svf arrays (ablations); fog_mode ('band0' | 'profile', default FOG_HEIGHT_MODE); fog_top forces the fog
@@ -279,6 +361,8 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
       keep_lit     keep the per-step direct-sun mask in diag['lit'] (replay validation needs it; live does not).
       physics      iterable of switch names from KNOWN_PHYSICS (default none = today's model); unknown names raise ValueError.
       state0       dict of arrays (key 'W' [N]) that replaces W0 as the starting state (carried state, guide 02).
+      ts0          (switch pavement) start temperature of the road, degC, scalar or [N], when state0 has no ts / tdeep (live: the mean air temperature of the previous
+                   24 h, see forcing.build); default the mean air temperature of the first 24 h of ser.
       save_at      step index i: the state at the START of step i (before its forcing is applied) is returned in diag['state_at'] (dict of
                    arrays); None or i >= n = not saved.
     Returns (W [n_out, N] float32, diag)."""
@@ -337,7 +421,7 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     expo = fog_exposure(tr)
     az, el = sun_position(ser["t_utc"])
     dt_h = step_min / 60.0
-    film, sunc = "film" in P, "sun_clear" in P
+    film, sunc, pavm = "film" in P, "sun_clear" in P, "pavement" in P
     if state0 is not None:
         W = np.asarray(state0["W"], np.float32).copy()
         assert W.shape == (N,), "state0['W'] must have one value per street point"
@@ -372,10 +456,22 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
             if "rain_since_wash" in state0:
                 rsw = np.asarray(state0["rain_since_wash"], np.float32).copy()
         rain_cur = np.zeros(N, np.float32)
+        dew_n = np.zeros(N, np.int32)      # steps with dew on the street (compare report: dew frequency)
         film_out = np.zeros((frames, N), np.float16)
         cause_out = np.zeros((frames, N), np.uint8)
         ring = np.zeros((cause_n, 4, N), np.float16)
         wet_bits = []
+    if pavm:   # guide 07: surface and deep temperature (degC). Start: carried state, else ts0, else the mean air temperature of the first 24 h of the window
+        cd = np.asarray(PAV_CD, float)[np.asarray(pts.get("surf", np.zeros(N, np.uint8)), int)]
+        if state0 is not None and "ts" in state0 and "tdeep" in state0:
+            ts_s = np.asarray(state0["ts"], np.float32).copy()
+            td_s = np.asarray(state0["tdeep"], np.float32).copy()
+            assert ts_s.shape == (N,) and td_s.shape == (N,), "state0['ts'] / ['tdeep'] must have one value per street point"
+        else:
+            t_init = np.mean(np.asarray(ser["temperature_2m"], float)[:int(round(24 * 60 / step_min))]) if ts0 is None else ts0
+            ts_s = np.full(N, 1.0, np.float32) * np.asarray(t_init, np.float32)
+            td_s = ts_s.copy()
+        ts_out = np.zeros((frames, N), np.uint8)
     lit_all = np.zeros((n, N), bool) if keep_lit else None
     dep = dict(fog=np.zeros(N), dew=np.zeros(N), rain=np.zeros(N), evap=np.zeros(N))
     if film:
@@ -390,6 +486,8 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
             block_dirs.append(mb)
         f = dict(temp=ser["temperature_2m"][i], dew=ser["dew_point_2m"][i], wind=ser["wind_speed_10m"][i],
                  cloud_low=ser["cloud_cover_low"][i], precip=ser["precipitation"][i], sw=ser["shortwave_radiation"][i])
+        if pavm and "cloud_cover" in ser:
+            f["cloud"] = ser["cloud_cover"][i]
         if forcing_fn is not None:
             f = forcing_fn(i, f)
         dw = f.get("dir_w") if E is not None else None   # guide 03: per-point direction weights [D, N] (sum to 1 over D) replace the single citywide blend
@@ -410,10 +508,15 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
         if save_at is not None and i == save_at:  # state at the START of step i = initial state of a run that begins at that time
             if film:
                 state_at = dict(W=slip_of(Fm), film=Fm.copy(), rain_hist=hist.copy(), hours_since_rain=hsr.copy(), rain_since_wash=rsw.copy())
+                if pavm:
+                    state_at.update(ts=ts_s.copy(), tdeep=td_s.copy())
             else:
                 state_at = dict(W=W.copy())
         if film:
-            Fm, parts = step_film(Fm, sv, porous, f, local, cap, dt_h, wr)
+            Fm, parts = step_film(Fm, sv, porous, f, local, cap, dt_h, wr, pav=dict(ts=ts_s, tdeep=td_s, cd=cd) if pavm else None)
+            dew_n += parts["dew"] > 1e-9
+            if pavm:
+                ts_s, td_s = parts["ts"], parts["tdeep"]
             r = np.maximum(np.asarray(f["precip"], np.float32), 0.0) * np.ones(N, np.float32)
             hsr = np.minimum(np.where(r >= RAIN_WET_MM_H, 0.0, hsr + dt_h), HSR_MAX_H).astype(np.float32)
             rain_cur += r * dt_h
@@ -428,6 +531,8 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
                 fi = i // out_every
                 out[fi] = slip_of(Fm)
                 film_out[fi] = Fm
+                if pavm:
+                    ts_out[fi] = np.clip(np.rint((ts_s + TS_U8_OFFSET_C) * TS_U8_PER_K), 0, 255)
                 tot = np.stack([ring[:, s].sum(axis=0, dtype=np.float32) for s in range(4)])
                 cause_out[fi] = np.where(tot.max(axis=0) > 0, tot.argmax(axis=0) + 1, 0)
         else:
@@ -451,8 +556,10 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
             nd = np.where(~np.unpackbits(wet_bits[j], count=N).astype(bool), j, nd)
             if j % out_every == 0:
                 dry_out[j // out_every] = np.where(nd >= n, 255, np.minimum(np.ceil((nd - j) * dt_h - 1e-9), 254))
-        extra.update(film_mm=film_out, dry_in_h=dry_out, cause=cause_out, extra_missing=extra_missing,
+        extra.update(film_mm=film_out, dry_in_h=dry_out, cause=cause_out, extra_missing=extra_missing, dew_steps=dew_n, n_steps=n,
                      rain_track=dict(rain_mm_24h=hist.sum(axis=0, dtype=np.float32) * RAIN_Q_MM + rain_cur, hours_since_rain=hsr, rain_since_wash=rsw))
+    if pavm:
+        extra.update(ts_u8=ts_out, ts_end=ts_s, tdeep_end=td_s)
     diag = dict(dirs_used=(None if dirs is None else dirs.tolist()), mean_flow_dir=mdir, sun_az=az, sun_el=el, s=s, lit=lit_all, lag_steps=lag_steps, fog_mode=mode, fog_top=top, tracer=np.asarray(tr, np.float32),
                 out_every=out_every, block_dirs=block_dirs, physics=sorted(P), state_at=state_at, **extra, **{k + "_total": v for k, v in dep.items()})
     return out, diag

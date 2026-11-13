@@ -179,11 +179,21 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
         traceback.print_exc()
         sinfo["error"] = repr(e)[:200]
         state0, save_at = None, None
+    # ---- pavement heat (guide 07): the length of the carried chain of road temperatures; the flag stays until PAV_SPINUP_DAYS days are in it
+    pavinfo, pav_chain = None, 0
+    if "pavement" in P:
+        carried = state0 is not None and "ts" in state0 and "tdeep" in state0
+        pav_chain = int(np.asarray(state0.get("pav_days", 0)).reshape(-1)[0]) if carried else 0
+        pavinfo = dict(carried=bool(carried), days=pav_chain, spin_up=pav_chain < C.PAV_SPINUP_DAYS, cold_start_air_mean=F["info"].get("pavement"))
+        if pavinfo["spin_up"]:
+            F["info"]["flags"].append("pavement spin-up")
     # ---- model
     t_sim = time.time()
     W, diag = wetness.simulate(point_table(S, extra), F["ser"], C.STEP_MIN, tracer_dirs=S["tracer"], dirs_deg=S["dirs"], forcing_fn=F["forcing_fn"], lag_block_h=3,
                                out_every=C.OUT_STEP_MIN // C.STEP_MIN, keep_lit=False, s_series=F["s_series"], fog_top=F["fog_top"], use_dirs=True, physics=P,
-                               state0=state0, save_at=save_at)
+                               state0=state0, save_at=save_at, ts0=F.get("pav_ts0"))
+    if pavinfo is not None and diag.get("state_at") is not None and "ts" in diag["state_at"]:
+        diag["state_at"]["pav_days"] = np.array(pav_chain + 1, np.int16)
     sim_s = time.time() - t_sim
     log(f"simulate {sim_s:.1f} s, frames {W.shape}")
     # ---- outputs
@@ -237,6 +247,8 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
                   sources_used=sorted(st.sources), sources_failed=st.failed, data_as_of=st.sources, notes=st.notes[:20] + cs_notes + F["info"]["flags"],
                   forcing=F["info"], mode=("rrfs_only" if not any(obs[k] is not None for k in ("coops", "metar")) else "observations_nudged"),
                   points=int(len(S["x"])), outputs=meta, cloud_score=cs_info, stations=sinfo_st)
+    if pavinfo is not None:
+        status["pavement"] = pavinfo
     (out / "status.json").write_text(json.dumps(status, indent=1, default=str))
     log(f"done in {status['run_seconds']} s; sources used {status['sources_used']}, failed {list(st.failed)}")
     return 0

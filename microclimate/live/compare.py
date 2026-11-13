@@ -104,6 +104,37 @@ def film_summary(film_mm, dry_in, S, Rb, k_obs):
     return out
 
 
+def dew_frequency(d):
+    """Share of model steps with dew on the road (film runs only): dict(mean_step_share over the street points, points_with_dew share) or None."""
+    if d.get("dew_steps") is None:
+        return None
+    n = float(d.get("n_steps") or 1)
+    ds = np.asarray(d["dew_steps"], float)
+    return dict(step_share=float(ds.mean() / n), points_with_dew=float((ds > 0).mean()), steps=int(n))
+
+
+def pavement_summary(da, db, S, Rb, k_obs):
+    """Road temperature of run B in degC (switch pavement) by elevation band and time part: mean, p90, maximum, plus dew frequency of A and B. None when B has no ts."""
+    dfa, dfb = dew_frequency(da), dew_frequency(db)
+    if db.get("ts_u8") is None:
+        return None if dfb is None and dfa is None else dict(dew_a=dfa, dew_b=dfb)
+    rows, zr, cl = rows_of(np.asarray(db["ts_u8"], np.float32) / wetness.TS_U8_PER_K - wetness.TS_U8_OFFSET_C, S, Rb)
+    nF = rows.shape[0]
+    kb = 0 if k_obs is None else int(np.clip(k_obs, 0, nF))
+    parts = {"all": slice(0, nF), "observed": slice(0, kb), "forecast": slice(kb, nF)}
+    groups = {"all rows": np.ones(len(zr), bool)}
+    for bn, (lo, hi) in zip(BAND_NAMES, BANDS):
+        groups["elev " + bn] = (zr >= lo) & (zr < hi)
+    out = {}
+    for pn, sl in parts.items():
+        out[pn] = {}
+        for gn, m in groups.items():
+            v = rows[sl][:, m]
+            out[pn][gn] = dict(n=int(v.size), mean_c=None if v.size == 0 else float(v.mean()), p90_c=None if v.size == 0 else float(np.percentile(v, 90)),
+                               max_c=None if v.size == 0 else float(v.max()), min_c=None if v.size == 0 else float(v.min()))
+    return dict(ts_b=out, dew_a=dfa, dew_b=dfb)
+
+
 def report(Wa, da, Wb, db, S, Rb, k_obs, pa, pb, now):
     """Pure function: the whole report dict from two simulations."""
     ra, zr, cl = rows_of(Wa, S, Rb)
@@ -115,8 +146,9 @@ def report(Wa, da, Wb, db, S, Rb, k_obs, pa, pb, now):
         vb = float(np.mean(db[t])) if t in db else None
         terms[t] = dict(a=va, b=vb, diff=None if va is None or vb is None else vb - va)
     film = film_summary(db["film_mm"], db["dry_in_h"], S, Rb, k_obs) if db.get("film_mm") is not None else None
+    pav = pavement_summary(da, db, S, Rb, k_obs)
     return dict(generated_iso=now.isoformat(), physics_a=list(pa), physics_b=list(pb), observed_until_frame=k_obs, frames=int(Wa.shape[0]),
-                rows=int(ra.shape[1]), street_points=int(Wa.shape[1]), a=sa, b=sb, diff=diffs(sa, sb), terms=terms, film_b=film,
+                rows=int(ra.shape[1]), street_points=int(Wa.shape[1]), a=sa, b=sb, diff=diffs(sa, sb), terms=terms, film_b=film, pavement=pav,
                 top_differences=top_street_diffs(Wa, Wb, S), max_abs_diff_points=float(np.abs(np.asarray(Wb, float) - np.asarray(Wa, float)).max()))
 
 
@@ -127,7 +159,7 @@ def _f(v, p=2):
 def _ab_lines(r):
     if r.get("anchors_compare"):
         return [f"- A: `{r['physics_a'] or 'none'}`, station anchors as configured (C.NUDGE_ANCHORS)", f"- B: `{r['physics_b'] or 'none'}`, station anchors ON"]
-    return [f"- A (current C.PHYSICS): `{r['physics_a'] or 'none'}`", f"- B: `{r['physics_b'] or 'none'}`"]
+    return [f"- A ({'--base' if r.get('base_given') else 'current C.PHYSICS'}): `{r['physics_a'] or 'none'}`", f"- B: `{r['physics_b'] or 'none'}`"]
 
 
 def to_markdown(r):
@@ -152,6 +184,19 @@ def to_markdown(r):
     L += ["## Terms (mean per point over the window; W units, or mm for a film run)", "", "| term | A | B | diff |", "|---|---|---|---|"]
     for t, v in r["terms"].items():
         L.append(f"| {t} | {_f(v['a'], 3)} | {_f(v['b'], 3)} | {_f(v['diff'], 4)} |")
+    if r.get("pavement"):
+        pv = r["pavement"]
+        if pv.get("ts_b"):
+            for pn in ("all", "observed", "forecast"):
+                L += [f"## B: road surface temperature in degC (pavement), {pn} frames", "", "| group | street-hours | mean | p90 | min | max |", "|---|---|---|---|---|---|"]
+                for gn, a in pv["ts_b"][pn].items():
+                    L.append(f"| {gn} | {a['n']} | {_f(a['mean_c'], 1)} | {_f(a['p90_c'], 1)} | {_f(a['min_c'], 1)} | {_f(a['max_c'], 1)} |")
+                L.append("")
+        L += ["## Dew frequency (share of 10-minute steps with dew on the road, mean over the street points)", "", "| run | step share | points with any dew |", "|---|---|---|"]
+        for nm, k in (("A", "dew_a"), ("B", "dew_b")):
+            v = pv.get(k)
+            L.append(f"| {nm} | {_f(v['step_share'], 4) if v else '-'} | {_f(v['points_with_dew'], 4) if v else '-'} |")
+        L += ["", "(unverified: textbook constants, no road-temperature measurements)", ""]
     L += ["", "## Ten largest per-street differences", "", "| x | y | z | max abs diff | mean abs diff |", "|---|---|---|---|---|"]
     for t in r["top_differences"]:
         L.append(f"| {t['x']:.0f} | {t['y']:.0f} | {t['z']:.1f} | {t['max_abs_diff']:.3f} | {t['mean_abs_diff']:.3f} |")
@@ -160,13 +205,13 @@ def to_markdown(r):
     return "\n".join(L) + "\n"
 
 
-def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physics_compare", now=None, log=print, anchors=False):
+def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physics_compare", now=None, log=print, anchors=False, base=None):
     """Fetch once, simulate with C.PHYSICS and with physics_b on the same inputs and the same `now`. Returns 0 on success, 2 when no data.
     anchors=True (guide 03): A and B both run with physics_b (None / empty = C.PHYSICS), A with C.NUDGE_ANCHORS as configured, B with the station anchors on."""
     from .. import city
     from . import fetch
     now = now or fetch.utcnow()
-    pa, pb = wetness.check_physics(C.PHYSICS), wetness.check_physics(physics_b)
+    pa, pb = wetness.check_physics(C.PHYSICS if base is None else base), wetness.check_physics(physics_b)
     if anchors:
         pa = pb = wetness.check_physics(tuple(physics_b) or C.PHYSICS)
     static = Path(static or C.STATIC_DEFAULT)
@@ -193,7 +238,7 @@ def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physi
             C.NUDGE_ANCHORS = nudge0
         t = time.time()
         W, diag = wetness.simulate(build.point_table(S, build.load_extra(static, S, P, st, log)), F["ser"], C.STEP_MIN, tracer_dirs=S["tracer"], dirs_deg=S["dirs"], forcing_fn=F["forcing_fn"], lag_block_h=3,
-                                   out_every=C.OUT_STEP_MIN // C.STEP_MIN, keep_lit=False, s_series=F["s_series"], fog_top=F["fog_top"], use_dirs=True, physics=P)
+                                   out_every=C.OUT_STEP_MIN // C.STEP_MIN, keep_lit=False, s_series=F["s_series"], fog_top=F["fog_top"], use_dirs=True, physics=P, ts0=F.get("pav_ts0"))
         log(f"simulate {sorted(P)}: {time.time() - t:.1f} s")
         res.append((W, diag, F))
     (Wa, da, Fa), (Wb, db, Fb) = res
@@ -201,6 +246,7 @@ def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physi
     k_obs = None if obs_until is None else int((dt.datetime.fromisoformat(obs_until) - t0).total_seconds() // 3600)
     rep = report(Wa, da, Wb, db, S, Rb, k_obs, sorted(pa), sorted(pb), now)
     rep["anchors_compare"] = bool(anchors)
+    rep["base_given"] = base is not None
     if anchors:
         rep["anchors_info"] = dict(a=Fa["info"].get("anchors"), b=Fb["info"].get("anchors"))
     out = Path(out_dir)

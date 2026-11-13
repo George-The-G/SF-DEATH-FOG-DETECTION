@@ -346,8 +346,13 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
     # --- per-point gather
     idx, w4 = lat_t.weights(*_xy_to_ll(lat_t, x, y))
     Ts, Tds, CLs, PRs, SWs, Us, Vs = (np.ascontiguousarray(a) for a in (T, Td, CL, PR, SW, U, Vv))
-    Ks = None
-    sun_out = {}
+    Ks = CCs = None
+    sun_out, pav_out = {}, {}
+    if "pavement" in info["physics"]:   # guide 07: total cloud for the sky longwave, cold start temperature of the road
+        CCs = np.ascontiguousarray(CC)
+        Tm, pinfo = pavement_cold_start(V["temperature_2m"], th)
+        pav_out = dict(pav_ts0=(Tm[idx] * w4).sum(axis=1).astype(np.float32))
+        info["pavement"] = pinfo
     if "sun_clear" in info["physics"]:   # guide 06: cloudiness k per lattice cell and step
         Ks, sun_out = cloudiness(lat_t, SW, g, t_h, now_h, ser["t_utc"], goes_hours, info, log)
 
@@ -356,6 +361,8 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
         out = dict(temp=gat(Ts), dew=gat(Tds), wind=np.hypot(gat(Us), gat(Vs)), cloud_low=gat(CLs), precip=gat(PRs), sw=gat(SWs))
         if Ks is not None:
             out["k"] = gat(Ks)
+        if CCs is not None:
+            out["cloud"] = gat(CCs)
         return out
     extra = {}
     if anch is not None:
@@ -374,7 +381,27 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
     info["obs_until"] = None if obs_until is None else obs_until.isoformat()
     info["coast_lattice_points"] = int(west.sum())
     return dict(ser=ser, s_series=s_series, fog_top=top, forcing_fn=forcing_fn, info=info, s_model=s_model, obs_until=obs_until,
-                dir_hourly=dir_h, lattice_cl=CL, goes_frac=goes_frac, khaf=khaf, t_hours=t_h, idx=idx, w=w4, lattice=lat_t, **sun_out, **extra)
+                dir_hourly=dir_h, lattice_cl=CL, goes_frac=goes_frac, khaf=khaf, t_hours=t_h, idx=idx, w=w4, lattice=lat_t, **sun_out, **pav_out, **extra)
+
+
+def pavement_cold_start(T_l, th, hours=24.0):
+    """Cold start of the road temperature (guide 07): the mean RRFS air temperature of the 24 h before the window start t0, per lattice cell.
+    T_l [L, nh] hourly RRFS temperature, th [nh] the hours of its columns relative to t0 (RRFS carries about 2 days of past hours, so this is normally complete).
+    When fewer than 24 past hourly values exist, the first C.HISTORY_H hours of the window (t0 ...) fill up the 24 h. -> (mean [L], dict(past_hours, window_hours))."""
+    th = np.asarray(th, float)
+    T_l = np.asarray(T_l, float)
+    prev = (th >= -hours - 1e-6) & (th < -1e-6) & np.isfinite(T_l).any(axis=0)
+    n_prev = int(prev.sum())
+    sel, n_win = prev.copy(), 0
+    if n_prev < int(round(hours)):
+        n_win = min(int(C.HISTORY_H), int(round(hours)) - n_prev)
+        sel |= (th >= -1e-6) & (th < n_win - 1e-6)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        m = np.nanmean(T_l[:, sel], axis=1) if sel.any() else np.full(T_l.shape[0], np.nan)
+    if not np.isfinite(m).all():
+        m = np.where(np.isfinite(m), m, np.nanmean(m) if np.isfinite(m).any() else 12.0)
+    return m, dict(past_hours=n_prev, window_hours=n_win)
 
 
 def cloudiness(lat_t, SW, g, t_h, now_h, t_utc, goes_hours, info, log=print):

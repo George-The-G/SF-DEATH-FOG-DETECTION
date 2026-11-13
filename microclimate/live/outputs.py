@@ -80,6 +80,9 @@ def write_extras(out, diag, Rb, ranges, idx, local):
     if diag.get("sun_u8") is not None:
         fields["sun"] = {"files": put(C.SUN_FILE, ribbon_cols(diag["sun_u8"], Rb, "mean")), "unit_wm2": 10, "max": 250, "layout": "same as frame_files: uint8 [frames, S], round(S / 10 W/m2), 0 = dark or night",
                          "sun_el": np.round(diag["sun_el"][idx], 2).tolist(), "sun_az": np.round(diag["sun_az"][idx], 2).tolist(), "k_mean": np.round(diag["sun_k"], 3).tolist()}
+    if diag.get("ts_u8") is not None:
+        fields["tsurf"] = {"files": put(C.TSURF_FILE, ribbon_cols(diag["ts_u8"], Rb, "mean")), "formula": "ts_degC = u8 / %g - %g" % (wetness.TS_U8_PER_K, wetness.TS_U8_OFFSET_C),
+                           "layout": "same as frame_files: uint8 [frames, S]", "unverified": "textbook heat balance, no road-temperature measurements"}
     if diag.get("film_mm") is not None:
         depth = wetness.depth_u8(ribbon_cols(np.asarray(diag["film_mm"], np.float32), Rb, "mean"))
         fields["film"] = {"slick_mm": wetness.FILM_SLICK, "dry_mm": wetness.DRY_MM, "note": "day files hold slip = 100 * (1 - exp(-F / slick_mm))",

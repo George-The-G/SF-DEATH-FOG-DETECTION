@@ -18,7 +18,8 @@ PT = ZoneInfo("America/Los_Angeles")
 MAX_BYTES = 3 * 1024 * 1024           # one state file must stay below this
 KEEP = 2                              # newest state files kept
 PATTERN = re.compile(r"^state_\d{8}T\d{2}\.npz$")
-FLOAT16 = ("W", "film", "ts", "tdeep", "rain_since_wash", "hours_since_rain")   # arrays stored as float16 (the rest keep their dtype)
+FLOAT16 = ("W", "film", "rain_since_wash", "hours_since_rain")   # arrays stored as float16 (the rest keep their dtype)
+CENTI = ("ts", "tdeep")                                           # road temperatures (guide 07): stored as int16 in 0.01 K (float16 would be 0.016 K at 20 degC)
 
 
 def name_for(t):
@@ -37,7 +38,8 @@ def next_t0(start):
 def save(path, time, physics, model_version, arrays):
     """Write the state atomically as a compressed npz; raises AssertionError above MAX_BYTES."""
     path = Path(path)
-    data = {k: (np.asarray(v, np.float16) if k in FLOAT16 else np.asarray(v)) for k, v in arrays.items()}
+    data = {k: (np.asarray(v, np.float16) if k in FLOAT16 else np.clip(np.rint(np.asarray(v, np.float64) * 100.0), -32768, 32767).astype(np.int16) if k in CENTI else np.asarray(v))
+            for k, v in arrays.items()}
     tmp = path.with_name(path.name + ".tmp")
     with open(tmp, "wb") as f:
         np.savez_compressed(f, _time=np.array(time.astimezone(dt.timezone.utc).isoformat()), _physics=np.array(json.dumps(sorted(physics))),
@@ -54,7 +56,8 @@ def load(path):
     """-> dict(time, physics (sorted list), model_version, arrays {name: float32 for the float16 ones}). Raises on a bad file."""
     with np.load(path, allow_pickle=False) as z:
         meta = dict(time=dt.datetime.fromisoformat(str(z["_time"])), physics=json.loads(str(z["_physics"])), model_version=str(z["_model_version"]))
-        meta["arrays"] = {k: (z[k].astype(np.float32) if k in FLOAT16 else z[k]) for k in z.files if not k.startswith("_")}
+        meta["arrays"] = {k: (z[k].astype(np.float32) if k in FLOAT16 else (z[k].astype(np.float32) / 100.0).astype(np.float32) if k in CENTI else z[k])
+                          for k in z.files if not k.startswith("_")}
     return meta
 
 

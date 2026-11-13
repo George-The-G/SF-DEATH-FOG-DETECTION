@@ -2,7 +2,7 @@
 
   build   [--out DIR] [--static PATH] [--ribbons PATH] [--cache DIR] [--physics a,b|none] [--carry-state] [--archive DIR]   one live run (default out: site/v3/live;
           physics default: config.PHYSICS)
-  compare --physics a,b|none [--anchors] [--static PATH] [--out DIR]   same inputs, config.PHYSICS versus the given switches; writes
+  compare --physics a,b|none [--base x,y] [--anchors] [--static PATH] [--out DIR]   same inputs, config.PHYSICS (or --base) versus the given switches; writes
                                                                        --anchors (guide 03): the given set (default config.PHYSICS) without versus with the station anchors on
                                                                        compare_<time>.md/.json (default out: reports/physics_compare)
   ribbons [--stride N] [--static PATH] [--out DIR]                     offline: city ribbons + column maps (out default: the static file's folder)
@@ -21,19 +21,28 @@ def opt(argv, name, default=None):
 def main(argv):
     cmd = argv[0] if argv else "help"
     if cmd == "build":
-        from . import build
+        from . import build, config
         ph = opt(argv, "--physics")
         if ph is not None:
             from . import compare
             ph = compare.parse_physics(ph)
+        try:
+            from .. import wetness
+            wetness.check_physics(ph if ph is not None else config.PHYSICS)
+        except ValueError as e:
+            sys.exit(f"build: {e}")
         sys.exit(build.run(opt(argv, "--out", "site/v3/live"), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"), physics=ph, carry_state=True if "--carry-state" in argv else None,
                            archive_dir=opt(argv, "--archive")))
     elif cmd == "compare":
         from . import compare
         if "--physics" not in argv and "--anchors" not in argv:
             sys.exit("compare needs --physics a,b (or --physics none), or --anchors")
-        sys.exit(compare.run(compare.parse_physics(opt(argv, "--physics")), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"),
-                             opt(argv, "--out", "reports/physics_compare"), anchors="--anchors" in argv))
+        base = opt(argv, "--base")
+        try:
+            sys.exit(compare.run(compare.parse_physics(opt(argv, "--physics")), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"),
+                                 opt(argv, "--out", "reports/physics_compare"), anchors="--anchors" in argv, base=None if base is None else compare.parse_physics(base)))
+        except ValueError as e:
+            sys.exit(f"compare: {e}")
     elif cmd == "ribbons":
         from . import config, ribbons
         static = Path(opt(argv, "--static", config.STATIC_DEFAULT))

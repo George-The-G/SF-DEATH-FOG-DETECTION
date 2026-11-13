@@ -88,6 +88,8 @@ K_SAT_WEIGHT = 0.5                   # share of (k_sat - k_model) added to the m
 SUN_FILE = "sun{d}.u8"               # on-demand sunlight files, same layout as day{d}.u8: round(100 * S / 1000) capped at 250 (written only when sun_clear is on)
 DEPTH_FILE = "depth{d}.u8"           # water depth files (guide 05): round(255 * log1p(F / 0.01) / log1p(1 / 0.01)); written only when film is on
 DRY_FILE = "dry{d}.u8"               # hours until the street is dry again, 255 = not within the window
+PAV_SPINUP_DAYS = 3                  # status flag "pavement spin-up" stays until the window starts from an anchor that carries the road temperature of this many days
+TSURF_FILE = "tsurf{d}.u8"           # road surface temperature (guide 07, written only when pavement is on): round((ts + 10) * 4), 0.25 K steps, -10 to 53.75 degC
 CAUSE_FILE = "cause{d}.u8"           # main source of the water in the last 3 h: 0 none, 1 fog, 2 dew, 3 drizzle, 4 rain
 
 # ---- stations as anchors (guide 03) ----
