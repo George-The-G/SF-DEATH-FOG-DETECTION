@@ -53,15 +53,33 @@ def job_coops(sid, product, begin, end):
 
 
 def job_iem(sid, date):
+    """IEM obhistory of an HADS / RAWS station. The service returns processed columns (tmpf, dwpf, sknt, drct) for the current day and raw SHEF codes for older rows
+    (TAIRGZZ deg F, XRIRGZZ relative humidity %, USIRGZZ wind mph, UDIRGZZ wind direction; -148 = sensor missing): both are read."""
     src = C.STATIONS[sid]["src"]
     js = _get(C.IEM_OBHISTORY, dict(station=src, network="CA_DCP", date=date.strftime("%Y-%m-%d")), "iem").json()
     d = js.get("data") or []
     times = [dt.datetime.strptime(x["utc_valid"], "%Y-%m-%dT%H:%MZ").replace(tzinfo=dt.timezone.utc) for x in d]
-    tc = lambda k: np.array([np.nan if x.get(k) is None else (float(x[k]) - 32.0) / 1.8 for x in d])  # noqa: E731
-    sp = np.array([np.nan if x.get("sknt") is None else float(x["sknt"]) * 0.514444 for x in d])
-    di = np.array([np.nan if x.get("drct") is None else float(x["drct"]) for x in d])
-    return {"T": (times, tc("tmpf")), "Td": (times, tc("dwpf")), "wind": (times, sp, di)}
 
+    def col(proc, raw, conv):
+        out = []
+        for x in d:
+            v = x.get(proc)
+            if v is None and x.get(raw) is not None and float(x[raw]) > -100.0:
+                v = conv(float(x[raw]))
+            elif v is not None and proc in ("tmpf", "dwpf"):
+                v = conv(float(v)) if float(v) > -100.0 else None       # -148 = sensor missing
+            out.append(np.nan if v is None else float(v))
+        return np.array(out)
+    f2c = lambda f: (f - 32.0) / 1.8  # noqa: E731
+    T = col("tmpf", "TAIRGZZ", f2c)
+    sp = np.array([np.nan if (x.get("sknt") is None and x.get("USIRGZZ") is None) else (float(x["sknt"]) * 0.514444 if x.get("sknt") is not None else float(x["USIRGZZ"]) * 0.44704) for x in d])
+    di = np.array([np.nan if (x.get("drct") is None and x.get("UDIRGZZ") is None) else float(x["drct"] if x.get("drct") is not None else x["UDIRGZZ"]) for x in d])
+    Td = col("dwpf", "__none__", f2c)
+    rh = np.array([np.nan if x.get("relh") is None and x.get("XRIRGZZ") is None else float(x["relh"] if x.get("relh") is not None else x["XRIRGZZ"]) for x in d])
+    need = ~np.isfinite(Td) & np.isfinite(T) & np.isfinite(rh) & (rh > 0)
+    if need.any():
+        Td = np.where(need, _td_from_rh(np.where(need, T, 10.0), np.where(need, rh, 50.0)), Td)
+    return {"T": (times, T), "Td": (times, Td), "wind": (times, sp, di)}
 
 def job_nws(sid):
     js = _get(C.NWS_OBS_URL.format(id=C.STATIONS[sid]["src"]), dict(limit=60), "nws_extra").json()

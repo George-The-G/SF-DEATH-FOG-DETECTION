@@ -203,11 +203,19 @@ def fit_T_hour(resid, dz_km, min_n=None):
     ok = np.isfinite(resid) & np.isfinite(dz_km)
     if ok.sum() < min_n:
         return None
+    spread = float(dz_km[ok].max() - dz_km[ok].min())
+    if spread < C.T_MIN_DZ_SPREAD_KM:        # all stations at about the same height: the lapse adjustment cannot be told from the offset, keep it at zero
+        a = float(np.sum(resid[ok]) / (ok.sum() + 0.5 ** 2 / C.T_PRIOR_OFFSET_K ** 2))
+        return float(np.clip(a, -C.TEMP_CLIP_C, C.TEMP_CLIP_C)), 0.0
     A = np.stack([np.ones(ok.sum()), dz_km[ok]], axis=1)
     sig2 = 0.5 ** 2
     M = A.T @ A / sig2 + np.diag([1.0 / C.T_PRIOR_OFFSET_K ** 2, 1.0 / C.T_PRIOR_LAPSE_K_PER_KM ** 2])
     a, b = np.linalg.solve(M, A.T @ resid[ok] / sig2)
-    return float(np.clip(a, -C.TEMP_CLIP_C, C.TEMP_CLIP_C)), float(np.clip(b, *C.T_LAPSE_ADJ_CLIP))
+    lo, hi = C.T_LAPSE_ADJ_CLIP
+    if not lo <= b <= hi:                      # lapse adjustment at its bound: re-solve the offset for that value (clipping afterwards would bias the offset)
+        b = float(np.clip(b, lo, hi))
+        a = float(np.sum(resid[ok] - b * dz_km[ok]) / (ok.sum() + 0.5 ** 2 / C.T_PRIOR_OFFSET_K ** 2))
+    return float(np.clip(a, -C.TEMP_CLIP_C, C.TEMP_CLIP_C)), float(b)
 
 
 def horizontal(resid, sx, sy, px, py, L=None):

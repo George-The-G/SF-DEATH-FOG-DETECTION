@@ -105,7 +105,7 @@ STATIONS = {
     "AAMC1": dict(kind="coops", src="9414750", name="Alameda", lat=37.7720, lon=-122.3000, elev_m=2.0, sensor_m=10.0, vars=("T", "wind")),
     "LNDC1": dict(kind="coops", src="9414763", name="Oakland Berth 67", lat=37.7950, lon=-122.2810, elev_m=3.0, sensor_m=10.0, vars=("T", "wind")),
     "SFOC1": dict(kind="nws", src="SFOC1", name="San Francisco downtown", lat=37.7706, lon=-122.4269, elev_m=46.0, sensor_m=0.0, vars=("T", "Td")),
-    "OAMC1": dict(kind="nws", src="OAMC1", name="Oakland Museum", lat=37.7981, lon=-122.2634, elev_m=9.0, sensor_m=0.0, vars=("T", "Td")),
+    "OAMC1": dict(kind="iem", src="OAMC1", name="Oakland Museum", lat=37.7981, lon=-122.2634, elev_m=9.0, sensor_m=0.0, vars=("T", "Td")),
     "D3169": dict(kind="nws", src="D3169", name="DW3169 Oakland", lat=37.8321, lon=-122.2500, elev_m=29.0, sensor_m=0.0, vars=("T", "Td", "wind")),
     "KSFO": dict(kind="metar", src="KSFO", name="San Francisco Intl", lat=37.6196, lon=-122.3656, elev_m=3.0, sensor_m=10.0, vars=("T", "Td", "wind", "vis")),
     "KOAK": dict(kind="metar", src="KOAK", name="Oakland Intl", lat=37.7178, lon=-122.2330, elev_m=3.0, sensor_m=10.0, vars=("T", "Td", "wind", "vis")),
@@ -144,6 +144,7 @@ LAPSE_TD_K_PER_KM = -2.0             # dew point (first guess)
 T_FIT_MIN_STATIONS = 3               # fewer: distance-weighted horizontal correction instead
 T_PRIOR_OFFSET_K = 3.0               # ridge on the sea-level offset (first guess)
 T_PRIOR_LAPSE_K_PER_KM = 4.0         # ridge on the lapse adjustment
+T_MIN_DZ_SPREAD_KM = 0.15           # the lapse adjustment is fitted only when the reporting stations span at least this much height (first guess)
 T_LAPSE_ADJ_CLIP = (-8.0, 12.0)      # K/km (inversion: positive)
 T_HORIZ_L_M = 6000.0
 T_HORIZ_W0 = 0.25                    # weight of "zero correction" in the horizontal fallback (pulls to zero away from stations)

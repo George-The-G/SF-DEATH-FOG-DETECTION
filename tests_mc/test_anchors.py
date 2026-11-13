@@ -180,6 +180,11 @@ class TestTemperature(unittest.TestCase):
         self.assertAlmostEqual(fa, a, delta=0.3)
         self.assertAlmostEqual(fb, b, delta=1.0)
 
+    def test_no_height_spread_means_no_lapse_adjustment(self):
+        fa, fb = anchors.fit_T_hour(np.array([1.2, 1.4, 1.3, 1.1]), np.array([0.0, 0.01, 0.03, 0.045]))
+        self.assertEqual(fb, 0.0)
+        self.assertAlmostEqual(fa, 1.25, delta=0.1)
+
     def test_fewer_than_three_stations_gives_none(self):
         self.assertIsNone(anchors.fit_T_hour(np.array([1.0, 1.1, np.nan]), np.array([0.0, 0.1, 0.2])))
 

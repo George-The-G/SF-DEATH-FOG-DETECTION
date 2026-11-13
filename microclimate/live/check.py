@@ -208,4 +208,10 @@ def run(argv):
     for k, v in report["recent"]["fog"].items():
         print(k, {a: v[a] for a in ("hours", "base_rate", "hit_rate", "false_alarm_ratio")}, "onset", v["onset"]["median_err_h"], "clear", v["clear"]["median_err_h"])
     print("wind", report["recent"].get("wind_coops_fort_point"), "notes", report["recent"]["notes"])
+    if "--no-stations" not in argv:       # guide 03 step 6: leave-one-station-out table (raw model, today's citywide correction, anchor fit); never fatal
+        try:
+            from . import check_stations
+            check_stations.run(now, days, out)
+        except Exception as e:  # noqa: BLE001
+            print("station leave-one-out check failed:", repr(e)[:300])
     return 0
