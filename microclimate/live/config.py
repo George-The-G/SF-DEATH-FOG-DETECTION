@@ -13,11 +13,16 @@ PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS)
 # Beta preview channel (site/v3/live_beta/, opened with /v3/?beta=1): a second build of the same fetched inputs with these settings. It is applied ONLY by `build --beta`
 # (build.run(beta=True)); the public build never reads it. Staging order (user's decision 2026-11-12): stage 1 = station anchors + clear-sky sun, stage 2 = carry_state,
 # stage 3 = film + pavement. A stage goes to the public settings above only after the user has looked at the preview and approved it.
-BETA = dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False)
+BETA = dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False, wind_east=True)
+# WIND_EAST (guide 14): the east wind-direction fields (22.5 .. 135 deg; 157.5 is an accepted gap) feed the STREET WIND only: station-anchor wind fit and
+# the direction weights. Needs live_east.npz next to the static table; the fog tracer weight for east / offshore wind stays zero. False = the public model, bit for bit.
+# The public build reads this value; the beta build reads BETA["wind_east"] only. build.run sets it for the duration of one build (like NUDGE_ANCHORS).
+WIND_EAST = False
+EAST_FILE = "live_east.npz"           # release asset of live-static-v1 (wind vectors at the stations for the 15 library directions); optional
 # Settings the PUBLIC build runs with when it is started with `build --promoted` (live_ci/refresh.sh does that when DEATHFOG_LIVE_PROMOTE is true; the job falls back to the old settings,
 # C.PHYSICS / C.NUDGE_ANCHORS / C.CARRY_STATE, if such a build fails). Approved 2026-11-13: clear-sky sun (GOES sunlight) + station anchors, exactly the stage 1 beta. Nothing else:
-# no carried state, film, pavement or east wind. Beta (C.BETA) moves on to the next stage on its own; this dict changes only with an explicit approval.
-PROMOTED = dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False)
+# no carried state, film, pavement or east wind (wind_east stays False here on purpose; the east wind is under test on the beta channel). Beta (C.BETA) moves on to the next stage on its own; this dict changes only with an explicit approval.
+PROMOTED = dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False, wind_east=False)
 BETA_DIR = "live_beta"                # published folder of the beta channel, next to live/
 
 # ---- RRFS through Open-Meteo (HRRR on Open-Meteo is discontinued 2026-11-30: do not use it) ----

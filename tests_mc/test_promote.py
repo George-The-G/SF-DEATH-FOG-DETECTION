@@ -1,4 +1,4 @@
-"""Promotion of the stage 1 beta settings to the public live build (2026-11-13): `build --promoted` runs the public build with config.PROMOTED, nothing else changes,
+﻿"""Promotion of the stage 1 beta settings to the public live build (2026-11-13): `build --promoted` runs the public build with config.PROMOTED, nothing else changes,
 and the default public build (no flag) is exactly the old one."""
 import datetime as dt
 import tempfile
@@ -20,31 +20,39 @@ class Stop(Exception):
 
 class TestPromotedSettings(unittest.TestCase):
     def setUp(self):
-        self.saved = (dict(C.BETA), dict(C.PROMOTED), C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE)
+        self.saved = (dict(C.BETA), dict(C.PROMOTED), C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE, C.WIND_EAST)
 
     def tearDown(self):
         C.BETA.clear()
         C.BETA.update(self.saved[0])
         C.PROMOTED.clear()
         C.PROMOTED.update(self.saved[1])
-        C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE = self.saved[2:]
+        C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE, C.WIND_EAST = self.saved[2:]
 
     def test_exactly_the_approved_set(self):
         """Sunlight + station anchors, and nothing else: no carried state, film, pavement or east wind."""
-        self.assertEqual(C.PROMOTED, dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False))
+        self.assertEqual(C.PROMOTED, dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False, wind_east=False))
         self.assertEqual(wetness.check_physics(C.PROMOTED["physics"]), frozenset({"sun_clear"}))
-        self.assertEqual(build.settings(False, promoted=True), dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False))
+        self.assertEqual(build.settings(False, promoted=True), dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False, wind_east=False))
         self.assertEqual(build.beta_label(build.settings(False, promoted=True)), "clear-sky sun (GOES sunlight), station anchors")
 
+    def test_east_wind_never_reaches_the_promoted_build(self):
+        C.BETA.update(wind_east=True)
+        C.WIND_EAST = True                                                                 # even the public switch: the promoted set states its own value
+        self.assertFalse(build.settings(False, promoted=True)["wind_east"])
+        self.assertEqual(C.PROMOTED.get("wind_east"), False)
+        self.assertTrue(build.settings(True)["wind_east"])
+        C.WIND_EAST = False
+
     def test_default_public_build_is_the_old_one(self):
-        self.assertEqual(build.settings(False), dict(physics=(), nudge_anchors=False, carry_state=False))
+        self.assertEqual(build.settings(False), dict(physics=(), nudge_anchors=False, carry_state=False, wind_east=False))
         self.assertEqual((C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE), ((), False, False))
 
     def test_the_three_settings_never_mix(self):
-        C.BETA.update(physics=("film",), nudge_anchors=False, carry_state=True)           # the next beta stage: must not reach the promoted build
-        self.assertEqual(build.settings(False, promoted=True), dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False))
+        C.BETA.update(physics=("film",), nudge_anchors=False, carry_state=True, wind_east=True)  # the next beta stage: must not reach the promoted build
+        self.assertEqual(build.settings(False, promoted=True), dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False, wind_east=False))
         C.PROMOTED.update(physics=("film",), carry_state=True)                            # and the other way round
-        self.assertEqual(build.settings(True), dict(physics=("film",), nudge_anchors=False, carry_state=True))
+        self.assertEqual(build.settings(True), dict(physics=("film",), nudge_anchors=False, carry_state=True, wind_east=True))
         C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE = ("pavement",), True, True             # the legacy values do not reach either
         self.assertEqual(build.settings(False, promoted=True)["physics"], ("film",))
         self.assertEqual(build.settings(True)["physics"], ("film",))

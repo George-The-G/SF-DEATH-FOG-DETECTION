@@ -220,18 +220,40 @@ def vstat(ou, ov, mu, mv):
     return dict(n=int(ok.sum()), mae=round(float(e.mean()), 2), rmse=round(float(np.sqrt((e ** 2).mean())), 2))
 
 
-def evaluate(t0, t1, sw_path=None, log=print):
+_MEMO = {}
+
+
+def _cached(key, fn, on):
+    """Network results shared by the two runs of compare_east (same hours, same stations)."""
+    if not on:
+        return fn()
+    if key not in _MEMO:
+        _MEMO[key] = fn()
+    return _MEMO[key]
+
+
+def evaluate(t0, t1, sw_path=None, log=print, east=False, memo=False):
+    """east=True (guide 14): the wind anchors use live_east.npz (15 directions, carried direction range [180, 540)) instead of station_wind.npz."""
+    east0 = C.WIND_EAST
+    C.WIND_EAST = bool(east)
+    try:
+        return _evaluate(t0, t1, sw_path, log, east, memo)
+    finally:
+        C.WIND_EAST = east0
+
+
+def _evaluate(t0, t1, sw_path, log, east, memo):
     hours = hours_axis(t0, t1)
     nh = len(hours)
-    sw = Sx.load_station_wind(sw_path or (Path(C.STATIC_DEFAULT).parent / C.STATION_WIND_FILE), None)
-    log(f"hours {nh}; station_wind {'loaded' if sw else 'MISSING (wind anchors skipped)'}")
-    raw = observations(t0, t1, log)
+    sw = Sx.load_station_wind(sw_path or (Path(C.STATIC_DEFAULT).parent / (C.EAST_FILE if east else C.STATION_WIND_FILE)), None)
+    log(f"hours {nh}; {'live_east' if east else 'station_wind'} {'loaded' if sw else 'MISSING (wind anchors skipped)'}")
+    raw = _cached(("obs", t0, t1), lambda: observations(t0, t1, log), memo)
     H = Sx.hourly(raw, t0, nh)
     live = [s for s in C.STATIONS if s not in NO_HISTORY and any(np.isfinite(H[s][k]).any() for k in ("T", "Td", "spd"))]
     names = list(C.WIND_REGIONS)
     pts = {s: (C.STATIONS[s]["lat"], C.STATIONS[s]["lon"]) for s in live}
     pts.update({f"region:{n}": C.WIND_REGIONS[n] for n in names})
-    fc = forecast_points(pts, t0, t1, hours)
+    fc = _cached(("fc", t0, t1, tuple(sorted(pts))), lambda: forecast_points(pts, t0, t1, hours), memo)
     from pyproj import Transformer
     tr = Transformer.from_crs(4326, 32610, always_xy=True)
     S = dict(ids=live, x={}, y={}, dz={})
@@ -271,7 +293,13 @@ def evaluate(t0, t1, sw_path=None, log=print):
                 pred, fit = out
                 k = sw["ids"].index(s)
                 row["anchor"] = vstat(o["u"], o["v"], pred[:, k, 0], pred[:, k, 1])
-                row["speed_anchor"] = stat(o["spd"], np.hypot(pred[:, k, 0], pred[:, k, 1]))
+                pspd = np.hypot(pred[:, k, 0], pred[:, k, 1])
+                row["speed_anchor"] = stat(o["spd"], pspd)
+                east_h = np.isfinite(o["u"]) & np.isfinite(o["v"]) & (anchors.from_uv(o["u"], o["v"])[1] < 180.0)      # observed wind from 0..180 (the hours the west library cannot represent)
+                row["east_hours"] = int(east_h.sum())
+                row["speed_anchor_east_hours"] = stat(np.where(east_h, o["spd"], np.nan), pspd)
+                row["speed_anchor_other_hours"] = stat(np.where(east_h, np.nan, o["spd"]), pspd)
+                row["speed_raw_east_hours"] = stat(np.where(east_h, o["spd"], np.nan), fc[s]["spd"])
         res.setdefault(s, {})["wind"] = row
     flags = {}
     if sw is not None:
@@ -304,6 +332,34 @@ def to_markdown(rep):
             g = lambda k, sk: "n/a" if not x[k] else f"{x[k]['mae']:.2f} ({x[sk]['mae']:.2f})"  # noqa: E731
             L.append(f"| {s}{' (hill)' if x['hill'] else ''} | {x['raw']['n']} | {g('raw', 'speed_raw')} | {g('city', 'speed_city')}{' in-sample' if x['city_in_sample'] else ''} | {g('anchor', 'speed_anchor')} |")
     return "\n".join(L) + "\n"
+
+
+def compare_east(now, days, out, log=print):
+    """Guide 14: the anchor wind fit (leave-one-station-out) with the west library (station_wind.npz, directions clamped to 180..360) versus with the east fields on
+    (live_east.npz). Writes stations_east_<date>.md / .json: speed and vector error at the in-grid wind anchors, all hours and hours with observed wind from 0..180."""
+    t0, t1 = now - dt.timedelta(days=days), now - dt.timedelta(hours=24)
+    off = evaluate(t0, t1, log=log, east=False, memo=True)
+    on = evaluate(t0, t1, log=log, east=True, memo=True)
+    L = [f"# East wind fields on vs off: in-grid wind anchors, leave-one-station-out ({off['start'][:10]} to {off['end'][:10]}, {off['hours']} h)", "",
+         "Error of the anchor fit's wind at the held-out in-grid station; speed MAE in m/s, vector MAE in the last two columns. raw = RRFS at the station (same in both). East hours = observed wind from 0..180 deg.", "",
+         "| station | hours | east hours | raw speed, east h | OFF speed (all h) | ON speed (all h) | OFF speed, east h | ON speed, east h | OFF speed, other h | ON speed, other h | OFF vector (all h) | ON vector (all h) |",
+         "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    f = lambda d, k: "n/a" if not d or not d.get(k) else f"{d[k]['mae']:.2f} (n={d[k]['n']})"  # noqa: E731
+    v = lambda d: "n/a" if not d or not d.get("anchor") else f"{d['anchor']['mae']:.2f}"  # noqa: E731
+    for s, d in off["stations"].items():
+        w0, w1 = d.get("wind"), on["stations"][s].get("wind")
+        if not w0 or not w0.get("anchor") or not w1:
+            continue
+        L.append(f"| {s} | {(w0.get('raw') or {}).get('n', 0)} | {w0.get('east_hours')} | {f(w0, 'speed_raw_east_hours')} | {f(w0, 'speed_anchor')} | {f(w1, 'speed_anchor')} | {f(w0, 'speed_anchor_east_hours')} | "
+                 f"{f(w1, 'speed_anchor_east_hours')} | {f(w0, 'speed_anchor_other_hours')} | {f(w1, 'speed_anchor_other_hours')} | {v(w0)} | {v(w1)} |")
+    L += ["", f"Wind fit OFF: {off['wind_fit']}", "", f"Wind fit ON: {on['wind_fit']}", ""]
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"stations_east_{now:%Y-%m-%d}.json").write_text(json.dumps(dict(off=off, on=on), indent=1, default=str), encoding="utf-8")
+    md = "\n".join(L) + "\n"
+    (out / f"stations_east_{now:%Y-%m-%d}.md").write_text(md, encoding="utf-8", newline="\n")
+    log(md)
+    return off, on
 
 
 def run(now, days, out, log=print):

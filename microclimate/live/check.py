@@ -208,6 +208,10 @@ def run(argv):
     for k, v in report["recent"]["fog"].items():
         print(k, {a: v[a] for a in ("hours", "base_rate", "hit_rate", "false_alarm_ratio")}, "onset", v["onset"]["median_err_h"], "clear", v["clear"]["median_err_h"])
     print("wind", report["recent"].get("wind_coops_fort_point"), "notes", report["recent"]["notes"])
+    if "--east-compare" in argv:          # guide 14: anchor wind fit with the east fields on versus off (needs station_wind.npz and live_east.npz)
+        from . import check_stations
+        check_stations.compare_east(now, days, out)
+        return 0
     if "--no-stations" not in argv:       # guide 03 step 6: leave-one-station-out table (raw model, today's citywide correction, anchor fit); never fatal
         try:
             from . import check_stations

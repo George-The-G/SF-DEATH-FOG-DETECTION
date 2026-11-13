@@ -12,6 +12,10 @@ For every wind station inside the 20 m grid (config.STATIONS entries with "wind"
   layer_floor [S]    that first informative height, m
 
 Needs the PC's wind library; never runs in the live build. The file is published as an extra release asset (not by this command).
+
+--east (guide 14): the same table for ALL available directions including the east set (dirlib.available(east=True): 22.5 .. 135 and 180 .. 360; 157.5 is an accepted gap),
+written to live_east.npz (default <data>/live/live_east.npz) with the extra fields `static_dirs` (the west directions of live_static.npz, which the live build checks)
+and `east_dirs`. Rows of directions that station_wind.npz already holds (same stations and heights) are copied, not recomputed. CPU only.
 """
 import json
 import time
@@ -48,7 +52,8 @@ def run(argv):
         return argv[argv.index(name) + 1] if name in argv else default
     from pyproj import Transformer
     data = Path(opt("--data", Path.home() / "deathfog-data"))
-    out = Path(opt("--out", data / "live" / C.STATION_WIND_FILE))
+    east = "--east" in argv
+    out = Path(opt("--out", data / "live" / (C.EAST_FILE if east else C.STATION_WIND_FILE)))
     grids, lib = data / "grids", data / "library"
     spec = json.load(open(grids / "grid_spec.json"))
     solid = np.load(grids / "solid_20m.npz")["solid"]
@@ -74,11 +79,21 @@ def run(argv):
     cj = np.clip(np.round((ys - spec["y0"]) / spec["cell_m"] - 0.5).astype(int), 0, ny - 1)
     floor_m = (kw[ci, cj] + 0.5) * spec["cell_m"]
     z_used = np.maximum(zs, floor_m)
-    dirs = dirlib.available(lib)
+    dirs = dirlib.available(lib, east=east)
+    have = {}
+    prev = data / "live" / C.STATION_WIND_FILE
+    if east and prev.exists():     # reuse the west rows of the published station_wind.npz when it is for the same stations and heights
+        z0 = np.load(prev, allow_pickle=False)
+        if [str(i) for i in z0["ids"]] == ids and np.allclose(z0["z_used"], z_used, atol=1e-3):
+            have = {float(d): z0["uv"][i] for i, d in enumerate(z0["dirs"])}
     print("stations", ids, "z requested", zs, "layer floor", floor_m, "z used", z_used, "directions", dirs)
     uv = np.zeros((len(dirs), len(ids), 2))
     far_west = (spec["x0"] + 200.0 * np.ones(1), spec["y0"] + 8000.0 * np.ones(1), np.array([100.0]))
     for k, d in enumerate(dirs):
+        if float(d) in have:
+            uv[k] = have[float(d)]
+            print(f"  dir {d}: copied from {C.STATION_WIND_FILE}")
+            continue
         t0 = time.time()
         u = np.load(lib / f"wind_{dirlib._stem(d)}.npz")["u"]
         v = sample(u, xs, ys, z_used, spec, kw)
@@ -87,7 +102,8 @@ def run(argv):
         print(f"  dir {d}: {time.time() - t0:.0f} s; free-stream sample at the west edge (u, v, w) = {np.round(free, 2)}; stations (u, v) = {np.round(uv[k], 2).tolist()}")
         del u
     out.parent.mkdir(parents=True, exist_ok=True)
+    extra = dict(static_dirs=np.array(dirlib.available(lib), np.float32), east_dirs=np.array([d for d in dirs if d < 180.0], np.float32)) if east else {}
     np.savez_compressed(out, ids=np.array(ids), dirs=np.array(dirs, np.float32), uv=uv.astype(np.float32), z_used=z_used.astype(np.float32), x=xs, y=ys,
-                        layer_floor=floor_m.astype(np.float32))
+                        layer_floor=floor_m.astype(np.float32), **extra)
     print("wrote", out, out.stat().st_size, "bytes")
     return 0

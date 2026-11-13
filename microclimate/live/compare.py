@@ -157,6 +157,8 @@ def _f(v, p=2):
 
 
 def _ab_lines(r):
+    if r.get("east_compare"):
+        return [f"- A: `{r['physics_a'] or 'none'}`, station anchors ON, west wind library (directions clamped to 180..360)", f"- B: same, east wind fields ON (guide 14; 157.5 gap blended, fog tracer rows zero)"]
     if r.get("anchors_compare"):
         return [f"- A: `{r['physics_a'] or 'none'}`, station anchors as configured (C.NUDGE_ANCHORS)", f"- B: `{r['physics_b'] or 'none'}`, station anchors ON"]
     return [f"- A ({'--base' if r.get('base_given') else 'current C.PHYSICS'}): `{r['physics_a'] or 'none'}`", f"- B: `{r['physics_b'] or 'none'}`"]
@@ -205,15 +207,15 @@ def to_markdown(r):
     return "\n".join(L) + "\n"
 
 
-def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physics_compare", now=None, log=print, anchors=False, base=None):
+def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physics_compare", now=None, log=print, anchors=False, base=None, east=False):
     """Fetch once, simulate with C.PHYSICS and with physics_b on the same inputs and the same `now`. Returns 0 on success, 2 when no data.
     anchors=True (guide 03): A and B both run with physics_b (None / empty = C.PHYSICS), A with C.NUDGE_ANCHORS as configured, B with the station anchors on."""
     from .. import city
     from . import fetch
     now = now or fetch.utcnow()
     pa, pb = wetness.check_physics(C.PHYSICS if base is None else base), wetness.check_physics(physics_b)
-    if anchors:
-        pa = pb = wetness.check_physics(tuple(physics_b) or C.PHYSICS)
+    if anchors or east:     # east=True (guide 14): A and B both with station anchors on and physics_b; A the west library, B the east fields (live_east.npz)
+        pa = pb = wetness.check_physics(tuple(physics_b or ()) or C.PHYSICS)
     static = Path(static or C.STATIC_DEFAULT)
     ribbons = Path(ribbons or static.parent / "live_ribbons.npz")
     cache = Path(cache or static.parent / "goes_cache")
@@ -227,15 +229,23 @@ def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physi
     except fetch.FetchError as e:
         log(f"cannot compare: {e}")
         return 2
-    build.attach_station_wind(obs, static, S)
     res = []
-    nudge0 = C.NUDGE_ANCHORS
-    for P, nudge in ((pa, nudge0), (pb, True if anchors else nudge0)):
-        C.NUDGE_ANCHORS = nudge
+    nudge0, east0 = C.NUDGE_ANCHORS, C.WIND_EAST
+    S_west, S_east = S, None
+    if east:      # guide 14: A = station anchors with the west library, B = the same with the east fields (live_east.npz); everything else equal
+        from . import east as _east
+        S_east, einfo = _east.apply(S, static.parent / C.EAST_FILE)
+        if S_east is None:
+            log(f"cannot compare east on/off: {einfo['reason']}")
+            return 2
+    for P, nudge, e_on in ((pa, True if east else nudge0, False), (pb, True if (anchors or east) else nudge0, bool(east))):
+        S = S_east if e_on else S_west
+        build.attach_station_wind(obs, static, S, east=e_on)
+        C.NUDGE_ANCHORS, C.WIND_EAST = nudge, e_on
         try:
             F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P, goes_hours=goes_hours, z=S["z"])
         finally:
-            C.NUDGE_ANCHORS = nudge0
+            C.NUDGE_ANCHORS, C.WIND_EAST = nudge0, east0
         t = time.time()
         W, diag = wetness.simulate(build.point_table(S, build.load_extra(static, S, P, st, log)), F["ser"], C.STEP_MIN, tracer_dirs=S["tracer"], dirs_deg=S["dirs"], forcing_fn=F["forcing_fn"], lag_block_h=3,
                                    out_every=C.OUT_STEP_MIN // C.STEP_MIN, keep_lit=False, s_series=F["s_series"], fog_top=F["fog_top"], use_dirs=True, physics=P, ts0=F.get("pav_ts0"))
@@ -246,6 +256,7 @@ def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physi
     k_obs = None if obs_until is None else int((dt.datetime.fromisoformat(obs_until) - t0).total_seconds() // 3600)
     rep = report(Wa, da, Wb, db, S, Rb, k_obs, sorted(pa), sorted(pb), now)
     rep["anchors_compare"] = bool(anchors)
+    rep["east_compare"] = bool(east)
     rep["base_given"] = base is not None
     if anchors:
         rep["anchors_info"] = dict(a=Fa["info"].get("anchors"), b=Fb["info"].get("anchors"))
