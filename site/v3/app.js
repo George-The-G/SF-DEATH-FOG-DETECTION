@@ -95,6 +95,13 @@ moon.position.set(-6000, 9000, 5000); scene.add(moon);
 const amb = new THREE.AmbientLight(0x202840, 0.8); scene.add(amb);
 const skater = createSkater({ THREE, reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches }); // shown only during the route flyover
 scene.add(skater.group);
+/* Beta sky and perf HUD (sky.js, loaded only with ?beta=1&sky=1 and/or &hud=1): live sun, moon, stars for the time on screen. The normal page never fetches it. */
+let SKY = null;
+if (BETA && (QP.get('sky') === '1' || QP.get('hud') === '1')) {
+  import('./sky.js').then((m) => m.createSky({ THREE, scene, camera, renderer, starsUrl: 'stars.bin', sky: QP.get('sky') === '1', hud: QP.get('hud') === '1' }))
+    .then((s) => { SKY = s; if (night) skyTime(curF); }).catch((e) => console.warn('sky unavailable', e));
+}
+function skyTime(f) { if (SKY && night) SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); }
 
 let meta = null, pts = null, terrainH = null, T = null;
 const CITY = { target: new THREE.Vector3(8300, 0, -8000), pos: new THREE.Vector3(3900, 8800, 7600) };
@@ -636,6 +643,7 @@ function applyTime(force) {
   if (document.activeElement !== $('slider') || force) $('slider').value = f;
   const key = Math.round(f * 20);
   curF = f;
+  skyTime(f);
   if (BX) BX.frame(f);
   if (useRib) { rib.setFrame(f); if (rib2) rib2.setFrame(f); } // three uniform writes, nothing else
   if (force || key !== lastFrameKey) {
@@ -794,6 +802,7 @@ function frame(ts) {
     if (vis) L.el.style.transform = `translate(-50%,-100%) translate(${clamp((v3.x * .5 + .5) * innerWidth, 70, innerWidth - 70)}px, ${(1 - (v3.y * .5 + .5)) * innerHeight}px)`;
   }
   if (BX) BX.render(ts);
+  if (SKY) SKY.update(ts);
   renderer.render(scene, camera);
 }
 
