@@ -12,6 +12,7 @@ NEW=live_new
 STATIC=live_static
 ARCH=archive_new
 RC=1
+PROMOTED_RUN=0     # 1 when the published public build of this run used the promoted settings
 # Beta preview channel (config.BETA; opened with /v3/?beta=1): a second build of the same fetched inputs into its own folder, with its own state files, status.json and cloud
 # score. It runs after everything of the public build is done, never writes the run archive, and any failure of it is logged and ignored.
 OUTB=site/v3/live_beta
@@ -22,6 +23,13 @@ REPO="${GITHUB_REPOSITORY:-George-The-G/SF-DEATH-FOG-DETECTION}"
 PAGES="https://${REPO%%/*}.github.io/${REPO#*/}/v3/live"
 PAGESB="${PAGES}_beta"
 mkdir -p "$OUT"
+
+# Promoted settings (config.PROMOTED: clear-sky sun + station anchors, approved for the public page 2026-11-13). On only when DEATHFOG_LIVE_PROMOTE is true (the workflow sets it from the repo
+# variable of the same name, default true; unset here = off, so the old settings). The public build then runs `build --promoted`; if that build fails for any reason other than missing
+# inputs (RRFS / static tables) it is run again with the old settings, so the page keeps its old behaviour. Switch off: repo variable DEATHFOG_LIVE_PROMOTE = false.
+promote_enabled() {
+  [ "$(printf '%s' "${DEATHFOG_LIVE_PROMOTE:-false}" | tr 'A-Z' 'a-z')" = true ]
+}
 
 archive_enabled() {
   local v="${DEATHFOG_ARCHIVE:-}"
@@ -75,7 +83,8 @@ beta_build() {
   rm -rf "$NEWB"
   mkdir -p "$NEWB"
   cp "$OUTB"/state_*.npz "$NEWB"/ 2>/dev/null && echo "carried beta state files: $(ls "$NEWB" | grep -c '^state_')" || echo "no carried beta state files: cold start"
-  cp "$OUTB"/dsr_cache.json "$NEWB"/ 2>/dev/null && echo "carried the GOES sunlight cache" || echo "no GOES sunlight cache carried"
+  if [ "$PROMOTED_RUN" = 1 ] && cp "$OUT"/dsr_cache.json "$NEWB"/ 2>/dev/null; then echo "beta uses the GOES sunlight cache of the public build (same hours, one fetch)"
+  else cp "$OUTB"/dsr_cache.json "$NEWB"/ 2>/dev/null && echo "carried the GOES sunlight cache" || echo "no GOES sunlight cache carried"; fi
   local S0 RCB
   S0=$(date +%s)
   if [ -x /usr/bin/time ]; then
@@ -91,7 +100,7 @@ beta_build() {
 }
 
 echo "::group::previous live output from $PAGES"
-python3 live_ci/fetch_previous.py "$PAGES" "$OUT" || echo "no previous live output could be fetched; keeping what is in $OUT"
+python3 live_ci/fetch_previous.py "$PAGES" "$OUT" --extras || echo "no previous live output could be fetched; keeping what is in $OUT"   # --extras: sun files, stations.json and the sunlight cache of a promoted output
 echo "::endgroup::"
 
 # >>> cloud score carry (guide 04): keep cloud_score.json and the sat*.png tiles of the last published output, in both modes; the build merges into the file named below
@@ -123,19 +132,45 @@ if [ ! -s "$STATIC/live_static.npz" ]; then
   python3 live_ci/finalize.py "$NEW" "$OUT" 91 "static table download failed"; exit 0
 fi
 
+# One public build: $1 = promoted (build --promoted, 420 s) or legacy (the old settings, 480 s). Sets RC; leaves the result in $NEW.
+public_build() {
+  local ARGS="" TO=480
+  if [ "$1" = promoted ]; then ARGS="--promoted"; TO=420; fi
+  rm -rf "$NEW" "$ARCH" "$(dirname "$INPUTS")"
+  mkdir -p "$NEW"
+  cp "$OUT"/state_*.npz "$NEW"/ 2>/dev/null && echo "carried state files: $(ls "$NEW" | grep -c '^state_')" || echo "no carried state files: cold start"
+  if [ "$1" = promoted ]; then   # the rolling GOES sunlight cache: the public one, else the beta one (a cold cache only means the first runs fetch the hours piece by piece)
+    cp "$OUT"/dsr_cache.json "$NEW"/ 2>/dev/null && echo "carried the GOES sunlight cache" \
+      || { cp "$OUTB"/dsr_cache.json "$NEW"/ 2>/dev/null && echo "seeded the GOES sunlight cache from the beta channel" || echo "no GOES sunlight cache carried"; }
+  fi
+  local START
+  START=$(date +%s)
+  if [ -x /usr/bin/time ]; then
+    timeout "$TO" /usr/bin/time -v python3 -m microclimate.live build $ARGS --out "$NEW" --static "$STATIC/live_static.npz" --archive "$ARCH" --save-inputs "$INPUTS" 2> >(tee live_time.log >&2)
+  else
+    timeout "$TO" python3 -m microclimate.live build $ARGS --out "$NEW" --static "$STATIC/live_static.npz" --archive "$ARCH" --save-inputs "$INPUTS"
+  fi
+  RC=$?
+  echo "$1 build exit code $RC after $(( $(date +%s) - START )) s"
+  grep -E "Maximum resident|Elapsed" live_time.log 2>/dev/null || true
+}
+
 echo "::group::build"
-rm -rf "$NEW" "$ARCH" "$(dirname "$INPUTS")"
-mkdir -p "$NEW"
-cp "$OUT"/state_*.npz "$NEW"/ 2>/dev/null && echo "carried state files: $(ls "$NEW" | grep -c '^state_')" || echo "no carried state files: cold start"
-START=$(date +%s)
-if [ -x /usr/bin/time ]; then
-  timeout 480 /usr/bin/time -v python3 -m microclimate.live build --out "$NEW" --static "$STATIC/live_static.npz" --archive "$ARCH" --save-inputs "$INPUTS" 2> >(tee live_time.log >&2)
+if promote_enabled; then
+  echo "promoted settings: on"
+  public_build promoted
+  if [ "$RC" -eq 0 ]; then
+    PROMOTED_RUN=1
+  elif grep -qE "RRFS unavailable|static table" "$NEW/status.json" 2>/dev/null; then
+    echo "promoted build failed because an input is missing (the old settings would fail the same way): no fallback"
+  else
+    echo "promoted build failed (exit $RC): running the old settings instead"
+    public_build legacy
+  fi
 else
-  timeout 480 python3 -m microclimate.live build --out "$NEW" --static "$STATIC/live_static.npz" --archive "$ARCH" --save-inputs "$INPUTS"
+  echo "promoted settings: off (DEATHFOG_LIVE_PROMOTE is not true): old settings"
+  public_build legacy
 fi
-RC=$?
-echo "build exit code $RC after $(( $(date +%s) - START )) s"
-grep -E "Maximum resident|Elapsed" live_time.log 2>/dev/null || true
 echo "::endgroup::"
 python3 live_ci/finalize.py "$NEW" "$OUT" "$RC" ""
 echo "::group::run archive"

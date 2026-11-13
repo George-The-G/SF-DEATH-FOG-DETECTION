@@ -128,6 +128,13 @@ const betaHtml = () => '<h3 id="ab-beta"><span class="ab-btag">Beta</span>Beta p
   '<li><b>Sunshine:</b> sun position, building shade, road slope and cloud (GOES sunlight where it is available).</li>' +
   '<li><b>Slick and water depth:</b> a modelled water film with its drying time and cause.</li></ul>' +
   '<p>Slick, water depth and sunshine are modelled, not measured, and have not been checked against real wet-road reports yet.</p>';
+/* public page, once the layers are promoted (beta_ui.js sets window.__bxPromo): what the new layers are, no Beta wording */
+const promoHtml = () => '<h3 id="ab-layers">Data layers</h3>' +
+  '<p>Weather stations, satellite low cloud and sunshine sit beside the model.' + (window.__betaLabel ? ' Model settings in this build: ' + escH(window.__betaLabel) + '.' : '') + '</p>' +
+  '<ul><li><b>Stations:</b> piers, a bridge, airports, hill and buoy stations at their real spots, compared with the model at the selected hour. The model uses them as anchors for wind and temperature.</li>' +
+  '<li><b>Satellite low cloud:</b> NOAA GOES-18, past hours only, drawn as a violet dashed outline. "Cloud match" is how well the model fog agrees with it over the last 24 hours.</li>' +
+  '<li><b>Sunshine:</b> sun position, building shade, road slope and cloud (GOES sunlight where it is available).</li></ul>' +
+  '<p>Sunshine and street wetness are modelled, not measured, and have not been checked against real wet-road reports yet. This is a guide, not a forecast guarantee.</p>';
 const BETA_CSS = '.ab-btag{display:inline-block;margin-right:6px;vertical-align:1px;font:650 9px/12px var(--sans,system-ui,sans-serif);letter-spacing:.07em;text-transform:uppercase;color:var(--cy-ink,#7fe3f0);border:1px solid rgba(94,242,255,.55);border-radius:4px;padding:0 4px}';
 const LIVE_REPLACE = ['A replay of nine recent nights (7 foggy, 2 dry) showing how wet streets may have been along a few skate routes.', 'Modelled street wetness for tonight and the next two days across San Francisco, with detail on a few skate routes. The nine past-night replays are in the Night list.'];
 
@@ -183,7 +190,7 @@ export async function openAbout() {
   if (state.trigger) state.trigger.setAttribute('aria-expanded', 'true');
 
   const html = await loadHtml();
-  if (state.root === root) { body.innerHTML = (BETA_ABOUT ? betaHtml() : '') + (LIVE_ABOUT ? LIVE_HTML + html.replace(LIVE_REPLACE[0], LIVE_REPLACE[1]) : html); body.scrollTop = 0; }
+  if (state.root === root) { body.innerHTML = (BETA_ABOUT ? betaHtml() : window.__bxPromo ? promoHtml() : '') + (LIVE_ABOUT ? LIVE_HTML + html.replace(LIVE_REPLACE[0], LIVE_REPLACE[1]) : html); body.scrollTop = 0; }
 }
 
 export function closeAbout() {

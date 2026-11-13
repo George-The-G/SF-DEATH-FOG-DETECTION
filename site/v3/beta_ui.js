@@ -1,5 +1,5 @@
-/* Beta preview data layers: weather stations, GOES satellite low cloud, sunshine, water depth and the regrouped settings.
-   Loaded by app.js with import() only when the page is opened with ?beta=1 (the beta preview channel, live_beta/), so the public page never downloads it.
+/* Data layers (promoted to the public page; also the beta preview channel): weather stations, GOES satellite low cloud, sunshine, water depth and the regrouped settings.
+   Loaded by app.js with import() only when the public live output carries the promoted settings or the page is opened with ?beta=1; otherwise nobody downloads it. X.beta tells the two apart (Beta tag and wording only on ?beta=1).
    Every data file is fetched on demand (when its layer is switched on or a street / route needs it); the first paint does not grow.
    Missing data never breaks anything: a layer whose files are absent is shown greyed in settings with a one-line reason.
    Design: the approved "Viewer data layers" mockup. Context (scene, camera, current night, helpers) comes from app.js through init(ctx). */
@@ -37,7 +37,7 @@ export async function init(ctx) {
   A.stNow = A.stFile && st.stations.newest ? Object.keys(st.stations.newest).length : 0;
   if (A.sun && A.live) S.color = 'sun';           // beta default: sunshine colouring (night and failed loads fall back to slick, see colorMode / loadSun)
   A.any = A.film || A.sun || A.sat || !!A.stFile;
-  window.__betaOn = true; window.__betaLabel = (X.LV && X.LV.betaLabel) || '';
+  window.__betaOn = true; window.__bxPromo = !X.beta; window.__betaLabel = (X.LV && X.LV.betaLabel) || '';
   buildSettings();
   buildTag();
   if (A.any) { buildReadout(); buildChipLine(); lightInit(); X.refresh(); }
@@ -72,7 +72,8 @@ function buildSettings() {
   if (layers) { const t = layers.querySelector('h4'); if (t) t.remove(); map.appendChild(layers); }
   const parts = [];
   const label = (X.LV && X.LV.betaLabel) || '';
-  parts.push(h(`<div class="bx-note"><span class="bx-tag-s">Beta</span><span>Beta preview: stations, satellite cloud, sunshine and water depth are on test and may change.${label ? ' Settings: ' + esc(label) + '.' : ''} Not the public forecast.</span></div>`));
+  if (X.beta) parts.push(h(`<div class="bx-note"><span class="bx-tag-s">Beta</span><span>Beta preview: stations, satellite cloud, sunshine and water depth are on test and may change.${label ? ' Settings: ' + esc(label) + '.' : ''} Not the public forecast.</span></div>`));
+  else parts.push(h(`<div class="bx-note"><span>Stations, satellite cloud and sunshine are shown beside the model. Sunshine and water are modelled, not measured, and not a forecast guarantee.${label ? ' Model: ' + esc(label) + '.' : ''}</span></div>`));
   parts.push(play);
   { // always shown on the beta channel: layers with no data in this run are greyed with the reason
     const g = h(`<section class="bx-grp" id="bx-g-color"><div class="bx-gh">Colour and light<em id="bx-clnote"></em></div>
@@ -124,6 +125,7 @@ function syncColorUi() {
 
 /* beta tag at the start of the status line: opens About (its first section is the beta note) */
 function buildTag() {
+  if (!X.beta) return;                           // the public page has no Beta tag
   const l = $('st3l'); if (!l || l.parentElement.classList.contains('bx-stl')) return;
   const w = document.createElement('span'); w.className = 'bx-stl'; l.before(w);
   const b = h('<button type="button" class="bx-tag" aria-label="Beta preview: about the new data layers">Beta</button>');

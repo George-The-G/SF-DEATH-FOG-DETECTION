@@ -131,9 +131,13 @@ INPUTS_VERSION = 1
 PHYSICS_LABEL = {"sun_clear": "clear-sky sun", "film": "water film", "pavement": "pavement heat"}
 
 
-def settings(beta=False, physics=None, carry_state=None):
+def settings(beta=False, physics=None, carry_state=None, promoted=False):
     """The settings of one build -> dict(physics (tuple), nudge_anchors, carry_state). The public build reads C.PHYSICS / C.NUDGE_ANCHORS / C.CARRY_STATE; the beta build
-    reads ONLY C.BETA (an explicit physics / carry_state argument still wins, for tests and the command line). The two never mix."""
+    reads ONLY C.BETA (an explicit physics / carry_state argument still wins, for tests and the command line). The two never mix.
+    promoted=True (public build, `build --promoted`): reads ONLY C.PROMOTED, the approved set that went from beta to the public page."""
+    if promoted and not beta:
+        return dict(physics=tuple(C.PROMOTED["physics"] if physics is None else physics), nudge_anchors=bool(C.PROMOTED.get("nudge_anchors", False)),
+                    carry_state=bool(C.PROMOTED.get("carry_state", False) if carry_state is None else carry_state))
     if beta:
         b = dict(C.BETA)
         return dict(physics=tuple(C.BETA["physics"] if physics is None else physics), nudge_anchors=bool(b.get("nudge_anchors", False)),
@@ -229,8 +233,8 @@ def fetch_dsr(st, t0, now, out, log=print):
         return None, dict(error=repr(e)[:200])
 
 
-def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, physics=None, carry_state=None, archive_dir=None, beta=False, inputs=None, inputs_out=None):
-    """One live run. beta=True: the beta preview channel (settings from C.BETA only, never writes the run archive, status gets "channel": "beta").
+def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, physics=None, carry_state=None, archive_dir=None, beta=False, inputs=None, inputs_out=None, promoted=False):
+    """One live run. promoted=True: the public build with the promoted settings (C.PROMOTED), status gets "promoted" (the page turns its data layers on from that flag). beta=True: the beta preview channel (settings from C.BETA only, never writes the run archive, status gets "channel": "beta").
     inputs: path of a pickle written by an earlier (public) run of the same job (save_inputs): its fetched data is reused instead of fetching again; a missing or unreadable
     file means the beta run fetches for itself (noted in the status). inputs_out: path to write this run's fetched inputs to (the public run, for the beta run)."""
     from .. import city
@@ -242,7 +246,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     static = Path(static or C.STATIC_DEFAULT)
     ribbons = Path(ribbons or static.parent / "live_ribbons.npz")
     cache = Path(cache or static.parent / "goes_cache")
-    S_set = settings(beta, physics, carry_state)
+    S_set = settings(beta, physics, carry_state, promoted)
     P = wetness.check_physics(S_set["physics"])
     st = Status()
     start, t0, end = window(now)
@@ -390,6 +394,11 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
                   points=int(len(S["x"])), outputs=meta, cloud_score=cs_info, stations=sinfo_st)
     if pavinfo is not None:
         status["pavement"] = pavinfo
+    if promoted and not beta:   # the public page reads this flag to switch its data layers on; absent = the old public page
+        status["promoted"] = dict(label=beta_label(S_set), physics=list(S_set["physics"]), nudge_anchors=S_set["nudge_anchors"], carry_state=S_set["carry_state"],
+                                  sun_dsr=bool(C.SUN_DSR and "sun_clear" in P))
+        if dsr_stats is not None:
+            status["dsr"] = dsr_stats
     if beta:   # the preview channel says so in its own status (the page badge reads "beta")
         status["channel"] = "beta"
         status["beta"] = dict(label=beta_label(S_set), physics=list(S_set["physics"]), nudge_anchors=S_set["nudge_anchors"], carry_state=S_set["carry_state"],

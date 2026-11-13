@@ -14,6 +14,10 @@ PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS)
 # (build.run(beta=True)); the public build never reads it. Staging order (user's decision 2026-11-12): stage 1 = station anchors + clear-sky sun, stage 2 = carry_state,
 # stage 3 = film + pavement. A stage goes to the public settings above only after the user has looked at the preview and approved it.
 BETA = dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False)
+# Settings the PUBLIC build runs with when it is started with `build --promoted` (live_ci/refresh.sh does that when DEATHFOG_LIVE_PROMOTE is true; the job falls back to the old settings,
+# C.PHYSICS / C.NUDGE_ANCHORS / C.CARRY_STATE, if such a build fails). Approved 2026-11-13: clear-sky sun (GOES sunlight) + station anchors, exactly the stage 1 beta. Nothing else:
+# no carried state, film, pavement or east wind. Beta (C.BETA) moves on to the next stage on its own; this dict changes only with an explicit approval.
+PROMOTED = dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False)
 BETA_DIR = "live_beta"                # published folder of the beta channel, next to live/
 
 # ---- RRFS through Open-Meteo (HRRR on Open-Meteo is discontinued 2026-11-30: do not use it) ----
