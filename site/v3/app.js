@@ -98,8 +98,8 @@ const skater = createSkater({ THREE, reduceMotion: matchMedia('(prefers-reduced-
 scene.add(skater.group);
 /* Beta sky and perf HUD (sky.js, loaded only with ?beta=1&sky=1 and/or &hud=1): live sun, moon, stars for the time on screen. The normal page never fetches it. */
 let SKY = null;
-if (BETA && (QP.get('sky') === '1' || QP.get('hud') === '1')) {
-  import('./sky.js').then((m) => m.createSky({ THREE, scene, camera, renderer, starsUrl: 'stars.bin', sky: QP.get('sky') === '1', hud: QP.get('hud') === '1' }))
+if (BETA && (QP.get('sky') !== '0' || QP.get('hud') === '1')) { // beta default: live sky; ?sky=0 turns it off
+  import('./sky.js').then((m) => m.createSky({ THREE, scene, camera, renderer, starsUrl: 'stars.bin', sky: QP.get('sky') !== '0', hud: QP.get('hud') === '1' }))
     .then((s) => { SKY = s; if (FOGV) s.setExtra(() => fog.info()); if (night) skyTime(curF); }).catch((e) => console.warn('sky unavailable', e));
 }
 function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) fog.setLight(SKY.light); } }
@@ -535,7 +535,7 @@ function applyUrlRoute() { // ?route=<id> selects and flies to it, &fly=1 starts
 }
 
 /* ------------------------------------------------------------------ fog layer (see fog.js) */
-const FOGV = BETA && QP.get('fog') === 'vol';
+const FOGV = BETA && QP.get('fog') !== 'sheets'; // beta default: volumetric fog; ?fog=sheets gets the old sheets back
 const fog = (FOGV ? createFogVol : createFog)({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast });
 
 /* ------------------------------------------------------------------ replay data */
