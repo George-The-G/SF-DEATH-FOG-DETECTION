@@ -47,3 +47,8 @@ Dependencies: 01 first. 05 and 07 need 02. 07 needs 06 and 05. 11 and 12 need 08
 | Satellite nowcast (0-6 h) | Cloud tracking project | Worth it once guide 04 shows fog timing is the main error |
 | Calibration against real roads | No field data for now | Loggers and reports later; guide 02 keeps the history ready |
 | Networks needing accounts (PurpleAir, Synoptic) | API keys as repo secrets | User creates accounts; they slot into guide 03 |
+
+
+## Beta preview channel (2026-11-12)
+Every stage is looked at on a preview page before it goes live. `config.BETA` holds the settings of the preview; `build --beta` is the only code that reads it. The scheduled job (`live_ci/refresh.sh build`) builds the public output first and then the beta output from the same fetched inputs (the public build writes them with `--save-inputs`, taken before the forcing touches them; the beta build reads them with `--inputs`), into `site/v3/live_beta/` with its own state files, `status.json` (`"channel": "beta"`, `beta.label`, `beta.inputs`), cloud score and GOES sunlight cache, and never writes the run archive. A failure of the beta step is logged and ignored. Open it with `/v3/?beta=1` (warning badge "Beta preview: <settings>"); the public page without the parameter is unchanged.
+Stages: 1 = `sun_clear` + `nudge_anchors` (now), 2 = `carry_state`, 3 = `film` + `pavement` with the new viewer UI. A stage moves to `C.PHYSICS` / `C.NUDGE_ANCHORS` / `C.CARRY_STATE` only after the user has approved the preview.
