@@ -78,7 +78,7 @@ function buildSettings() {
       <div class="bx-crow"><div class="seg bx-seg" id="bx-color" role="group" aria-label="Street colour">
         <button type="button" data-c="slick">Wet</button>
         <button type="button" data-c="sun"${A.sun ? '' : ' disabled'}>${A.sun ? 'Sunshine' : 'Sunshine · not in this run'}</button>
-        ${X.beta ? `<button type="button" data-c="ts"${A.tsurf ? '' : ' disabled title="Road temperature is not available in this run"'}>Road temp</button>` : ''}</div>
+        ${X.beta || A.tsurf ? `<button type="button" data-c="ts"${A.tsurf ? '' : ' disabled title="Road temperature is not available in this run"'}>Road temp</button>` : ''}</div>
       </div>
         <p class="bx-hint">Press and hold a street (finger or mouse) for its details. A short tap or click does nothing.${X.beta && !A.tsurf ? ' Road temperature is not available in this run.' : ''}</p>
       <div class="tgs bx-one"><label class="${A.sun ? '' : 'na'}"><input type="checkbox" id="bx-light"${A.sun ? ' checked' : ' disabled'}><span><i class="bx-tt"><b>Light the scene by the sun</b><small>${A.sun ? 'Day and night follow the selected hour' : 'No sun data in this run'}</small></i></span></label></div></section>`);

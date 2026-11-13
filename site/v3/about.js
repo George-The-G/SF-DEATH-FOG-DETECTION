@@ -134,8 +134,10 @@ const promoHtml = () => '<h3 id="ab-layers">Data layers</h3>' +
   '<p>Weather stations, satellite low cloud and sunshine sit beside the model.' + (window.__betaLabel ? ' Model settings in this build: ' + escH(window.__betaLabel) + '.' : '') + '</p>' +
   '<ul><li><b>Stations:</b> piers, a bridge, airports, hill and buoy stations at their real spots, compared with the model at the selected hour. The model uses them as anchors for wind and temperature.</li>' +
   '<li><b>Satellite low cloud:</b> NOAA GOES-18, past hours only, drawn as a violet dashed outline. "Cloud match" is how well the model fog agrees with it over the last 24 hours.</li>' +
-  '<li><b>Sunshine:</b> sun position, building shade, road slope and cloud (GOES sunlight where it is available).</li></ul>' +
-  '<p>Sunshine and street wetness are modelled, not measured, and have not been checked against real wet-road reports yet. This is a guide, not a forecast guarantee.</p>';
+  '<li><b>Sunshine:</b> sun position, building shade, road slope and cloud (GOES sunlight where it is available).</li>' +
+  '<li><b>Wet and water depth:</b> the amount of water on the street, not how slippery it is (grip matters too).</li>' +
+  '<li><b>Road temp:</b> modelled surface temperature of the street, 40 to 80°F. It keeps heat from earlier hours and days, so it needs about three days to warm up after a restart.</li></ul>' +
+  '<p>Sunshine, street wetness, water depth and road temperature are modelled, not measured, and have not been checked against real wet-road reports yet. This is a guide, not a forecast guarantee.</p>';
 const BETA_CSS = '.ab-btag{display:inline-block;margin-right:6px;vertical-align:1px;font:650 9px/12px var(--sans,system-ui,sans-serif);letter-spacing:.07em;text-transform:uppercase;color:var(--cy-ink,#7fe3f0);border:1px solid rgba(94,242,255,.55);border-radius:4px;padding:0 4px}';
 const LIVE_REPLACE = ['A replay of nine recent nights (7 foggy, 2 dry) showing how wet streets may have been along a few skate routes.', 'Modelled street wetness for tonight and the next two days across San Francisco, with detail on a few skate routes. The nine past-night replays are in the Night list.'];
 
