@@ -23,3 +23,4 @@ Notes: the first table rows above were written by install_tools.bat; the Node.js
 | 2026-11-12 | playwright 1.65.1 (Python, in the main repo .venv; drives the already-installed Microsoft Edge, no browser download) | 1.65.1 | pip into C:\Users\George\source\repos\SF-DEATH-FOG-DETECTION\.venv, UI screenshot tests of the viewer (scratch scripts in %TEMP%\ui_test) | pip uninstall playwright, or delete the .venv folder |
 | 2026-11-15 | (guide 10, branch sim-10-cf-hosting) no packages installed | - | boto3 is only listed in live_ci/requirements-r2.txt for the runner; tests use a fake S3 client | - |
 | 2026-11-16 | boto3 1.44.3 (+botocore, s3transfer, jmespath, urllib3 deps) | 1.44.3 | pip into the main repo .venv, R2 uploader live_ci/r2_sync.py (guide 10) | pip uninstall boto3 botocore s3transfer jmespath |
+| 2026-11-12 | (east wind directions, winddir runner) no new packages | - | only existing .venv packages used | - |

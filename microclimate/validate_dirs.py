@@ -211,7 +211,7 @@ def check_roundtrip(D, d):
     return out
 
 
-def run(D, dirs, out=None, png=True):
+def run(D, dirs, out=None, png=True, manifest=None):
     D = Path(D)
     outd = {}
     r270 = None
@@ -242,7 +242,7 @@ def run(D, dirs, out=None, png=True):
         print(d, "PASS" if r["pass"] else "FAIL", {k: r[k] for k in r if k.endswith("_pass")}, flush=True)
     out = Path(out or D / "library" / "wind_dirs_validation.json")
     json.dump(outd, open(out, "w"), indent=1, default=lambda o: o.item() if hasattr(o, "item") else str(o))
-    mf = D / "library" / "wind_dirs.json"   # manifest read by dirlib.available (merged with earlier passes)
+    mf = Path(manifest) if manifest else D / "library" / "wind_dirs.json"   # manifest read by dirlib.available (merged with earlier passes)
     prev = set(json.load(open(mf)).get("validated", [])) if mf.exists() else set()
     for k, r in outd.items():
         if k != "270":

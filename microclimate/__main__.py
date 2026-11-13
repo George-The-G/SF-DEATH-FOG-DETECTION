@@ -60,6 +60,9 @@ def main(argv):
         except fog3d.GpuLockHeld as e:
             print(e)
             sys.exit(3)
+    elif cmd == "winddir":  # winddir --dir <deg> [--force|--validate|--status]: ONE direction, atomic, resumable, status json (see winddir.py)
+        from . import winddir
+        sys.exit(winddir.main(cfg, DATA, argv[1:]))
     elif cmd == "street":
         from . import street
         print(json.dumps(street.build(cfg, DATA / "grids", DATA / "library"), indent=1))
