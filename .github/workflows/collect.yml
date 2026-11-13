@@ -83,7 +83,7 @@ jobs:
 
       # Live fog data for /v3/. Code and scripts come from the v3-dev branch (like site/v3), so main stays small.
       # The build runs on the 7,37 cron and on manual runs; every other run only carries the last published live output into this deploy.
-      # Never blocks v2 (continue-on-error). Switch it off without a code change: repo variable DEATHFOG_LIVE = false.
+      # Never blocks v2 (continue-on-error). Switch it off without a code change: repo variable DEATHFOG_LIVE = false (all live data) or DEATHFOG_LIVE_PROMOTE = false (back to the old live settings and page).
       - name: Live fog data, Python (build runs only)
         if: vars.DEATHFOG_LIVE != 'false' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '7,37 * * * *')
         continue-on-error: true
@@ -102,9 +102,12 @@ jobs:
       - name: Live fog data
         if: vars.DEATHFOG_LIVE != 'false'
         continue-on-error: true
-        timeout-minutes: 12
+        timeout-minutes: 15            # was 12: room for the fallback build with the old settings
         env:
           GH_TOKEN: ${{ github.token }}
+          # Promoted data layers (clear-sky sun + station anchors, approved 2026-11-13). On unless the repo variable DEATHFOG_LIVE_PROMOTE is "false" (rollback without a code change).
+          # live_ci/refresh.sh runs `build --promoted` and falls back to the old settings if that build fails.
+          DEATHFOG_LIVE_PROMOTE: ${{ vars.DEATHFOG_LIVE_PROMOTE != 'false' }}
         run: |
           git fetch --depth=1 origin v3-dev
           git archive FETCH_HEAD live_ci microclimate | tar -x
