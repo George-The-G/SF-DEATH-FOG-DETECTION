@@ -21,16 +21,42 @@ def get(url, params=None, name="", binary=False):
     if C.blocked(name):
         raise FetchError(f"{name}: blocked for testing (DEATHFOG_LIVE_BLOCK)")
     err = None
+    t_start = time.monotonic()
     for k in range(C.RETRIES):
+        wait_hint = None
         try:
             r = requests.get(url, params=params, headers=C.UA, timeout=C.TIMEOUT_S)
             if r.status_code == 200:
                 return r
             err = f"HTTP {r.status_code}"
-        except Exception as e:  # noqa: BLE001
+            if not (r.status_code >= 500 or r.status_code == 429):
+                break  # 4xx other than 429: not transient, do not retry
+            wait_hint = _retry_after(r)
+        except requests.RequestException as e:  # timeouts, connection resets/errors (transient)
             err = repr(e)[:120]
-        time.sleep(1.5 * (k + 1))
+        except Exception as e:  # noqa: BLE001  (anything else, e.g. a bad URL: not transient)
+            err = repr(e)[:120]
+            break
+        if k == C.RETRIES - 1:
+            break
+        wait = min(wait_hint if wait_hint is not None else C.RETRY_WAITS_S[min(k, len(C.RETRY_WAITS_S) - 1)], C.RETRY_AFTER_MAX_S)
+        if time.monotonic() - t_start + wait > C.RETRY_BUDGET_S:
+            err = f"{err} (retry budget {C.RETRY_BUDGET_S:.0f} s exhausted)"
+            break
+        _log(f"[retry] {name or url}: {err}; attempt {k + 2}/{C.RETRIES} in {wait:.1f} s")
+        _sleep(wait)
     raise FetchError(f"{name or url}: {err}")
+
+
+_sleep = time.sleep
+_log = lambda m: print(m, flush=True)  # noqa: E731
+
+
+def _retry_after(r):
+    try:
+        return max(0.0, float(r.headers.get("Retry-After")))
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 def parse_time(s):

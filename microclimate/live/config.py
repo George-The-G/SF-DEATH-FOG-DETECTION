@@ -4,7 +4,10 @@ import os
 
 UA = {"User-Agent": "sf-death-fog (github.com/George-The-G/SF-DEATH-FOG-DETECTION)"}
 TIMEOUT_S = 40
-RETRIES = 3
+RETRIES = 4                  # attempts per source call (transient errors only: timeouts, resets, 5xx, 429)
+RETRY_WAITS_S = (2.0, 6.0, 12.0)   # waits between attempts (<= 20 s of sleeping in total per call)
+RETRY_AFTER_MAX_S = 20.0     # cap on a server Retry-After
+RETRY_BUDGET_S = 170.0       # no new attempt if it could start after this many seconds into the call
 MODEL_VERSION = "live-1"
 CARRY_STATE = False                   # True: a window starts from the saved anchor state (changes what the page shows: needs the user's approval); False: always dry start. Anchors are saved either way.
 ARCHIVE = True                        # write the per-run archive file when the caller gives an archive folder (refresh.sh pushes it to branch live-archive); DEATHFOG_ARCHIVE=false also turns it off

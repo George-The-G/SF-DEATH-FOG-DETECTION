@@ -6,7 +6,7 @@
 
 const $ = (id) => document.getElementById(id);
 let X = null;                                   // app context (see betaCtx() in app.js)
-const S = { color: 'slick', light: true, stations: false, sat: false, tap: false };   // color becomes 'sun' in init() when the sunshine data exists; tap = "Tap info" (street card on tap), off by default
+const S = { color: 'slick', light: true, stations: false, sat: false, tap: false };   // default is the wet/slick colouring, 'sun' only when chosen; tap = "Tap info" (street card on tap), off by default
 const A = {};                                   // availability of the layers for this run
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
@@ -35,7 +35,7 @@ export async function init(ctx) {
   A.satHours = A.sat ? (idx.sat_score.satellite.hours_with_data | 0) : 0;
   A.stFile = (st && st.stations && st.stations.file) || null;
   A.stNow = A.stFile && st.stations.newest ? Object.keys(st.stations.newest).length : 0;
-  if (A.sun && A.live) S.color = 'sun';           // beta default: sunshine colouring (night and failed loads fall back to slick, see colorMode / loadSun)
+  // default colouring is wet / slick (the original dry-wet legend); Sunshine is chosen in the Slippery | Sunshine control (night and failed loads fall back to slick, see colorMode / loadSun)
   A.any = A.film || A.sun || A.sat || !!A.stFile;
   window.__betaOn = true; window.__bxPromo = !X.beta; window.__betaLabel = (X.LV && X.LV.betaLabel) || '';
   buildSettings();
