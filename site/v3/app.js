@@ -14,6 +14,7 @@ const UI2 = QP.get('ui') !== '1'; // redesigned chrome (body.ui2) for everyone; 
 if (UI2) document.body.classList.add('ui2');
 let RNG = null; // ui2 live: visible frame window {lo, hi} of the time bar (null = every frame)
 const LIVE = UI2 && !(QP.get('live') === '0' || QP.has('night') || QP.has('src')); // live data is the default; ?live=0, ?night=<id> or ?src= open the past-night replays
+const BETA = QP.has('beta') && QP.get('beta') !== '0'; // ?beta=1: the beta preview channel (live_beta/, other model settings) with a badge; never the default
 const RAMP = [[0, '#3a8696'], [18, '#6fb09f'], [24, '#f4e04d'], [50, '#f2c230'], [65, '#ee8a2c'], [80, '#d9531e'], [90, '#b3202f'], [100, '#7a0f3b']];
 const CATS = ['dry', 'damp', 'slick', 'wet', 'icy-fog'];
 const $ = (id) => document.getElementById(id);
@@ -802,7 +803,9 @@ function liveBar(idx, st) { // ui2 only: status inputs, data notices in the dock
   LV.real = real; LV.ageMin = ageMin; LV.asof = asof;
   const fo = LQ === 'forecast' || !!(st && st.mode && st.mode !== 'observations_nudged') || idx.observed_until_frame == null;
   const stack = document.createElement('div'); stack.id = 'lvstack'; $('dock').prepend(stack);
-  stack.innerHTML = (ageMin != null && ageMin > 90 ? `<div class="lvb warn">Data delayed. Last update was ${fmtAge(ageMin)} ago. Showing the most recent run.</div>` : '') +
+  const bl = BETA ? String((st && st.beta && st.beta.label) || 'settings not stated').replace(/[<>&"]/g, '') : '';
+  if (BETA) document.title = 'Beta preview · ' + document.title;
+  stack.innerHTML = (BETA ? `<div class="lvb warn">Beta preview: ${bl}. Not the public forecast.</div>` : '') + (ageMin != null && ageMin > 90 ? `<div class="lvb warn">Data delayed. Last update was ${fmtAge(ageMin)} ago. Showing the most recent run.</div>` : '') +
     (fo ? '<div class="lvb info">Forecast only. No recent station or satellite readings, so nothing is corrected by observations.</div>' : '');
   // City streets layer switch (next to District streets), default on
   const lab = document.createElement('label'); lab.innerHTML = '<input type="checkbox" id="citytoggle" checked><span>City streets</span>';
@@ -870,7 +873,7 @@ function liveNightList() { // live first; the past nights are added once their i
   }).catch((e) => console.warn('past nights list unavailable', e));
 }
 async function bootLive() {
-  base = 'live/';
+  base = BETA ? 'live_beta/' : 'live/';
   const st = await getJSON(base + 'status.json', { cache: 'no-store' }).catch(() => null);
   const V = st && st.generated_iso ? '?v=' + encodeURIComponent(st.generated_iso) : ''; // a new run is a new URL, so index, days and fog always belong together
   const idx = await withTimeout(getJSON(base + 'index.json' + V), 15000, 'live index');

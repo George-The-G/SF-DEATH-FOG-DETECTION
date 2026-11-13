@@ -12,8 +12,15 @@ NEW=live_new
 STATIC=live_static
 ARCH=archive_new
 RC=1
+# Beta preview channel (config.BETA; opened with /v3/?beta=1): a second build of the same fetched inputs into its own folder, with its own state files, status.json and cloud
+# score. It runs after everything of the public build is done, never writes the run archive, and any failure of it is logged and ignored.
+OUTB=site/v3/live_beta
+NEWB=live_beta_new
+INPUTS=live_inputs/inputs.pkl
+T_ALL=$(date +%s)
 REPO="${GITHUB_REPOSITORY:-George-The-G/SF-DEATH-FOG-DETECTION}"
 PAGES="https://${REPO%%/*}.github.io/${REPO#*/}/v3/live"
+PAGESB="${PAGES}_beta"
 mkdir -p "$OUT"
 
 archive_enabled() {
@@ -60,6 +67,29 @@ archive_push() {
   return 0
 }
 
+# Beta build of the same job (build mode, after the public build, archive and publish): shares the public build's fetched inputs ($INPUTS), builds with config.BETA into $NEWB
+# and publishes into $OUTB only when it succeeded (finalize.py, like the public one). Returns 0 always.
+beta_build() {
+  [ "$RC" -eq 0 ] || { echo "public build failed: beta build skipped (the carried beta output stays)"; return 0; }
+  if [ -s "$INPUTS" ]; then echo "beta build reuses the public build's fetched inputs ($(wc -c < "$INPUTS") bytes)"; else echo "no shared inputs file: the beta build fetches for itself"; fi
+  rm -rf "$NEWB"
+  mkdir -p "$NEWB"
+  cp "$OUTB"/state_*.npz "$NEWB"/ 2>/dev/null && echo "carried beta state files: $(ls "$NEWB" | grep -c '^state_')" || echo "no carried beta state files: cold start"
+  cp "$OUTB"/dsr_cache.json "$NEWB"/ 2>/dev/null && echo "carried the GOES sunlight cache" || echo "no GOES sunlight cache carried"
+  local S0 RCB
+  S0=$(date +%s)
+  if [ -x /usr/bin/time ]; then
+    DEATHFOG_CLOUDSCORE_PREV="$OUTB/cloud_score.json" timeout 300 /usr/bin/time -v python3 -m microclimate.live build --beta --inputs "$INPUTS" --out "$NEWB" --static "$STATIC/live_static.npz" 2> >(tee live_time_beta.log >&2)
+  else
+    DEATHFOG_CLOUDSCORE_PREV="$OUTB/cloud_score.json" timeout 300 python3 -m microclimate.live build --beta --inputs "$INPUTS" --out "$NEWB" --static "$STATIC/live_static.npz"
+  fi
+  RCB=$?
+  echo "beta build exit code $RCB after $(( $(date +%s) - S0 )) s"
+  grep -E "Maximum resident|Elapsed" live_time_beta.log 2>/dev/null || true
+  python3 live_ci/finalize.py "$NEWB" "$OUTB" "$RCB" ""
+  return 0
+}
+
 echo "::group::previous live output from $PAGES"
 python3 live_ci/fetch_previous.py "$PAGES" "$OUT" || echo "no previous live output could be fetched; keeping what is in $OUT"
 echo "::endgroup::"
@@ -68,6 +98,13 @@ echo "::endgroup::"
 python3 live_ci/fetch_extras.py "$PAGES" "$OUT" || echo "no cloud score files carried"
 export DEATHFOG_CLOUDSCORE_PREV="$OUT/cloud_score.json"
 # <<< cloud score carry
+
+# >>> beta channel carry (both modes): the last published live_beta output with its on-demand files, state files, GOES sunlight cache and cloud score. Own folder; never touches $OUT.
+echo "::group::previous beta output from $PAGESB"
+python3 live_ci/fetch_previous.py "$PAGESB" "$OUTB" --extras || echo "no previous beta output could be fetched"
+[ -d "$OUTB" ] && { python3 live_ci/fetch_extras.py "$PAGESB" "$OUTB" || echo "no beta cloud score files carried"; }
+echo "::endgroup::"
+# <<< beta channel carry
 
 [ "$MODE" = build ] || { echo "reuse mode: done"; exit 0; }
 
@@ -87,14 +124,14 @@ if [ ! -s "$STATIC/live_static.npz" ]; then
 fi
 
 echo "::group::build"
-rm -rf "$NEW" "$ARCH"
+rm -rf "$NEW" "$ARCH" "$(dirname "$INPUTS")"
 mkdir -p "$NEW"
 cp "$OUT"/state_*.npz "$NEW"/ 2>/dev/null && echo "carried state files: $(ls "$NEW" | grep -c '^state_')" || echo "no carried state files: cold start"
 START=$(date +%s)
 if [ -x /usr/bin/time ]; then
-  timeout 480 /usr/bin/time -v python3 -m microclimate.live build --out "$NEW" --static "$STATIC/live_static.npz" --archive "$ARCH" 2> >(tee live_time.log >&2)
+  timeout 480 /usr/bin/time -v python3 -m microclimate.live build --out "$NEW" --static "$STATIC/live_static.npz" --archive "$ARCH" --save-inputs "$INPUTS" 2> >(tee live_time.log >&2)
 else
-  timeout 480 python3 -m microclimate.live build --out "$NEW" --static "$STATIC/live_static.npz" --archive "$ARCH"
+  timeout 480 python3 -m microclimate.live build --out "$NEW" --static "$STATIC/live_static.npz" --archive "$ARCH" --save-inputs "$INPUTS"
 fi
 RC=$?
 echo "build exit code $RC after $(( $(date +%s) - START )) s"
@@ -104,4 +141,8 @@ python3 live_ci/finalize.py "$NEW" "$OUT" "$RC" ""
 echo "::group::run archive"
 archive_push || echo "archive step failed (ignored)"
 echo "::endgroup::"
+echo "::group::beta build"
+beta_build || echo "beta step failed (ignored)"
+echo "::endgroup::"
+echo "live step total: $(( $(date +%s) - T_ALL )) s"
 exit 0

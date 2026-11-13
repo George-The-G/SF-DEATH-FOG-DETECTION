@@ -2,6 +2,9 @@
 
   build   [--out DIR] [--static PATH] [--ribbons PATH] [--cache DIR] [--physics a,b|none] [--carry-state] [--archive DIR]   one live run (default out: site/v3/live;
           physics default: config.PHYSICS)
+          [--save-inputs FILE]   write the fetched inputs for a beta build of the same job
+          [--beta [--inputs FILE]]   the beta preview channel: settings from config.BETA only (default out: site/v3/live_beta), fetched inputs from FILE (the
+                                 public build's --save-inputs file) or its own fetch; never writes the run archive
   compare --physics a,b|none [--base x,y] [--anchors] [--static PATH] [--out DIR]   same inputs, config.PHYSICS (or --base) versus the given switches; writes
                                                                        --anchors (guide 03): the given set (default config.PHYSICS) without versus with the station anchors on
                                                                        compare_<time>.md/.json (default out: reports/physics_compare)
@@ -26,13 +29,15 @@ def main(argv):
         if ph is not None:
             from . import compare
             ph = compare.parse_physics(ph)
+        beta = "--beta" in argv
         try:
             from .. import wetness
-            wetness.check_physics(ph if ph is not None else config.PHYSICS)
+            wetness.check_physics(ph if ph is not None else build.settings(beta)["physics"])
         except ValueError as e:
             sys.exit(f"build: {e}")
-        sys.exit(build.run(opt(argv, "--out", "site/v3/live"), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"), physics=ph, carry_state=True if "--carry-state" in argv else None,
-                           archive_dir=opt(argv, "--archive")))
+        sys.exit(build.run(opt(argv, "--out", "site/v3/" + config.BETA_DIR if beta else "site/v3/live"), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"), physics=ph,
+                           carry_state=True if "--carry-state" in argv else None, archive_dir=opt(argv, "--archive"), beta=beta, inputs=opt(argv, "--inputs"),
+                           inputs_out=opt(argv, "--save-inputs")))
     elif cmd == "compare":
         from . import compare
         if "--physics" not in argv and "--anchors" not in argv:

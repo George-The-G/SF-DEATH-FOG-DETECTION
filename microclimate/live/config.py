@@ -10,6 +10,11 @@ CARRY_STATE = False                   # True: a window starts from the saved anc
 ARCHIVE = True                        # write the per-run archive file when the caller gives an archive folder (refresh.sh pushes it to branch live-archive); DEATHFOG_ARCHIVE=false also turns it off
 ARCHIVE_EVERY_H = 1                   # at most one archive file per this many UTC hours on branch live-archive (the first run of the slot is kept; 0 = keep every run)
 PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS) the scheduled job runs with; empty = the public model (guide 01)
+# Beta preview channel (site/v3/live_beta/, opened with /v3/?beta=1): a second build of the same fetched inputs with these settings. It is applied ONLY by `build --beta`
+# (build.run(beta=True)); the public build never reads it. Staging order (user's decision 2026-11-12): stage 1 = station anchors + clear-sky sun, stage 2 = carry_state,
+# stage 3 = film + pavement. A stage goes to the public settings above only after the user has looked at the preview and approved it.
+BETA = dict(physics=(), nudge_anchors=False, carry_state=False)
+BETA_DIR = "live_beta"                # published folder of the beta channel, next to live/
 
 # ---- RRFS through Open-Meteo (HRRR on Open-Meteo is discontinued 2026-11-30: do not use it) ----
 OPENMETEO_URL = "https://api.open-meteo.com/v1/forecast"
