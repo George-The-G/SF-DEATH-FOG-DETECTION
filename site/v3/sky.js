@@ -72,7 +72,7 @@ const SKY_FS = `
   varying vec2 vNdc;
   uniform mat4 uInvProj; uniform mat3 uCamRot;
   uniform vec3 uSun, uSunCol, uMoon, uZen, uHor;
-  uniform float uMoonE, uSunEl, uIllum, uSize, uExpo;
+  uniform float uMoonE, uSunEl, uIllum, uSize, uExpo, uGamma;
   float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
   float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
     return mix(mix(hash(i), hash(i + vec2(1., 0.)), f.x), mix(hash(i + vec2(0., 1.)), hash(i + vec2(1., 1.)), f.x), f.y); }
@@ -106,7 +106,7 @@ const SKY_FS = `
       }
     }
     col = aces(col * uExpo);
-    gl_FragColor = vec4(pow(col, vec3(1. / 2.2)), 1.);
+    gl_FragColor = vec4(pow(col, vec3(uGamma)), 1.); // uGamma 1/2.2 straight to the canvas, 1.0 into a linear render target (fog2.js)
   }`;
 
 const STAR_VS = `
@@ -125,8 +125,8 @@ const STAR_VS = `
     vCol = k < .35 ? mix(vec3(.7, .8, 1.), vec3(1., .97, .92), k / .35) : mix(vec3(1., .97, .92), vec3(1., .68, .42), (k - .35) / .65);
   }`;
 const STAR_FS = `
-  precision highp float; varying vec3 vCol; varying float vA;
-  void main(){ float r = length(gl_PointCoord - .5) * 2.; float a = exp(-r * r * 3.) * (1. - smoothstep(.85, 1., r)); gl_FragColor = vec4(vCol * a * vA, 1.); }`;
+  precision highp float; varying vec3 vCol; varying float vA; uniform float uLin;
+  void main(){ float r = length(gl_PointCoord - .5) * 2.; float a = exp(-r * r * 3.) * (1. - smoothstep(.85, 1., r)); vec3 c = vCol * a * vA; gl_FragColor = vec4(uLin > .5 ? pow(c, vec3(2.2)) : c, 1.); }`;
 
 /* ------------------------------------------------------------------ perf HUD (Stage 0): rolling frame time, draw calls, device */
 function makeHud(THREE, renderer) {
@@ -150,19 +150,20 @@ function makeHud(THREE, renderer) {
 /* ------------------------------------------------------------------ the sky */
 export async function createSky({ THREE, scene, camera, renderer, starsUrl, sky = true, hud = false }) {
   const hudApi = hud ? makeHud(THREE, renderer) : null;
-  if (!sky) return { enabled: false, setTime() {}, update(now) { hudApi.tick(now); }, setSize() {}, dispose() {} };
+  if (!sky) { let ex = null; return { enabled: false, light: null, setTime() {}, setExtra(fn) { ex = fn; }, update(now) { hudApi.tick(now, ex ? ex() : ''); }, dispose() {} }; }
   const uni = {
     uInvProj: { value: new THREE.Matrix4() }, uCamRot: { value: new THREE.Matrix3() },
     uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Vector3(1, 1, 1) }, uMoon: { value: new THREE.Vector3(0, 1, 0) },
     uZen: { value: new THREE.Vector3() }, uHor: { value: new THREE.Vector3() },
-    uMoonE: { value: 0 }, uSunEl: { value: 30 }, uIllum: { value: 0.5 }, uSize: { value: 1 }, uExpo: { value: 1 },
+    uGamma: { value: 1 / 2.2 }, uMoonE: { value: 0 }, uSunEl: { value: 30 }, uIllum: { value: 0.5 }, uSize: { value: 1 }, uExpo: { value: 1 },
   };
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
   const mat = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: SKY_VS, fragmentShader: SKY_FS, depthTest: false, depthWrite: false });
   const dome = new THREE.Mesh(geo, mat); dome.frustumCulled = false; dome.renderOrder = -1000; scene.add(dome);
+  dome.onBeforeRender = (r) => { uni.uGamma.value = r.getRenderTarget() ? 1 : 1 / 2.2; su.uLin.value = r.getRenderTarget() ? 1 : 0; }; // linear when drawing into fog2's render target
 
   // stars: 5044 points from stars.bin (see tools/pack_stars.py); sky still works if the file is missing
-  const su = { uM: { value: new THREE.Matrix3() }, uVis: { value: 0 }, uDpr: { value: renderer.getPixelRatio() }, uSize: { value: 1 } };
+  const su = { uLin: { value: 0 }, uM: { value: new THREE.Matrix3() }, uVis: { value: 0 }, uDpr: { value: renderer.getPixelRatio() }, uSize: { value: 1 } };
   let stars = null;
   try {
     const buf = await (await fetch(starsUrl)).arrayBuffer(), dv = new DataView(buf), n = dv.getUint32(4, true);
@@ -178,7 +179,7 @@ export async function createSky({ THREE, scene, camera, renderer, starsUrl, sky 
     stars = new THREE.Points(sg, sm); stars.frustumCulled = false; stars.renderOrder = -999; scene.add(stars);
   } catch (e) { console.warn('sky: stars unavailable', e); }
 
-  let lastMs = NaN, E = null, textra = '';
+  let lastMs = NaN, E = null, textra = '', L = null, extraFn = null;
   function setTime(ms) {
     if (!isFinite(ms) || Math.abs(ms - lastMs) < 30000) return;
     lastMs = ms; E = ephemeris(ms);
@@ -187,17 +188,18 @@ export async function createSky({ THREE, scene, camera, renderer, starsUrl, sky 
     uni.uMoonE.value = E.elong; uni.uSunEl.value = el; uni.uIllum.value = E.illum;
     uni.uExpo.value = el > 4 ? 1 : el < -16 ? 2.6 : Math.exp(Math.log(2.6) * (4 - el) / 20);
     su.uM.value.set(...E.eq2w); su.uVis.value = Math.min(1, Math.max(0, -(el + 5) / 7));
+    L = { zen, hor, sunDir: E.sunDir, sunCol: sc, moonDir: E.moonDir, illum: E.illum, sunEl: el };
     textra = `sun ${el.toFixed(1)}° az ${E.sun.az.toFixed(0)}°  moon ${E.moon.alt.toFixed(1)}° ${(E.illum * 100).toFixed(0)}% lit`;
     if (stars) stars.visible = su.uVis.value > 0.001;
   }
   return {
     enabled: true, setTime,
-    get info() { return E; },
+    get info() { return E; }, get light() { return L; }, setExtra(fn) { extraFn = fn; },
     setLarge(v) { uni.uSize.value = v ? 4 : 1; su.uSize.value = 1; },
     update(now) {
       uni.uInvProj.value.copy(camera.projectionMatrixInverse); uni.uCamRot.value.setFromMatrix4(camera.matrixWorld);
       su.uDpr.value = renderer.getPixelRatio();
-      if (hudApi) hudApi.tick(now, textra);
+      if (hudApi) hudApi.tick(now, textra + (extraFn ? '\n' + extraFn() : ''));
     },
     dispose() { scene.remove(dome); geo.dispose(); mat.dispose(); if (stars) { scene.remove(stars); stars.geometry.dispose(); stars.material.dispose(); } },
   };
