@@ -708,9 +708,9 @@ function pick(cx, cy, maxPx) {
   }
   return best;
 }
-const tapOff = () => !!(BX && BX.tapOff && BX.tapOff()); // beta: street card only while "Tap info" is ticked
+const LONG_PRESS_MS = 450, TAP_SLOP = 8;
+const longPress = () => !!BX; // data-layers UI: on touch the street card needs a press and hold (a short tap does nothing); the plain page keeps tap-to-show
 function showTip(k, xy) {
-  if (tapOff()) { hideTip(); return; }
   ensureWet();
   const v = wetNow[k], cat = CATS[v < 20 ? 0 : v < 50 ? 1 : v < 80 ? 2 : v < 95 ? 3 : 4];
   const when = night ? wall(night.start_iso, curF * night.step_min).time : '';
@@ -722,18 +722,35 @@ function showTip(k, xy) {
 }
 function hideTip() { hoverIdx = -1; tip.hidden = true; }
 let down = null;
-canvas.addEventListener('pointerdown', (e) => { if (fly) stopFly(); down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (e.pointerType === 'touch') hideTip(); });
+let pressTimer = 0, pressFired = 0;
+const cancelPress = () => { clearTimeout(pressTimer); pressTimer = 0; };
+canvas.addEventListener('pointerdown', (e) => {
+  if (fly) stopFly(); down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (e.pointerType === 'touch') hideTip();
+  cancelPress();
+  if (longPress() && e.pointerType !== 'mouse' && e.isPrimary) { // press and hold: the card appears under the finger if it has not moved
+    const x = e.clientX, y = e.clientY;
+    pressTimer = setTimeout(() => {
+      pressTimer = 0; if (!down) return;
+      const k = pick(x, y, 30); if (k < 0) return;
+      pressFired = performance.now(); hoverIdx = k; hoverXY = [x, y - 6]; showTip(k, hoverXY);
+      try { if (navigator.vibrate) navigator.vibrate(8); } catch (err) { /* no haptics */ }
+    }, LONG_PRESS_MS);
+  }
+});
+canvas.addEventListener('pointercancel', cancelPress);
+canvas.addEventListener('contextmenu', (e) => { if (longPress() && performance.now() - pressFired < 1500) e.preventDefault(); }); // Android opens a menu on a long press
 canvas.addEventListener('pointerup', (e) => {
+  cancelPress();
   if (!down) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = performance.now() - down.t; down = null;
-  if (moved < 8 && dt < 500 && e.pointerType !== 'mouse') {
-    if (tapOff()) return;
+  if (moved < TAP_SLOP && dt < 500 && e.pointerType !== 'mouse') {
+    if (longPress()) return; // a short tap shows nothing; a long press already showed (and keeps) the card
     const k = pick(e.clientX, e.clientY, 30); if (k >= 0) { hoverIdx = k; hoverXY = [e.clientX, e.clientY - 6]; showTip(k, hoverXY); } else hideTip();
   }
 });
 let moveQ = 0;
 canvas.addEventListener('pointermove', (e) => {
+  if (down && pressTimer && Math.hypot(e.clientX - down.x, e.clientY - down.y) > TAP_SLOP) cancelPress(); // a drag is not a press
   if (e.pointerType !== 'mouse' || e.buttons) { if (e.buttons) hideTip(); return; }
-  if (tapOff()) return;
   const now = performance.now(); if (now - moveQ < 40) return; moveQ = now;
   const k = pick(e.clientX, e.clientY, 16);
   if (k >= 0) { hoverIdx = k; hoverXY = [e.clientX, e.clientY - 4]; showTip(k, hoverXY); } else hideTip();
