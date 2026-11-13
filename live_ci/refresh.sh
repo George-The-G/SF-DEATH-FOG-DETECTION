@@ -2,7 +2,7 @@
 # Live fog data step of the collect workflow (copied from the v3-dev branch like site/v3, so changes here need no PR to main).
 #   bash live_ci/refresh.sh build   fetch the last published live output, build a fresh run, publish it only if the build succeeded
 #   bash live_ci/refresh.sh reuse   only carry the last published live output into this deploy (v2 runs every 10 min, live builds every 30)
-# After a successful build the run archive file (microclimate/live/archive.py) is added to the `live-archive` branch with a normal commit
+# After a successful build the run archive file (microclimate/live/archive.py; at most one per UTC hour, C.ARCHIVE_EVERY_H) is added to the `live-archive` branch with a normal commit
 # (REMOTE_URL and contents: write come from the workflow job). Off when DEATHFOG_ARCHIVE=false (env or repo variable) or config.ARCHIVE = False.
 # Never fails the workflow: the v2 page must always deploy. Run from the repository root.
 set -uo pipefail
@@ -77,7 +77,7 @@ echo "::endgroup::"
 
 echo "::group::static tables (release live-static-v1)"
 mkdir -p "$STATIC"
-for f in live_static.npz live_ribbons.npz ribbons_city.bin ribbons_city_meta.json; do
+for f in live_static.npz live_ribbons.npz ribbons_city.bin ribbons_city_meta.json live_extra.npz; do   # live_extra.npz (guide 06): fetched when missing, also on a cache hit; a failed download only means flat asphalt streets
   [ -s "$STATIC/$f" ] || gh release download live-static-v1 -p "$f" -D "$STATIC" --repo "$REPO" --clobber || echo "download of $f failed"
 done
 ls -l "$STATIC"

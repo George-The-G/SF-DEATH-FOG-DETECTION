@@ -286,13 +286,13 @@ def horizon_points(px_all, py_all, grids, raw, tile_m=TILE_M, apron_m=APRON_M, l
     return horizon, z_obs_all, bcover_all, shift_all
 
 
-def porous_factors(raw, rows, log=print):
-    """Porous factor per city row: OSM surface tag of the way, else the nearest tagged way within 20 m (as sun.surface_table)."""
+def surface_tags(raw, rows, osm_name="osm_city.json"):
+    """OSM surface tag per row ('' = none): the tag of the row's way, else the row's own tag, else the nearest tagged way within 20 m."""
     import shapely
     from pyproj import Transformer
     from shapely.geometry import LineString
     from shapely.strtree import STRtree
-    osm = json.load(open(raw / "osm_city.json", encoding="utf-8"))
+    osm = json.load(open(Path(raw) / osm_name, encoding="utf-8"))
     t = Transformer.from_crs(4326, 32610, always_xy=True)
     nodes = {e["id"]: t.transform(e["lon"], e["lat"]) for e in osm["elements"] if e["type"] == "node"}
     ways = [e for e in osm["elements"] if e["type"] == "way" and all(n in nodes for n in e["nodes"])]
@@ -300,7 +300,7 @@ def porous_factors(raw, rows, log=print):
     tagged = [w for w in ways if tag[w["id"]] and w.get("tags", {}).get("highway") in routes.RIDE]
     lines = [LineString([nodes[n] for n in w["nodes"]]) for w in tagged]
     tree = STRtree(lines) if lines else None
-    out = np.ones(len(rows), np.float32)
+    out = []
     for i, r in enumerate(rows):
         s = tag.get(int(r["way"]), "")
         if not s and r.get("surface"):
@@ -310,9 +310,111 @@ def porous_factors(raw, rows, log=print):
             j = int(tree.nearest(p))
             if lines[j].distance(p) <= 20.0:
                 s = tag[tagged[j]["id"]]
+        out.append(s)
+    return out
+
+
+def porous_factors(raw, rows, log=print):
+    """Porous factor per city row: OSM surface tag of the way, else the nearest tagged way within 20 m (as sun.surface_table)."""
+    tags = surface_tags(raw, rows)
+    out = np.ones(len(rows), np.float32)
+    for i, s in enumerate(tags):
         if s in sun.POROUS_SURFACES:
             out[i] = sun.POROUS_FACTOR
     return out
+
+
+# ------------------------------------------------------------------ extra static table (guide 06): street direction, slope, surface class
+SURFACE_CLASSES = ("asphalt", "concrete", "porous", "other")
+CONCRETE_SURFACES = {"concrete", "concrete:plates", "concrete:lanes"}
+ASPHALT_SURFACES = {"", "asphalt", "paved"}   # an untagged or merely "paved" street is taken as asphalt (the default of the model)
+
+
+def surface_class(tag):
+    """OSM surface tag -> 0 asphalt (also untagged / 'paved'), 1 concrete, 2 porous (the sun.POROUS_SURFACES), 3 other."""
+    tag = (tag or "").strip().lower()
+    if tag in sun.POROUS_SURFACES:
+        return 2
+    if tag in CONCRETE_SURFACES:
+        return 1
+    return 0 if tag in ASPHALT_SURFACES else 3
+
+
+def directed_azimuths(rows, osm_files):
+    """Azimuth (deg clockwise from north, 0..360) of the way segment a -> b of every row, from the OSM node positions. The csv bearing is only
+    the undirected value (mod 180) while slope_pct is rise from a to b, so the direction is needed to turn the slope into rise along the bearing."""
+    from pyproj import Transformer
+    t = Transformer.from_crs(4326, 32610, always_xy=True)
+    nodes, ways = {}, {}
+    for fn in osm_files:
+        osm = json.load(open(fn, encoding="utf-8"))
+        for e in osm["elements"]:
+            if e["type"] == "node":
+                nodes[e["id"]] = (e["lon"], e["lat"])
+        for e in osm["elements"]:
+            if e["type"] == "way" and e["id"] not in ways:
+                ways[e["id"]] = e["nodes"]
+    out = np.full(len(rows), np.nan)
+    for i, r in enumerate(rows):
+        nl = ways.get(int(r["way"]))
+        si = int(r["seg"])
+        if nl is None or si + 1 >= len(nl) or nl[si] not in nodes or nl[si + 1] not in nodes:
+            continue
+        (x1, y1), (x2, y2) = (t.transform(*nodes[nl[si]]), t.transform(*nodes[nl[si + 1]]))
+        out[i] = (math.degrees(math.atan2(x2 - x1, y2 - y1)) + 360.0) % 360.0
+    return out
+
+
+def slope_along_bearing(slope_ab, phi_deg, clip=0.35):
+    """Slope (rise/run) along the undirected bearing phi mod 180 from the slope of the segment a -> b that heads phi (0..360): same sign when phi < 180,
+    reversed when the segment heads the other way (the bearing was folded to 0..180 but the slope was not)."""
+    sgn = np.where(np.asarray(phi_deg, float) % 360.0 < 180.0, 1.0, -1.0)
+    return np.clip(sgn * np.asarray(slope_ab, float), -clip, clip)
+
+
+def build_extra(static_path, out_path, district_dirs, city_dirs, slope_clip=0.35, log=print):
+    """live_extra.npz next to live_static.npz: per street point `bearing` (deg, 0..180, as in the static table), `slope` (rise over run ALONG that
+    bearing, clipped to +-slope_clip) and `surf` (class number, SURFACE_CLASSES). Rows are read from the points.csv / city_points.csv that built
+    the static table (checked against its x, y). district_dirs / city_dirs = (grids/zone folder, raw folder)."""
+    S = np.load(static_path, allow_pickle=False)
+    n0, N = int(S["n_district"]), len(S["x"])
+    drows = list(csv.DictReader(open(Path(district_dirs[0]) / "points.csv", newline="")))
+    crows = read_city_points(city_dirs[0])
+    rows = drows + crows
+    assert len(rows) == N and len(drows) == n0, f"csv rows {len(rows)} do not match the static table {N}"
+    xs, ys = np.array([float(r["x"]) for r in rows]), np.array([float(r["y"]) for r in rows])
+    assert np.abs(xs - S["x"]).max() < 0.11 and np.abs(ys - S["y"]).max() < 0.11, "csv rows are not the rows of the static table"
+    raw_d, raw_c = Path(district_dirs[1]), Path(city_dirs[1])
+    phi = np.concatenate([directed_azimuths(drows, [raw_d / "osm_potrero.json", raw_d / "osm_ggh.json"]), directed_azimuths(crows, [raw_c / "osm_city.json"])])
+    bad = ~np.isfinite(phi)
+    brg_csv = np.array([float(r["bearing"]) for r in rows])
+    phi = np.where(bad, brg_csv, phi)
+    slope = slope_along_bearing(np.array([float(r["slope_pct"]) for r in rows]) / 100.0, np.where(bad, 0.0, phi), slope_clip)
+    # surface: district rows from street_surface.csv (same lookup), city rows from the OSM file of the city
+    dsur = list(csv.DictReader(open(Path(district_dirs[0]) / "street_surface.csv", newline="")))
+    tags = [r["osm_surface"] for r in dsur] + surface_tags(raw_c, crows)
+    surf = np.array([surface_class(s) for s in tags], np.uint8)
+    brg = (phi % 180.0).astype(np.float32)
+    assert np.abs(((brg - brg_csv.astype(np.float32) + 90.0) % 180.0) - 90.0)[~bad].max() < 0.2, "recomputed bearing differs from the csv bearing"
+    np.savez_compressed(out_path, bearing=brg.astype(np.float16), slope=slope.astype(np.float16), surf=surf, n=np.array(N), x_sum=np.array(float(S["x"].sum())))
+    info = {"N": N, "direction_missing": int(bad.sum()), "surface_share": {c: round(float((surf == k).mean()), 4) for k, c in enumerate(SURFACE_CLASSES)},
+            "slope_abs_median": float(np.median(np.abs(slope))), "slope_clipped": int((np.abs(slope) >= slope_clip - 1e-9).sum()), "file_mb": round(Path(out_path).stat().st_size / 1e6, 2)}
+    log(json.dumps(info))
+    return info
+
+
+def load_extra(path, n_points=None, x=None):
+    """live_extra.npz -> dict(bearing, slope float32, surf uint8) or None (missing, unreadable or for another point table)."""
+    try:
+        z = np.load(path, allow_pickle=False)
+        d = dict(bearing=z["bearing"].astype(np.float32), slope=z["slope"].astype(np.float32), surf=z["surf"].astype(np.uint8))
+        if n_points is not None and (len(d["slope"]) != n_points or int(z["n"]) != n_points):
+            return None
+        if x is not None and abs(float(z["x_sum"]) - float(np.sum(x))) > 1.0:
+            return None
+        return d
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def build_sun(data, max_tiles=None, log=print):
@@ -397,6 +499,10 @@ def run(data, argv):
     steps = [a for a in argv if a in ("points", "features", "sun", "static")] or ["points", "features", "sun", "static"]
     out = Path(argv[argv.index("--out") + 1]) if "--out" in argv else Path(data).parent.parent / "deathfog-data" / "live"
     mt = int(argv[argv.index("--max-tiles") + 1]) if "--max-tiles" in argv else None
+    if "extra" in argv:   # extra [--city-data DIR] [--out DIR]: live_extra.npz from the csv tables that built the static table (guide 06)
+        cd = Path(argv[argv.index("--city-data") + 1]) if "--city-data" in argv else Path(data)
+        build_extra(out / "live_static.npz", out / "live_extra.npz", (Path(data) / "grids" / "zone", Path(data) / "raw"), (cd / "grids" / "zone", cd / "raw"))
+        return 0
     if "points" in steps:
         build_points(data)
     if "features" in steps:
