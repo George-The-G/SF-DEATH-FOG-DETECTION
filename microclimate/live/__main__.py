@@ -5,7 +5,8 @@
   compare --physics a,b|none [--static PATH] [--out DIR]               same inputs, config.PHYSICS versus the given switches; writes
                                                                        compare_<time>.md/.json (default out: reports/physics_compare)
   ribbons [--stride N] [--static PATH] [--out DIR]                     offline: city ribbons + column maps (out default: the static file's folder)
-  check   [--since 30d] [--out DIR]                                    compare the model with METAR / GOES / CO-OPS (section 7)
+  stationwind [--data DIR] [--out FILE]                                offline (PC with the wind library): simulated wind vectors at the in-grid stations -> station_wind.npz (guide 03)
+  check   [--since 30d] [--out DIR]                                    compare the model with METAR / GOES / CO-OPS (section 7); guide 03: leave-one-station-out table
   cloudscore [--file cloud_score.json] [--since 14d] [--archive DIR]   print the satellite cloud score summary (guide 04)
 """
 import sys
@@ -40,6 +41,9 @@ def main(argv):
     elif cmd == "check":
         from . import check
         sys.exit(check.run(argv[1:]))
+    elif cmd == "stationwind":
+        from . import stationwind
+        sys.exit(stationwind.run(argv[1:]))
     elif cmd == "cloudscore":
         from . import cloud_score
         sys.exit(cloud_score.run_cli(argv[1:]))

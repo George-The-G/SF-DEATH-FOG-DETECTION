@@ -152,7 +152,7 @@ def interp_at(arr, idx, w):
 
 
 # ------------------------------------------------------------------ main builder
-def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=print, physics=(), goes_hours=None):
+def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=print, physics=(), goes_hours=None, z=None):
     """rrfs: fetch.rrfs() dict. t0: window start (aware UTC). n: number of model steps. now: current UTC. x, y: street point coordinates (UTM 10N).
     obs: dict(coops=, metar=, nws={id: rows}, sounding=) with missing sources absent / None. sector_fn(hours, dirs) -> list of GOES upwind low-cloud fractions
     (None = no GOES). goes_hours: {hour: goes.LowCloud} the sector function filled (sun_clear: cloudiness from the mask classes). Returns dict(ser, s_series, fog_top, forcing_fn, info, lattice series ...)."""
@@ -208,6 +208,7 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
                                   ratio_last=None if hl is None else float(rat_r[int(hl)]), dir_offset_last=None if hl is None else float(dl_r[int(hl)]))
     else:
         info["flags"].append("no CO-OPS wind: model wind not nudged")
+    U0, V0 = U, Vv                                       # lattice wind before any observation nudging (guide 03: forecast prior; arrays are never changed in place)
     sp, dr = uv_to_wind(U, Vv)
     sp = sp * r_series[None, :]
     dr = (dr + d_series[None, :]) % 360.0
@@ -233,8 +234,22 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
     info["temp_nudge"] = dict(T=iT, Td=iTd)
     if iT is None:
         info["flags"].append("no station temperature: model temperature not nudged")
+    T0, Td0 = T, Td                                      # lattice temperature / dew point before any observation nudging
     T = T + dT[None, :]
     Td = np.minimum(Td + dTd[None, :], T)                # never above the air temperature
+
+    # --- stations as anchors (guide 03): the analysis always runs when station data exist (stations.json, residuals); it changes the model only with C.NUDGE_ANCHORS
+    anch, st_ctx, st_obs = None, None, obs.get("stations")
+    if st_obs is not None:
+        try:
+            from . import stations as Sx
+            st_ctx = dict(H=Sx.hourly(st_obs["raw"], t0, nh), lat_t=lat_t, rrfs=rrfs, nh=nh, n=n, g=g, now_h=(now - t0).total_seconds() / 3600.0, t_h=t_h, step_min=step_min,
+                          Ug=Ug, Vg=Vg, Tg=Tg, Tdg=Tdg, Uraw_g=U0, Vraw_g=V0, city=dict(r=r_series, d=d_series, dT=dT, dTd=dTd), sw=obs.get("station_wind"))
+            anch = Sx.analyze(st_ctx)
+            info["flags"].extend(anch["flags"])
+        except Exception as e:  # noqa: BLE001
+            anch = None
+            info["flags"].append(f"station analysis failed: {e!r}"[:160])
 
     # --- coast series (scalar): lattice points west of COAST_X_MAX
     west = lat_t.x < C.COAST_X_MAX
@@ -342,11 +357,24 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
         if Ks is not None:
             out["k"] = gat(Ks)
         return out
+    extra = {}
+    if anch is not None:
+        try:
+            if C.NUDGE_ANCHORS:
+                forcing_fn = _anchored_forcing(anch, forcing_fn, x, y, z, rrfs, lat_t, idx, w4, T0, Td0, U, Vv, info)
+            from . import stations as Sx
+            sj = Sx.build_json(anch, st_ctx, now, st_obs)
+            res = Sx.residuals(anch, st_ctx)
+            sj["residuals"] = res
+            extra = dict(stations_json=sj, stations=res)
+            info["anchors"] = dict(nudge_anchors=bool(C.NUDGE_ANCHORS), kmax=anch["kmax"], wind=_wind_summary(anch), fetch_failed=sorted((st_obs or {}).get("failed", {})))
+        except Exception as e:  # noqa: BLE001
+            info["flags"].append(f"station outputs failed: {e!r}"[:160])
     obs_until = cap_obs_until(obs_until, t_h, now_h)
     info["obs_until"] = None if obs_until is None else obs_until.isoformat()
     info["coast_lattice_points"] = int(west.sum())
     return dict(ser=ser, s_series=s_series, fog_top=top, forcing_fn=forcing_fn, info=info, s_model=s_model, obs_until=obs_until,
-                dir_hourly=dir_h, lattice_cl=CL, goes_frac=goes_frac, khaf=khaf, t_hours=t_h, idx=idx, w=w4, lattice=lat_t, **sun_out)
+                dir_hourly=dir_h, lattice_cl=CL, goes_frac=goes_frac, khaf=khaf, t_hours=t_h, idx=idx, w=w4, lattice=lat_t, **sun_out, **extra)
 
 
 def cloudiness(lat_t, SW, g, t_h, now_h, t_utc, goes_hours, info, log=print):
@@ -379,6 +407,63 @@ def cloudiness(lat_t, SW, g, t_h, now_h, t_utc, goes_hours, info, log=print):
     K = np.clip(K, wetness.K_MIN, 1.0)
     info["sun_k"] = dict(mean_model=float(k_model.mean()), mean_used=float(K.mean()), sat_hours=int(np.isfinite(k_sat).any(axis=0).sum()))
     return K, dict(k_model=k_model, k_sat_hourly=k_sat, k_lattice=K)
+
+
+
+def _wind_summary(anch):
+    wb = anch.get("wind")
+    if wb is None:
+        return None
+    f, k = wb["fit"], anch["kmax"] + 1
+    modes = [str(m) for m in f["mode"][:k]]
+    return dict(anchors=wb["ids"], hours=k, regional=modes.count("regional"), citywide=modes.count("citywide"), no_station=modes.count("forecast"),
+                offshore_flagged=int(np.sum(f["offshore"][:k])), qc_dropped=int(np.sum(f["dropped"][:k])))
+
+
+def _anchored_forcing(anch, base_fn, x, y, z, rrfs, lat_t, idx, w4, T0, Td0, U1, V1, info):
+    """The per-point forcing with the station anchors (C.NUDGE_ANCHORS): wind = regional inflow, direction weights per point, temperature and dew point =
+    lattice + sea-level offset + (base lapse + fitted adjustment) x height above the lattice cell. Parts without data keep today's forcing."""
+    from . import anchors
+    zl = interp_at(np.asarray(rrfs["elev"], float), idx, w4)
+    dz = ((np.asarray(z, float) if z is not None else zl) - zl) / 1000.0
+    wb, tb, db = anch.get("wind"), anch.get("temp"), anch.get("dew")
+    T0c, Td0c = np.ascontiguousarray(T0), np.ascontiguousarray(Td0)
+    wpts = None
+    if wb is not None:
+        wpts = anchors.region_weights(x, y, wb["cx"], wb["cy"], C.WIND_REGION_SIGMA_M).astype(np.float32)
+        info["flags"].append("anchors: wind from the regional station fit")
+    if tb is not None:
+        info["flags"].append("anchors: temperature from the station offset / lapse fit")
+    hor = {}
+
+    def horiz(blk, key, i):
+        if blk["m_g"][i] >= 1.0:
+            return 0.0
+        if key not in hor:
+            d2 = (x[:, None] - blk["sx"][None, :]) ** 2 + (y[:, None] - blk["sy"][None, :]) ** 2
+            Wh = np.exp(-d2 / (2.0 * C.T_HORIZ_L_M ** 2)).astype(np.float32)
+            hor[key] = (Wh, np.maximum(1.0, Wh.sum(axis=1)))
+        Wh, den = hor[key]
+        return (Wh @ blk["r_g"][:, i].astype(np.float32)) / den
+
+    def var(blk, A, i, gat):
+        m = blk["m_g"][i]
+        v = gat(A) + blk["G0"] * dz + m * (blk["a_g"][i] + blk["b_g"][i] * dz)
+        return v + (1.0 - m) * horiz(blk, id(blk), i) if m < 1.0 else v
+
+    def fn(i, f):
+        out = base_fn(i, f)
+        gat = lambda A: (A[idx, i] * w4).sum(axis=1)  # noqa: E731
+        if tb is not None:
+            t = var(tb, T0c, i, gat)
+            out["temp"] = t.astype(np.float32)
+            if db is not None:
+                out["dew"] = np.minimum(var(db, Td0c, i, gat), t).astype(np.float32)
+        if wb is not None:
+            out["wind"] = (wpts * wb["U_g"][:, i, None].astype(np.float32)).sum(axis=0)
+            out["dir_w"] = (wb["dirw"][i].T.astype(np.float32) @ wpts)
+        return out
+    return fn
 
 
 def sites(obs, kind):

@@ -60,3 +60,12 @@ Extend `python -m microclimate.live check`: leave-one-station-out error over `--
 
 ## Done when
 The leave-one-out table is in the hand-back and `stations.json` is produced by the scheduled build. `NUDGE_ANCHORS` stays off until the user says otherwise.
+
+
+## Implementation notes (steps 2, 3, 4 and 6 built 2026-11-13; step 5 not built)
+- Code: `live/config.py` (STATIONS, WIND_REGIONS, constants, `NUDGE_ANCHORS = False`), `live/stations.py` (parallel fetch with a 14 s deadline, hourly tables, analysis, `stations.json`), `live/anchors.py` (regions, wind fit, temperature fit; no scipy), `live/stationwind.py` (3a), `live/check_stations.py` (step 6), `wetness.simulate` key `dir_w`.
+- Station sources: CO-OPS (piers, Fort Point), IEM mirror (Golden Gate Bridge, hill RAWS, Oakland Museum, optional), NDBC (buoys), NWS (Oakland CWOP), METAR (airports, already fetched). The IEM service returns raw SHEF codes for older rows; both forms are read.
+- `station_wind.npz` is a release asset (`live-static-v1`, like `live_static.npz`); `refresh.sh` downloads it when present. Without it the wind anchors stay off and `stations.json` still works.
+- In-grid wind anchors today: FTPC1, GGBC1, PXOC1 (all sampled at the first informative layer, 50 m, because the 20 m grid has nothing lower). Oakland piers, airports, hills and buoys are outside the grid: they are reported against the forecast, never scale street wind. Hill stations give the lapse rate and the inversion in the temperature fit.
+- Known approximation (also for the About text): each library field is a complete flow for one uniform wind, so a regional blend is not exactly mass-conserving and the fog exposure near region boundaries is approximate. A blend cannot create patterns that are in none of the nine fields (east wind, sea-breeze front, calm pool). Hours whose wind comes from 0-180 degrees are flagged offshore and clamped to 180 or 360.
+- With the flag on the temperature of every street also gets the base lapse (-6.5 K/km, dew point -2 K/km) times its height above the lattice cell, so hill streets differ from today's even where no station is near.

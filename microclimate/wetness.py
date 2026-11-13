@@ -270,6 +270,8 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
                    pts['dirs'] or the 9 library directions): no library files are read, the direction blend is used.
       forcing_fn   callable (i, f) -> f: replaces the scalar forcing dict of step i by one whose values may be [N] arrays
                    (spatial forcing interpolated from a lattice); the coast source s(t) stays the scalar series.
+      dir_w        (key of the dict forcing_fn returns, guide 03) [D, N] direction weights per street point and step, D = len(tracer_dirs): the fog exposure
+                   is sum_d dir_w[d] * E[d] per point instead of the citywide blend of that step; absent = today's path, unchanged.
       lag_block_h  hours; the front lag uses the mean flow direction and wind of each block of that length (default: one value
                    for the whole window).
       out_every    keep W only every k-th step (frames 0, k, 2k, ...): memory for long windows.
@@ -390,7 +392,8 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
                  cloud_low=ser["cloud_cover_low"][i], precip=ser["precipitation"][i], sw=ser["shortwave_radiation"][i])
         if forcing_fn is not None:
             f = forcing_fn(i, f)
-        local = lagged(s, i - lag_steps) * (expo if E is None else Wt[i] @ E)
+        dw = f.get("dir_w") if E is not None else None   # guide 03: per-point direction weights [D, N] (sum to 1 over D) replace the single citywide blend
+        local = lagged(s, i - lag_steps) * (expo if E is None else (Wt[i] @ E if dw is None else (np.asarray(dw) * E).sum(axis=0)))
         if prof:  # street counts as inside the fog only while the (lagged) fog top is above it
             local = local * fogtop.fog_top_ramp(lagged(top, i - lag_steps), pts["z"])
         lit = np.zeros(N, bool)

@@ -77,8 +77,8 @@ echo "::endgroup::"
 
 echo "::group::static tables (release live-static-v1)"
 mkdir -p "$STATIC"
-for f in live_static.npz live_ribbons.npz ribbons_city.bin ribbons_city_meta.json live_extra.npz; do   # live_extra.npz (guide 06): fetched when missing, also on a cache hit; a failed download only means flat asphalt streets
-  [ -s "$STATIC/$f" ] || gh release download live-static-v1 -p "$f" -D "$STATIC" --repo "$REPO" --clobber || echo "download of $f failed"
+for f in live_static.npz live_ribbons.npz ribbons_city.bin ribbons_city_meta.json live_extra.npz station_wind.npz; do   # live_extra.npz (guide 06): fetched when missing, also on a cache hit; a failed download only means flat asphalt streets. station_wind.npz (guide 03): optional, the wind anchors stay off without it
+  [ -s "$STATIC/$f" ] || gh release download live-static-v1 -p "$f" -D "$STATIC" --repo "$REPO" --clobber || echo "download of $f failed (live_extra.npz: flat asphalt streets; station_wind.npz: the wind anchors stay off)"
 done
 ls -l "$STATIC"
 echo "::endgroup::"

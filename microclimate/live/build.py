@@ -94,6 +94,15 @@ def gather(st, t0, now, cache):
         st.ok("sounding", valid=obs["sounding"]["valid"].isoformat(), levels=int(len(obs["sounding"]["z"])))
     if obs["nws"]:
         st.ok("nws", newest={k: max(x["t"] for x in r).isoformat() for k, r in obs["nws"].items()})
+    # extra stations (guide 03 step 2): optional; parallel, capped by STATION_FETCH_DEADLINE_S, any failure is recorded and never fails the build
+    try:
+        from . import stations
+        obs["stations"] = stations.collect(obs, t0, now)
+        n_ok = sum(1 for d in obs["stations"]["raw"].values() if d)
+        st.ok("stations", reporting=n_ok, requests=obs["stations"]["jobs"], seconds=obs["stations"]["seconds"])
+    except Exception as e:  # noqa: BLE001
+        st.notes.append(f"stations: {e!r}"[:200])
+        obs["stations"] = None
     goes_hours = {}
 
     def sector_fn(hours, dirs):
@@ -136,7 +145,12 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     # ---- forcing
     try:
         extra = load_extra(static, S, P, st, log)
-        F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P, goes_hours=goes_hours)
+        try:
+            from . import stations as _stations
+            obs["station_wind"] = _stations.load_station_wind(static.parent / C.STATION_WIND_FILE, S["dirs"])
+        except Exception:  # noqa: BLE001
+            obs["station_wind"] = None
+        F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P, goes_hours=goes_hours, z=S["z"])
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"forcing failed: {e!r}")
@@ -174,6 +188,18 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"writing outputs failed: {e!r}")
+    # stations.json (guide 03 step 4): read-only data for the page; never fatal
+    sinfo_st = dict(file=None)
+    try:
+        sj = F.get("stations_json")
+        if sj is not None:
+            (out / C.STATIONS_FILE).write_text(json.dumps(sj, separators=(",", ":"), default=str))
+            sinfo_st = dict(file=C.STATIONS_FILE, bytes=(out / C.STATIONS_FILE).stat().st_size, nudge_anchors=bool(C.NUDGE_ANCHORS),
+                            fetch_failed=(obs.get("stations") or {}).get("failed", {}), fetch_seconds=(obs.get("stations") or {}).get("seconds"),
+                            newest=(obs.get("stations") or {}).get("newest", {}), wind=(F["info"].get("anchors") or {}).get("wind"))
+    except Exception as e:  # noqa: BLE001
+        traceback.print_exc()
+        sinfo_st = dict(file=None, error=repr(e)[:200])
     # satellite cloud score (guide 04): reads only, never fatal; any problem is logged into the status notes
     cs_notes = []
     cs_info = cloud_score.run_safe(out, cs_hook, rr, F, S, diag, goes_hours, t0, now, cs_notes, log=log)
@@ -205,7 +231,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
                   observed_until_iso=F["info"]["obs_until"], forecast_from_iso=F["info"]["obs_until"], rrfs_model=rr["model"],
                   sources_used=sorted(st.sources), sources_failed=st.failed, data_as_of=st.sources, notes=st.notes[:20] + cs_notes + F["info"]["flags"],
                   forcing=F["info"], mode=("rrfs_only" if not any(obs[k] is not None for k in ("coops", "metar")) else "observations_nudged"),
-                  points=int(len(S["x"])), outputs=meta, cloud_score=cs_info)
+                  points=int(len(S["x"])), outputs=meta, cloud_score=cs_info, stations=sinfo_st)
     (out / "status.json").write_text(json.dumps(status, indent=1, default=str))
     log(f"done in {status['run_seconds']} s; sources used {status['sources_used']}, failed {list(st.failed)}")
     return 0
