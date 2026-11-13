@@ -33,6 +33,7 @@ jobs:
       DEATHFOG_NTFY_TOPIC: ${{ secrets.DEATHFOG_NTFY_TOPIC }}
       DEATHFOG_REPORT_URL: ${{ vars.DEATHFOG_REPORT_URL }}
       DEATHFOG_FORM_CSV_URL: ${{ vars.DEATHFOG_FORM_CSV_URL }}
+      PURPLEAIR_API_KEY: ${{ secrets.PURPLEAIR_API_KEY }}   # only read when [sources.purpleair] is enabled
       REMOTE_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
     steps:
       - uses: actions/checkout@v4

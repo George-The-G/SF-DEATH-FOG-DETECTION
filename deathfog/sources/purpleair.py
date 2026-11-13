@@ -40,8 +40,8 @@ class PurpleAir(Source):
 
     def fetch(self, http, now):
         smap = self.sensor_map()
-        if not smap:
-            return []
+        if not smap:  # enabled but nothing to ask for: say so instead of logging "0 readings" as a success
+            raise RuntimeError("PurpleAir is enabled but no zone has purpleair_sensors set in config.toml")
         key = os.environ.get(self.cfg.get("api_key_env", "PURPLEAIR_API_KEY"))
         if not key:
             raise RuntimeError("PurpleAir API key not set in environment")

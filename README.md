@@ -52,6 +52,7 @@ Flags the cold, calm, near-saturated conditions that leave roads slick, per zone
    | `DEATHFOG_FORM_CSV_URL` | variable | the form's published response sheet (CSV); reports are pulled in automatically |
    | `DEATHFOG_NTFY_TOPIC` | secret | hard-to-guess ntfy topic for phone alerts |
    | `DEATHFOG_USER_AGENT` | secret | contact string for the NWS API; defaults to the repo URL |
+   | `PURPLEAIR_API_KEY` | secret | PurpleAir read key; also set `enabled = true` under `[sources.purpleair]` and `purpleair_sensors` on zones in `config.toml` |
    | `DEATHFOG_LIVE` | variable | set to `false` to stop the v3 live build (the pages keep deploying) |
 
 Google Form: turn off "collect email addresses" and do not add a file upload. Question titles need to contain: zone, slick

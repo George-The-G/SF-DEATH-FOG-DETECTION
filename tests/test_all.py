@@ -87,6 +87,11 @@ class TestSources(unittest.TestCase):
         self.assertAlmostEqual(out[0].temp_c, 10.0, delta=0.01)   # 50F
         self.assertEqual(src.cost(), 5 + 3 * 2)
 
+    def test_purpleair_enabled_without_sensors_is_an_error(self):
+        src = registry.SOURCES["purpleair"]("purpleair", {"enabled": True}, make_cfg()["zones"])
+        with self.assertRaisesRegex(RuntimeError, "purpleair_sensors"):
+            src.fetch(FakeHttp(), NOW)
+
     def test_plugin_source_loads_and_runs(self):
         plugins = os.path.join(os.path.dirname(__file__), "..", "plugins")
         self.assertIn("example_local_csv.py", registry.load_plugins(plugins))
