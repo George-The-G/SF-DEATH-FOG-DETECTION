@@ -257,7 +257,7 @@ class Run:
             if ok:
                 self.log("starting fog stage in a child process")
                 with open(self.logf, "a", encoding="utf-8") as lf:
-                    rc = subprocess.run([sys.executable, "-m", "microclimate", "winddir", "--dir", str(d), "--stage", "fog"], stdout=lf, stderr=subprocess.STDOUT).returncode
+                    rc = subprocess.run([sys.executable, "-m", "microclimate", "winddir", "--dir", str(d), "--stage", "fog"], stdout=subprocess.DEVNULL, stderr=lf).returncode  # the child logs through Run.log itself
                 self.st = _jread(self.sf) or self.st
                 ok = rc == 0
                 if not ok:
