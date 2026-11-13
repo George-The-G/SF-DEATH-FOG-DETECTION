@@ -124,9 +124,15 @@ def _f(v, p=2):
     return "-" if v is None else f"{v:.{p}f}"
 
 
+def _ab_lines(r):
+    if r.get("anchors_compare"):
+        return [f"- A: `{r['physics_a'] or 'none'}`, station anchors as configured (C.NUDGE_ANCHORS)", f"- B: `{r['physics_b'] or 'none'}`, station anchors ON"]
+    return [f"- A (current C.PHYSICS): `{r['physics_a'] or 'none'}`", f"- B: `{r['physics_b'] or 'none'}`"]
+
+
 def to_markdown(r):
     L = [f"# Physics compare {r['generated_iso']}", "",
-         f"- A (current C.PHYSICS): `{r['physics_a'] or 'none'}`", f"- B: `{r['physics_b'] or 'none'}`",
+         *_ab_lines(r),
          f"- {r['frames']} hourly frames, {r['rows']} street rows ({r['street_points']} model points); observed frames: 0..{r['observed_until_frame']}",
          f"- largest absolute difference at any model point and frame: {_f(r['max_abs_diff_points'], 4)}", ""]
     for pn in ("all", "observed", "forecast"):
@@ -154,12 +160,15 @@ def to_markdown(r):
     return "\n".join(L) + "\n"
 
 
-def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physics_compare", now=None, log=print):
-    """Fetch once, simulate with C.PHYSICS and with physics_b on the same inputs and the same `now`. Returns 0 on success, 2 when no data."""
+def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physics_compare", now=None, log=print, anchors=False):
+    """Fetch once, simulate with C.PHYSICS and with physics_b on the same inputs and the same `now`. Returns 0 on success, 2 when no data.
+    anchors=True (guide 03): A and B both run with physics_b (None / empty = C.PHYSICS), A with C.NUDGE_ANCHORS as configured, B with the station anchors on."""
     from .. import city
     from . import fetch
     now = now or fetch.utcnow()
     pa, pb = wetness.check_physics(C.PHYSICS), wetness.check_physics(physics_b)
+    if anchors:
+        pa = pb = wetness.check_physics(tuple(physics_b) or C.PHYSICS)
     static = Path(static or C.STATIC_DEFAULT)
     ribbons = Path(ribbons or static.parent / "live_ribbons.npz")
     cache = Path(cache or static.parent / "goes_cache")
@@ -173,9 +182,15 @@ def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physi
     except fetch.FetchError as e:
         log(f"cannot compare: {e}")
         return 2
+    build.attach_station_wind(obs, static, S)
     res = []
-    for P in (pa, pb):
-        F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P, goes_hours=goes_hours)
+    nudge0 = C.NUDGE_ANCHORS
+    for P, nudge in ((pa, nudge0), (pb, True if anchors else nudge0)):
+        C.NUDGE_ANCHORS = nudge
+        try:
+            F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P, goes_hours=goes_hours, z=S["z"])
+        finally:
+            C.NUDGE_ANCHORS = nudge0
         t = time.time()
         W, diag = wetness.simulate(build.point_table(S, build.load_extra(static, S, P, st, log)), F["ser"], C.STEP_MIN, tracer_dirs=S["tracer"], dirs_deg=S["dirs"], forcing_fn=F["forcing_fn"], lag_block_h=3,
                                    out_every=C.OUT_STEP_MIN // C.STEP_MIN, keep_lit=False, s_series=F["s_series"], fog_top=F["fog_top"], use_dirs=True, physics=P)
@@ -185,6 +200,9 @@ def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physi
     obs_until = Fa["info"]["obs_until"]
     k_obs = None if obs_until is None else int((dt.datetime.fromisoformat(obs_until) - t0).total_seconds() // 3600)
     rep = report(Wa, da, Wb, db, S, Rb, k_obs, sorted(pa), sorted(pb), now)
+    rep["anchors_compare"] = bool(anchors)
+    if anchors:
+        rep["anchors_info"] = dict(a=Fa["info"].get("anchors"), b=Fb["info"].get("anchors"))
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     stamp = now.astimezone(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")

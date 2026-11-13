@@ -73,6 +73,7 @@ class TestCompare(unittest.TestCase):
         S, Rb = self.fake_static(Wa.shape[1])
         rep = compare.report(Wa, da, Wb, db, S, Rb, 20, (), (), datetime(2026, 11, 12, tzinfo=timezone.utc))
         self.assertEqual(rep["max_abs_diff_points"], 0.0)
+
         self.assertEqual(rep["top_differences"], [])
         for part in rep["diff"].values():
             for g in part.values():
@@ -82,6 +83,15 @@ class TestCompare(unittest.TestCase):
         md = compare.to_markdown(rep)
         self.assertIn("Ten largest", md)
         self.assertIn("elev >300 m", md)
+
+    def test_anchors_report_header_and_flag_restored(self):
+        from microclimate.live import config as C
+        Wa, da = case()
+        S, Rb = self.fake_static(Wa.shape[1])
+        rep = compare.report(Wa, da, Wa, da, S, Rb, 20, (), (), datetime(2026, 11, 12, tzinfo=timezone.utc))
+        rep["anchors_compare"] = True
+        self.assertIn("station anchors ON", compare.to_markdown(rep))
+        self.assertFalse(C.NUDGE_ANCHORS)
 
     def test_differences_are_reported(self):
         Wa, da = case()

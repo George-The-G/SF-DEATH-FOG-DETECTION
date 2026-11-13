@@ -2,7 +2,8 @@
 
   build   [--out DIR] [--static PATH] [--ribbons PATH] [--cache DIR] [--physics a,b|none] [--carry-state] [--archive DIR]   one live run (default out: site/v3/live;
           physics default: config.PHYSICS)
-  compare --physics a,b|none [--static PATH] [--out DIR]               same inputs, config.PHYSICS versus the given switches; writes
+  compare --physics a,b|none [--anchors] [--static PATH] [--out DIR]   same inputs, config.PHYSICS versus the given switches; writes
+                                                                       --anchors (guide 03): the given set (default config.PHYSICS) without versus with the station anchors on
                                                                        compare_<time>.md/.json (default out: reports/physics_compare)
   ribbons [--stride N] [--static PATH] [--out DIR]                     offline: city ribbons + column maps (out default: the static file's folder)
   stationwind [--data DIR] [--out FILE]                                offline (PC with the wind library): simulated wind vectors at the in-grid stations -> station_wind.npz (guide 03)
@@ -29,10 +30,10 @@ def main(argv):
                            archive_dir=opt(argv, "--archive")))
     elif cmd == "compare":
         from . import compare
-        if "--physics" not in argv:
-            sys.exit("compare needs --physics a,b (or --physics none)")
+        if "--physics" not in argv and "--anchors" not in argv:
+            sys.exit("compare needs --physics a,b (or --physics none), or --anchors")
         sys.exit(compare.run(compare.parse_physics(opt(argv, "--physics")), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"),
-                             opt(argv, "--out", "reports/physics_compare")))
+                             opt(argv, "--out", "reports/physics_compare"), anchors="--anchors" in argv))
     elif cmd == "ribbons":
         from . import config, ribbons
         static = Path(opt(argv, "--static", config.STATIC_DEFAULT))

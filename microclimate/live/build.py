@@ -62,6 +62,15 @@ def load_extra(static, S, P, st, log=print):
     return ex
 
 
+def attach_station_wind(obs, static, S):
+    """obs["station_wind"] (guide 03): the simulated wind vectors at the stations, from station_wind.npz next to the static table; None when missing or unreadable."""
+    try:
+        from . import stations as _stations
+        obs["station_wind"] = _stations.load_station_wind(Path(static).parent / C.STATION_WIND_FILE, S["dirs"])
+    except Exception:  # noqa: BLE001
+        obs["station_wind"] = None
+
+
 def gather(st, t0, now, cache):
     """Fetch every source once. -> (rrfs, obs, sector_fn, goes_hours). Raises fetch.FetchError when RRFS is unavailable (every other source may fail softly)."""
     obs = {}
@@ -145,11 +154,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     # ---- forcing
     try:
         extra = load_extra(static, S, P, st, log)
-        try:
-            from . import stations as _stations
-            obs["station_wind"] = _stations.load_station_wind(static.parent / C.STATION_WIND_FILE, S["dirs"])
-        except Exception:  # noqa: BLE001
-            obs["station_wind"] = None
+        attach_station_wind(obs, static, S)
         F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P, goes_hours=goes_hours, z=S["z"])
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
