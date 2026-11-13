@@ -85,6 +85,16 @@ CLOUDSCORE_PREV_ENV = "DEATHFOG_CLOUDSCORE_PREV"               # path of the pre
 EXTRA_FILE = "live_extra.npz"        # bearing, slope, surface class per street point; looked up next to the static table (release live-static-v1 extra asset)
 SAT_K = (1.0, 0.9, 0.6, 0.35)        # cloudiness factor of a GOES clear sky mask class: clear, probably clear, probably cloudy, cloudy
 K_SAT_WEIGHT = 0.5                   # share of (k_sat - k_model) added to the model's k in observed hours (fades out with FOG_E_FOLD_H)
+SUN_DSR = True                       # sun_clear runs: k_sat from the GOES downward shortwave product (DSR / clear-sky GHI) where it exists, the mask classes elsewhere. False: mask classes only.
+GOES_DSR_PRODUCTS = ("ABI-L2-DSRC", "ABI-L2-DSRF")   # tried in this order; CONUS (DSRC) is empty on goes18 and goes19 (2026-11), full disk (DSRF) is read with range requests
+DSR_BOX = (-122.65, 37.62, -122.25, 37.92)           # lon0, lat0, lon1, lat1 of the city subset kept per hour (about 12 x 12 pixels of 2 km)
+DSR_BLOCK_BYTES = 32 * 1024          # range request block size for the netCDF4 / HDF5 file
+DSR_CACHE_FILE = "dsr_cache.json"    # rolling cache of the per-hour city subsets, published in the output folder and carried between runs like the state files
+DSR_DEADLINE_S = 90.0                # new hours are fetched until this many seconds have passed; the rest comes with the next run (the cache is kept)
+DSR_REFRESH_H = 3                    # the newest hours are fetched again each run (their scan may not have been published at the last run)
+DSR_MAX_SCAN_OFFSET_MIN = 30         # a scan counts for an hour when its start is within this many minutes of it
+DSR_MIN_GHI = 50.0                   # no k from DSR where the clear-sky GHI at the scan time is below this (W/m2): low sun, the ratio is not meaningful
+DSR_BOX_SCALE = 1.5                  # a lattice cell takes the DSR pixels inside 1.5 x its spacing (DSR is 2 km, the lattice 3.3 km: a plain cell box can hold no pixel centre)
 SUN_FILE = "sun{d}.u8"               # on-demand sunlight files, same layout as day{d}.u8: round(100 * S / 1000) capped at 250 (written only when sun_clear is on)
 DEPTH_FILE = "depth{d}.u8"           # water depth files (guide 05): round(255 * log1p(F / 0.01) / log1p(1 / 0.01)); written only when film is on
 DRY_FILE = "dry{d}.u8"               # hours until the street is dry again, 255 = not within the window

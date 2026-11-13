@@ -152,7 +152,7 @@ def interp_at(arr, idx, w):
 
 
 # ------------------------------------------------------------------ main builder
-def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=print, physics=(), goes_hours=None, z=None):
+def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=print, physics=(), goes_hours=None, z=None, dsr_hours=None):
     """rrfs: fetch.rrfs() dict. t0: window start (aware UTC). n: number of model steps. now: current UTC. x, y: street point coordinates (UTM 10N).
     obs: dict(coops=, metar=, nws={id: rows}, sounding=) with missing sources absent / None. sector_fn(hours, dirs) -> list of GOES upwind low-cloud fractions
     (None = no GOES). goes_hours: {hour: goes.LowCloud} the sector function filled (sun_clear: cloudiness from the mask classes). Returns dict(ser, s_series, fog_top, forcing_fn, info, lattice series ...)."""
@@ -354,7 +354,7 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
         pav_out = dict(pav_ts0=(Tm[idx] * w4).sum(axis=1).astype(np.float32))
         info["pavement"] = pinfo
     if "sun_clear" in info["physics"]:   # guide 06: cloudiness k per lattice cell and step
-        Ks, sun_out = cloudiness(lat_t, SW, g, t_h, now_h, ser["t_utc"], goes_hours, info, log)
+        Ks, sun_out = cloudiness(lat_t, SW, g, t_h, now_h, ser["t_utc"], goes_hours, info, log, dsr_hours=dsr_hours)
 
     def forcing_fn(i, f):
         gat = lambda A: (A[idx, i] * w4).sum(axis=1).astype(np.float32)  # noqa: E731
@@ -404,11 +404,12 @@ def pavement_cold_start(T_l, th, hours=24.0):
     return m, dict(past_hours=n_prev, window_hours=n_win)
 
 
-def cloudiness(lat_t, SW, g, t_h, now_h, t_utc, goes_hours, info, log=print):
+def cloudiness(lat_t, SW, g, t_h, now_h, t_utc, goes_hours, info, log=print, dsr_hours=None):
     """Cloudiness factor k [L, n] (guide 06): k_model = clip(SW / clear-sky GHI, 0.05, 1) where the sun is above SUN_MIN_EL (held below); in observed hours
     k_sat from the GOES mask classes of the pixels in each lattice cell's box; the model k moves by K_SAT_WEIGHT * (k_sat - k_model), faded into the
     forecast with FOG_E_FOLD_H. -> (K [L, n], dict(k_model, k_sat_hourly, k_hours) for the hand-back and tests)."""
     from .. import sunclear
+    from . import dsr as dsrlib
     n = SW.shape[1]
     nh = len(t_h)
     ghi_c, _, _ = sunclear.clear_sky(t_utc, wetness.SUN_LAT, wetness.SUN_LON)
@@ -424,6 +425,15 @@ def cloudiness(lat_t, SW, g, t_h, now_h, t_utc, goes_hours, info, log=print):
         lc = (goes_hours or {}).get(t_h[h])
         if lc is not None and h <= now_h and getattr(lc, "acm", None) is not None:
             k_sat[:, h] = lc.k_cells(lat_t.lat, lat_t.lon, dlat, dlon)
+    k_mask = k_sat.copy()
+    k_dsr = np.full((L, nh), np.nan)
+    if C.SUN_DSR and dsr_hours:   # GOES downward shortwave (dsr.py): DSR / clear-sky GHI at the scan time, preferred where it exists; the mask classes fill the rest
+        hs = [h for h in range(nh) if h <= now_h and dsr_hours.get(t_h[h]) is not None]
+        if hs:
+            ghi_s, _, _ = sunclear.clear_sky([dsr_hours[t_h[h]].t for h in hs], wetness.SUN_LAT, wetness.SUN_LON)
+            for h, gs in zip(hs, ghi_s):
+                k_dsr[:, h] = dsrlib.k_cells(dsr_hours[t_h[h]], gs, lat_t.lat, lat_t.lon, dlat, dlon)
+        k_sat = np.where(np.isfinite(k_dsr), k_dsr, k_mask)
     K = k_model.copy()
     if np.isfinite(k_sat).any():
         corr_h = C.K_SAT_WEIGHT * (k_sat - k_model_h)
@@ -432,8 +442,25 @@ def cloudiness(lat_t, SW, g, t_h, now_h, t_utc, goes_hours, info, log=print):
     else:
         info["flags"].append("no GOES cloud mask: sunlight cloudiness from the model only")
     K = np.clip(K, wetness.K_MIN, 1.0)
-    info["sun_k"] = dict(mean_model=float(k_model.mean()), mean_used=float(K.mean()), sat_hours=int(np.isfinite(k_sat).any(axis=0).sum()))
-    return K, dict(k_model=k_model, k_sat_hourly=k_sat, k_lattice=K)
+    info["sun_k"] = dict(mean_model=float(k_model.mean()), mean_used=float(K.mean()), sat_hours=int(np.isfinite(k_sat).any(axis=0).sum()),
+                         dsr_hours=int(np.isfinite(k_dsr).any(axis=0).sum()), mask_hours=int(np.isfinite(k_mask).any(axis=0).sum()), dsr_on=bool(C.SUN_DSR),
+                         table=_k_table(t_h, now_h, ghi_c[::spb][:nh], SW[:, ::spb][:, :nh], k_model_h, k_mask, k_dsr, K[:, ::spb][:, :nh]))
+    return K, dict(k_model=k_model, k_sat_hourly=k_sat, k_lattice=K, k_mask_hourly=k_mask, k_dsr_hourly=k_dsr)
+
+
+def _k_table(t_h, now_h, ghi_h, sw_h, k_model_h, k_mask, k_dsr, k_used_h, hours=24):
+    """The last `hours` observed daylight hours: city means (over the lattice cells) of k from the model (RRFS SW / clear-sky GHI), from the GOES mask classes, from DSR,
+    and the k used after the correction; plus the clear-sky GHI and the RRFS SW of the hour. None where a source has nothing for that hour."""
+    def m(a):
+        a = np.asarray(a, float)
+        return None if not np.isfinite(a).any() else round(float(np.nanmean(a)), 3)
+    rows = []
+    for h in range(len(t_h)):
+        if h > now_h or ghi_h[h] < C.DSR_MIN_GHI:
+            continue
+        rows.append(dict(hour=t_h[h].isoformat(), ghi_clear=round(float(ghi_h[h]), 0), sw_model=round(float(np.mean(sw_h[:, h])), 0), k_model=m(k_model_h[:, h]),
+                         k_mask=m(k_mask[:, h]), k_dsr=m(k_dsr[:, h]), k_used=m(k_used_h[:, h])))
+    return rows[-hours:]
 
 
 
