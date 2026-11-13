@@ -12,6 +12,7 @@ const SRC_DIRS = SRC_Q === 'mock' ? ['replay_mock/'] : SRC_Q === 'synth' ? ['rep
 const QP = new URLSearchParams(location.search);
 const UI2 = QP.get('ui') !== '1'; // redesigned chrome (body.ui2) for everyone; ?ui=1 keeps the old chrome (replay only), see UI_REDESIGN_PLAN.md
 if (UI2) document.body.classList.add('ui2');
+let BX = null; // beta preview data layers (beta_ui.js), loaded with import() only when BETA; null on the public page
 let RNG = null; // ui2 live: visible frame window {lo, hi} of the time bar (null = every frame)
 const LIVE = UI2 && !(QP.get('live') === '0' || QP.has('night') || QP.has('src')); // live data is the default; ?live=0, ?night=<id> or ?src= open the past-night replays
 const BETA = QP.has('beta') && QP.get('beta') !== '0'; // ?beta=1: the beta preview channel (live_beta/, other model settings) with a badge; never the default
@@ -82,10 +83,10 @@ controls.enableDamping = true; controls.dampingFactor = 0.08;
 controls.maxPolarAngle = 1.48; controls.minDistance = 60; controls.maxDistance = 32000;
 controls.screenSpacePanning = false;
 
-scene.add(new THREE.HemisphereLight(0x8fa8d8, 0x2a3348, 1.6));
+const hemi = new THREE.HemisphereLight(0x8fa8d8, 0x2a3348, 1.6); scene.add(hemi);
 const moon = new THREE.DirectionalLight(0xc8d4ff, 2.2);
 moon.position.set(-6000, 9000, 5000); scene.add(moon);
-scene.add(new THREE.AmbientLight(0x202840, 0.8));
+const amb = new THREE.AmbientLight(0x202840, 0.8); scene.add(amb);
 const skater = createSkater({ THREE, reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches }); // shown only during the route flyover
 scene.add(skater.group);
 
@@ -546,7 +547,7 @@ async function ensureRibbons(n) {
   if (rib && ribPath === n.ribbons) return;
   const mp = n.ribbons.replace(/\.bin$/, '_meta.json');
   const [buf, m] = await Promise.all([withTimeout(getBuf(n.ribbons), 60000, 'ribbons'), getJSON(mp)]);
-  const r = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch });
+  const r = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, alt: BETA });
   r.build(buf, m);
   if (rib) rib.dispose();
   rib = r; ribMeta = m; ribPath = n.ribbons; r.setDistrictVisible($('disttoggle').checked); r.setRouteColors(ROUTES.map((R) => R.def.color));
@@ -629,6 +630,7 @@ function applyTime(force) {
   if (document.activeElement !== $('slider') || force) $('slider').value = f;
   const key = Math.round(f * 20);
   curF = f;
+  if (BX) BX.frame(f);
   if (useRib) { rib.setFrame(f); if (rib2) rib2.setFrame(f); } // three uniform writes, nothing else
   if (force || key !== lastFrameKey) {
     lastFrameKey = key;
@@ -705,8 +707,9 @@ function showTip(k, xy) {
   const v = wetNow[k], cat = CATS[v < 20 ? 0 : v < 50 ? 1 : v < 80 ? 2 : v < 95 ? 3 : 4];
   const when = night ? wall(night.start_iso, curF * night.step_min).time : '';
   tip.innerHTML = v < 0 ? `no data<br>${G.names[G.st[k]]}` : `<span class="sw" style="background:${rgbCss(rampColor(v))}"></span><b>${Math.round(v)}</b> wetness · ${cat}${useRib ? ' (modelled)' : ''}<br>${G.names[G.st[k]]}, ${G.side[k] ? 'right' : 'left'} side${selRoute >= 0 && ((G.mask[k] >> ROUTES[selRoute].def.index) & 1) ? ' · on route' : G.cls[k] ? ' · district street' : ''} · ${when}`;
+  if (BX) { const bh = BX.tip(k, v, when); if (bh) tip.innerHTML = bh; }
   tip.hidden = false;
-  const topH = $('top').getBoundingClientRect().bottom, botY = $('controls').getBoundingClientRect().top; // keep the tooltip clear of the glass stacks
+  const topH = $('top').getBoundingClientRect().bottom, botY = (BX ? $('dock') : $('controls')).getBoundingClientRect().top; // keep the tooltip clear of the glass stacks
   tip.style.left = clamp(xy[0], 125, innerWidth - 125) + 'px'; tip.style.top = clamp(xy[1], topH + 70, botY - 6) + 'px';
 }
 function hideTip() { hoverIdx = -1; tip.hidden = true; }
@@ -763,6 +766,7 @@ function frame(ts) {
     L.el.style.display = vis ? '' : 'none';
     if (vis) L.el.style.transform = `translate(-50%,-100%) translate(${clamp((v3.x * .5 + .5) * innerWidth, 70, innerWidth - 70)}px, ${(1 - (v3.y * .5 + .5)) * innerHeight}px)`;
   }
+  if (BX) BX.render(ts);
   renderer.render(scene, camera);
 }
 
@@ -805,7 +809,8 @@ function liveBar(idx, st) { // ui2 only: status inputs, data notices in the dock
   const stack = document.createElement('div'); stack.id = 'lvstack'; $('dock').prepend(stack);
   const bl = BETA ? String((st && st.beta && st.beta.label) || 'settings not stated').replace(/[<>&"]/g, '') : '';
   if (BETA) document.title = 'Beta preview · ' + document.title;
-  stack.innerHTML = (BETA ? `<div class="lvb warn">Beta preview: ${bl}. Not the public forecast.</div>` : '') + (ageMin != null && ageMin > 90 ? `<div class="lvb warn">Data delayed. Last update was ${fmtAge(ageMin)} ago. Showing the most recent run.</div>` : '') +
+  LV.betaLabel = bl; LV.betaBanner = BETA ? `<div class="lvb warn">Beta preview: ${bl}. Not the public forecast.</div>` : ''; // the dock banner is the fallback only: beta_ui.js shows the Beta tag on the status line and a note in settings instead
+  stack.innerHTML = (ageMin != null && ageMin > 90 ? `<div class="lvb warn">Data delayed. Last update was ${fmtAge(ageMin)} ago. Showing the most recent run.</div>` : '') +
     (fo ? '<div class="lvb info">Forecast only. No recent station or satellite readings, so nothing is corrected by observations.</div>' : '');
   // City streets layer switch (next to District streets), default on
   const lab = document.createElement('label'); lab.innerHTML = '<input type="checkbox" id="citytoggle" checked><span>City streets</span>';
@@ -885,7 +890,7 @@ async function bootLive() {
   await ensureRibbons({ ribbons: 'data/ribbons.bin' });
   if (rib.samples.S !== S1) throw new Error(`live index expects ${S1} district samples, ribbons.bin has ${rib.samples.S}`);
   const [cb, cm] = await Promise.all([withTimeout(getBuf(base + idx.ribbons_city), 60000, 'city ribbons'), getJSON(base + idx.ribbons_city_meta)]);
-  rib2 = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch }); rib2.build(cb, cm); rib2.mesh.renderOrder = 9; rib2Meta = cm; // under the district/route ribbons
+  rib2 = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, alt: BETA }); rib2.build(cb, cm); rib2.mesh.renderOrder = 9; rib2Meta = cm; // under the district/route ribbons
   setStatus('Loading live street wetness…');
   const [d0, wx] = await Promise.all([withTimeout(getBuf(base + idx.frame_files[0] + V), 60000, 'day 0'), getJSON(base + idx.weather + V).catch(() => null)]);
   if (d0.byteLength !== f0 * ST) throw new Error(`${idx.frame_files[0]} has ${d0.byteLength} bytes, expected ${f0 * ST}`);
@@ -902,6 +907,7 @@ async function bootLive() {
   LV.anchor = clamp(Math.round((asof - t0) / 3600000), 0, nF - 1); // frame of the data time; used when there is no observed_until_frame
   tNow = clamp(LV.anchor, 0, f0 - 1);
   liveBar(idx, st);
+  await initBeta();
   applyRange();
   applyTime(true); ui2Track();
   overlay.classList.add('hide'); $('status').textContent = '';
@@ -955,6 +961,7 @@ function ui2Track() {
   $('trkthumb').style.left = x(tNow) + 'px'; $('trkplay').style.width = Math.max(0, x(tNow) - 8) + 'px';
   $('trkobs').style.width = fr == null ? '0px' : Math.max(0, x(fr) - 8) + 'px';
   const nw = $('trknow'); nw.hidden = !(LV && fr != null); if (!nw.hidden) nw.style.left = x(fr) + 'px';
+  if (BX) BX.track(x, min, max);
   const sig = min + '|' + max + '|' + W + '|' + night.start_iso; if (sig === trkSig) return; trkSig = sig;
   const dl = $('trkdays'); dl.textContent = ''; const marks = [];
   for (let f = Math.ceil(min); f <= max; f++) { const w = wall(night.start_iso, f * night.step_min); if (f !== Math.ceil(min) && w.time !== '00:00') continue; marks.push({ t: w.day.split(' ')[0], x: x(f) }); }
@@ -1008,15 +1015,16 @@ let chipT = 0, chipTO = 0;
 function ui2Chip(force) { // route chip: wet line (avg, worst, peak hour) and profile strip; chip height follows the selection
   document.body.classList.toggle('ui2-route', selRoute >= 0);
   const R = selRoute >= 0 ? ROUTES[selRoute] : null, w = $('rwet'), p = $('rprof');
-  if (!R || !night || !G.n) { w.hidden = true; p.hidden = true; return; }
+  if (!R || !night || !G.n) { w.hidden = true; p.hidden = true; if (BX) BX.chip(null); return; }
   const now = performance.now();
   if (!force && now - chipT < 120) { if (!chipTO) chipTO = setTimeout(() => { chipTO = 0; ui2Chip(true); }, 130); return; }
   chipT = now; ensureWet();
-  const s = routeStat(R); if (s.avg < 0) { w.hidden = true; p.hidden = true; return; }
+  const s = routeStat(R); if (s.avg < 0) { w.hidden = true; p.hidden = true; if (BX) BX.chip(null); return; }
   let pk = '';
   if (LV && LV.u8) { const f = livePeak(R); if (f >= 0) pk = ' · peaks ' + ptFmt(new Date(Date.parse(LV.idx.start_iso) + f * LV.idx.step_min * 60000).toISOString(), { weekday: 'short', hour: 'numeric', hour12: true }).replace(',', ''); }
-  w.innerHTML = `Wet <b>${Math.round(s.avg)}</b> avg · <b style="color:${rgbCss(rampColor(s.mx))}">${Math.round(s.mx)}</b> worst${pk}`; w.hidden = false;
+  w.innerHTML = `${BX && BX.slick() ? 'Slick' : 'Wet'} <b>${Math.round(s.avg)}</b> avg · <b style="color:${rgbCss(rampColor(s.mx))}">${Math.round(s.mx)}</b> worst${pk}`; w.hidden = false;
   p.style.background = profGradient(s.prof); p.hidden = false;
+  if (BX) BX.chip(R);
 }
 let listT = 0, listTO = 0;
 function ui2List(force) { // route list rows: mini profile and current mean wetness
@@ -1032,11 +1040,28 @@ function ui2List(force) { // route list rows: mini profile and current mean wetn
 }
 function ui2Refresh(force) { if (UI2) { ui2Chip(force); ui2List(force); } }
 function ui2Fly(s) { // flyover panel: route name and "0.33 of 0.78 mi · wet 84 here"
-  const R = fly.R, a = shortName(R.def, ZONES), b = `${mi(s)} of ${mi(R.len)} mi` + (fly.w == null ? '' : ` · wet ${fly.w} here`);
+  const R = fly.R, a = shortName(R.def, ZONES), b = `${mi(s)} of ${mi(R.len)} mi` + (fly.w == null ? '' : BX && BX.slick() ? ` · ${BX.flyHere(R, s, fly.w)}` : ` · wet ${fly.w} here`);
   if (fly.nm !== a) { $('fpnm').textContent = a; fly.nm = a; }
   if (fly.sub !== b) { $('fpsub').textContent = b; fly.sub = b; }
 }
 if (UI2) ui2Build();
+
+/* ------------------------------------------------------------------ beta preview layers (?beta=1 only): stations, satellite, sunshine, water depth, see beta_ui.js */
+function betaCtx() {
+  return {
+    THREE, scene, camera, controls, EX, canvas, $, isTouch, CITY, rampColor, rgbCss, wall, ptFmt, compass, routeBins, liveRouteCols, flyTo, setSheet, hideTip,
+    lights: { hemi, moon, amb },
+    ROUTES: () => ROUTES, refresh: () => { ui2Refresh(true); if (hoverIdx >= 0) showTip(hoverIdx, hoverXY); }, trackNow: () => ui2Track(), getBuf, getJSON,
+    get LV() { return LV; }, get idx() { return LV ? LV.idx : null; }, get status() { return LV ? LV.st : null; }, get night() { return night; }, get weather() { return weather; },
+    get G() { return G; }, get wetNow() { return wetNow; }, get curF() { return curF; }, get meta() { return meta; }, get terrainH() { return terrainH; },
+    get rib() { return rib; }, get rib2() { return rib2; }, get base() { return base; }, get selRoute() { return selRoute; },
+  };
+}
+async function initBeta() {
+  if (!BETA || BX || !UI2) return;
+  try { const m = await import('./beta_ui.js'); await m.init(betaCtx()); BX = m; if (typeof BX.frame === 'function' && night) BX.frame(curF); }
+  catch (e) { console.warn('beta layers unavailable', e); BX = null; const s = $('lvstack'); if (s && LV && LV.betaBanner) s.insertAdjacentHTML('afterbegin', LV.betaBanner); }
+}
 
 /* ------------------------------------------------------------------ boot */
 (async function boot() {
@@ -1072,6 +1097,7 @@ if (UI2) ui2Build();
     tNow = Math.min(60, idx.nights[firstFog].n_frames - 1);
     initSheet();
     await selectNight(firstFog);
+    await initBeta(); // past night with the beta channel flag: tag and regrouped settings only (no beta data for a replay)
     if (QP.get('liveerr')) toast('Live data is unavailable right now. Showing a past night.');
     applyUrlRoute();
     window.__ready = true;

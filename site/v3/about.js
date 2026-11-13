@@ -58,7 +58,7 @@ function injectCss() {
   if (state.styled) return;
   const s = document.createElement('style');
   s.id = 'about-css';
-  s.textContent = CSS;
+  s.textContent = CSS + (BETA_ABOUT ? BETA_CSS : '');
   document.head.appendChild(s);
   state.styled = true;
 }
@@ -118,6 +118,17 @@ const LIVE_HTML = '<h3>Live data</h3><p>Streets are coloured by a modelled wetne
   '<li><b>Forecast:</b> NWS RRFS, via Open-Meteo</li><li><b>Fog cover:</b> NOAA GOES-18 satellite</li>' +
   '<li><b>Surface:</b> airport reports from KSFO, KOAK and KHAF</li><li><b>Wind:</b> NOAA tide station at Fort Point</li></ul>' +
   '<p class="ab-acc">Wetness is modelled, not measured, and has not been checked against real wet-road reports yet. Use it as a guide.</p>';
+/* ?beta=1 (the beta preview channel) only: a first section about the preview, opened from the Beta tag on the status line or from "5 m sim" */
+const BETA_ABOUT = AQ.has('beta') && AQ.get('beta') !== '0';
+const escH = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const betaHtml = () => '<h3 id="ab-beta"><span class="ab-btag">Beta</span>Beta preview: new data layers</h3>' +
+  '<p>This preview adds weather stations, satellite low cloud, sunshine and water depth. They are on test, may change, and are not on the main page yet.' + (window.__betaLabel ? ' Settings in this build: ' + escH(window.__betaLabel) + '.' : '') + '</p>' +
+  '<ul><li><b>Stations:</b> piers, a bridge, airports, hill and buoy stations at their real spots, compared with the model at the selected hour.</li>' +
+  '<li><b>Satellite low cloud:</b> NOAA GOES-18, past hours only, drawn as a violet dashed outline. "Cloud match" is how well the model fog agrees with it over the last 24 hours.</li>' +
+  '<li><b>Sunshine:</b> sun position, building shade, road slope and cloud (GOES sunlight where it is available).</li>' +
+  '<li><b>Slick and water depth:</b> a modelled water film with its drying time and cause.</li></ul>' +
+  '<p>Slick, water depth and sunshine are modelled, not measured, and have not been checked against real wet-road reports yet.</p>';
+const BETA_CSS = '.ab-btag{display:inline-block;margin-right:6px;vertical-align:1px;font:650 9px/12px var(--sans,system-ui,sans-serif);letter-spacing:.07em;text-transform:uppercase;color:var(--cy-ink,#7fe3f0);border:1px solid rgba(94,242,255,.55);border-radius:4px;padding:0 4px}';
 const LIVE_REPLACE = ['A replay of nine recent nights (7 foggy, 2 dry) showing how wet streets may have been along a few skate routes.', 'Modelled street wetness for tonight and the next two days across San Francisco, with detail on a few skate routes. The nine past-night replays are in the Night list.'];
 
 export function isOpen() { return !!state.root; }
@@ -172,7 +183,7 @@ export async function openAbout() {
   if (state.trigger) state.trigger.setAttribute('aria-expanded', 'true');
 
   const html = await loadHtml();
-  if (state.root === root) { body.innerHTML = LIVE_ABOUT ? LIVE_HTML + html.replace(LIVE_REPLACE[0], LIVE_REPLACE[1]) : html; body.scrollTop = 0; }
+  if (state.root === root) { body.innerHTML = (BETA_ABOUT ? betaHtml() : '') + (LIVE_ABOUT ? LIVE_HTML + html.replace(LIVE_REPLACE[0], LIVE_REPLACE[1]) : html); body.scrollTop = 0; }
 }
 
 export function closeAbout() {

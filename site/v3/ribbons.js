@@ -76,21 +76,36 @@ const frag = (glslRamp) => `
     gl_FragColor = vec4(c, a);
   }`;
 
-export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch }) {
+/* Beta preview only (createRibbons({ alt: true })): a second frame-major texture (sunshine, u8 = W/m2 / 10) and a uMode uniform (0 = wetness / slick ramp, 1 = sun ramp).
+   The public page builds the shaders above unchanged. */
+const SUN_GLSL = `
+  vec3 sunramp(float v){ float t = clamp(v / 90., 0., 1.);
+    vec3 a = vec3(.1412,.1882,.3020), b = vec3(.3569,.3098,.4941), c = vec3(.7098,.4039,.2902), d = vec3(.9412,.6353,.2275), e = vec3(1.,.8784,.5412);
+    if (t < .22) return mix(a, b, t / .22); if (t < .48) return mix(b, c, (t - .22) / .26); if (t < .72) return mix(c, d, (t - .48) / .24); return mix(d, e, (t - .72) / .28); }
+`;
+const altVert = (v) => v.replace('uniform sampler2D uWet;', 'uniform sampler2D uWet, uSun; uniform float uMode;')
+  .replace('float w0 = texelFetch(uWet, ivec2(ix, int(uFa + .5) * R + iy), 0).r * 255.;', 'float w0 = (uMode > .5 ? texelFetch(uSun, ivec2(ix, int(uFa + .5) * R + iy), 0).r : texelFetch(uWet, ivec2(ix, int(uFa + .5) * R + iy), 0).r) * 255.;')
+  .replace('float w1 = texelFetch(uWet, ivec2(ix, int(uFb + .5) * R + iy), 0).r * 255.;', 'float w1 = (uMode > .5 ? texelFetch(uSun, ivec2(ix, int(uFb + .5) * R + iy), 0).r : texelFetch(uWet, ivec2(ix, int(uFb + .5) * R + iy), 0).r) * 255.;');
+const altFrag = (f) => f.replace('uniform float uDistFade, uDistVis, uDash, uWidth;', 'uniform float uDistFade, uDistVis, uDash, uWidth, uMode;')
+  .replace('void main(){', SUN_GLSL + 'void main(){')
+  .replace('vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : ramp(vWet);', 'vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : (uMode > .5 ? sunramp(vWet) : ramp(vWet));');
+
+export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, alt = false }) {
   const uniforms = {
     uWet: { value: null }, uRows: { value: 1 }, uFa: { value: 0 }, uFb: { value: 0 }, uU: { value: 0 },
     uWidth: { value: 1 }, uRouteBit: { value: -1 }, uRouteCol: { value: new THREE.Color(0x5ef2ff) },
     uDistFade: { value: 1 }, uDistVis: { value: 1 }, uDepthK: { value: 16 }, uSelW: { value: 2.5 },
     uCols: { value: Array.from({ length: 16 }, () => new THREE.Color(0x5ef2ff)) }, uThin: { value: 0.5 }, uLane: { value: 5 }, uDash: { value: 30 },
   };
+  if (alt) { uniforms.uSun = { value: null }; uniforms.uMode = { value: 0 }; }
   const material = new THREE.ShaderMaterial({
-    uniforms, vertexShader: VERT, fragmentShader: frag(glslRamp),
+    uniforms, vertexShader: alt ? altVert(VERT) : VERT, fragmentShader: alt ? altFrag(frag(glslRamp)) : frag(glslRamp),
     transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   // placeholder 1x1 texture until a night is set
   const blank = new THREE.DataTexture(new Uint8Array([SENTINEL]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType);
-  blank.needsUpdate = true; uniforms.uWet.value = blank;
+  blank.needsUpdate = true; uniforms.uWet.value = blank; if (alt) uniforms.uSun.value = blank;
 
   let mesh = null, geom = null, tex = null, S = 0, nF = 0, u8 = null, widthM = 6.5, c0 = 0, stw = 0;
   const samples = { S: 0, src: null, side: null, st: null, mask: null, cls: null, pos: null };
@@ -161,6 +176,20 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
     api.setFrame(uniforms.uFa.value + uniforms.uU.value);
   };
 
+  /* beta only: second data set with the same layout as setNight (sunshine); uMode picks which texture the street colours come from */
+  let texAlt = null;
+  api.setAlt = (data, nFrames, col0 = 0, stride = S) => {
+    if (!alt) throw new Error('ribbons built without alt');
+    if (data.length !== nFrames * stride) throw new Error(`alt data has ${data.length} bytes, expected ${nFrames * stride}`);
+    const R = Math.ceil(S / TEXW), H = R * nFrames, buf = new Uint8Array(TEXW * H).fill(SENTINEL);
+    for (let f = 0; f < nFrames; f++) buf.set(data.subarray(f * stride + col0, f * stride + col0 + S), f * R * TEXW);
+    if (texAlt) texAlt.dispose();
+    texAlt = new THREE.DataTexture(buf, TEXW, H, THREE.RedFormat, THREE.UnsignedByteType);
+    texAlt.minFilter = texAlt.magFilter = THREE.NearestFilter; texAlt.generateMipmaps = false; texAlt.flipY = false; texAlt.unpackAlignment = 1; texAlt.needsUpdate = true;
+    uniforms.uSun.value = texAlt;
+  };
+  api.setMode = (m) => { if (alt) uniforms.uMode.value = m; };
+
   api.setFrame = (f) => {
     f = Math.min(Math.max(f, 0), Math.max(nF - 1, 0));
     const a = Math.floor(f); uniforms.uFa.value = a; uniforms.uFb.value = Math.min(a + 1, Math.max(nF - 1, 0)); uniforms.uU.value = f - a;
@@ -190,7 +219,7 @@ export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch })
   api.setVisible = (v) => { if (mesh) mesh.visible = v; };
   api.dispose = () => {
     if (mesh) scene.remove(mesh);
-    if (geom) geom.dispose(); if (tex) tex.dispose(); blank.dispose(); material.dispose();
+    if (geom) geom.dispose(); if (tex) tex.dispose(); if (texAlt) texAlt.dispose(); blank.dispose(); material.dispose();
     mesh = geom = tex = null;
   };
   return api;
