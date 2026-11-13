@@ -86,6 +86,81 @@ def check_physics(physics):
 CONSTANTS = {k: v for k, v in dict(globals()).items() if k.isupper() and isinstance(v, (int, float)) and k != "DIR_LIBRARY"}  # DIR_LIBRARY is a run switch, not a model constant (keeps the shipped index.json unchanged)
 
 
+# ---- guides 05 (film) and 06 (sun_clear): constants defined AFTER the CONSTANTS snapshot above, so index.json lists the same constants as before while the switches are off.
+# All first guesses (literature order), none verified.
+SUN_LAT, SUN_LON = 37.76, -122.40  # clear-sky site (city centre)
+K_MIN = 0.05           # lowest cloudiness factor k (1 = clear sky)
+K_BEAM_OFF = 0.35      # k at and below which no direct beam is left
+SUN_MIN_EL = 5.0       # deg: k from the model shortwave only where the sun is higher than this; held below
+SLOPE_CLIP = 0.35      # rise over run: slopes are clipped to +-this
+FOG_LWC = 0.2          # g/m3 liquid water content of fog
+V_SETTLE = 0.02        # m/s settling speed of fog droplets
+C_TURB = 0.004         # turbulent deposition: m/s per m/s of wind
+DEW_MM_PER_K = 0.01    # mm/h of dew per K of (Td - Ts)
+DEW_MAX = 0.04         # mm/h upper limit of the dew rate
+EVAP_A = 0.108         # mm/h per kPa of vapour pressure deficit
+EVAP_B = 0.54          # s/m, wind factor of evaporation
+SUN_MM_PER_KW = 0.8    # mm/h of drying per 1000 W/m2
+CAP_MM = (0.5, 0.3, 0.2, 0.5)   # mm of water a flat street holds before it runs off: asphalt, concrete, porous, other (= asphalt)
+CAP_SLOPE_MAX = 0.15   # slope (rise/run) at which the storage is reduced most ...
+CAP_SLOPE_DIV = 0.30   # ... storage factor = 1 - min(|slope|, CAP_SLOPE_MAX) / CAP_SLOPE_DIV
+FILM_SLICK = 0.02      # mm: slip = 100 * (1 - exp(-F / FILM_SLICK))
+DRY_MM = 0.005         # mm: a street below this counts as dry
+DEPTH_REF_MM = 0.01    # depth file: resolution near zero (mm) ...
+DEPTH_MAX_MM = 1.0     # ... and the depth shown as 255 (mm)
+DRIZZLE_MM_H = 0.3     # precipitation below this rate counts as drizzle for the cause of the water
+CAUSE_H = 3.0          # hours looked back for the main source of the water
+RAIN_WET_MM_H = 0.1    # rate that counts as rain for hours_since_rain
+HSR_MAX_H = 240.0      # hours_since_rain when there is no history
+WASH_MM_H = 1.0        # rain in one hour that washes the street (resets rain_since_wash; guide 13 may change it)
+RSW_MAX_MM = 50.0      # upper limit of rain_since_wash
+RAIN_Q_MM = 0.02       # hourly rain history is kept in units of this (uint8, up to 5.1 mm/h)
+
+
+def es_kpa(t):
+    """Saturation vapour pressure in kPa (Tetens) at t in degC."""
+    return 0.6108 * np.exp(17.27 * t / (t + 237.3))
+
+
+def depth_u8(f_mm):
+    """Water depth in mm -> uint8: round(255 * log1p(F / 0.01) / log1p(1.0 / 0.01)), capped at 255."""
+    f = np.maximum(np.asarray(f_mm, np.float64), 0.0)
+    return np.clip(np.rint(255.0 * np.log1p(f / DEPTH_REF_MM) / np.log1p(DEPTH_MAX_MM / DEPTH_REF_MM)), 0, 255).astype(np.uint8)
+
+
+def slip_of(f_mm):
+    """Slippery 0..100 from the water on the road: a thin film is already fully slippery."""
+    return (100.0 * (1.0 - np.exp(-np.maximum(np.asarray(f_mm, np.float64), 0.0) / FILM_SLICK))).astype(np.float32)
+
+
+def storage_cap(surf, slope):
+    """mm of water the street holds before it runs off: CAP_MM[surface class] * (1 - min(|slope|, CAP_SLOPE_MAX) / CAP_SLOPE_DIV)."""
+    return (np.asarray(CAP_MM, float)[np.asarray(surf, int)] * (1.0 - np.minimum(np.abs(np.asarray(slope, float)), CAP_SLOPE_MAX) / CAP_SLOPE_DIV)).astype(np.float32)
+
+
+def step_film(Fm, svf, porous, f, local_fog, cap, dt_h, wind_ratio=1.0):
+    """One time step of the film model (switch `film`). Fm [N] = water on the road in mm; f as in step() plus f['sw_eff'] (W/m2 effective sunlight);
+    cap [N] mm storage. Rates in mm/h: fog deposition, dew, rain (the precipitation rate itself), minus evaporation (vapour deficit and wind) and
+    sun drying. Water above cap runs off. Returns (Fm_new, parts) with parts in mm (this step): fog, dew, rain, evap (actual), sun (actual), runoff."""
+    wind = f["wind"] * wind_ratio
+    dT = DT_MAX * svf * (1 - f["cloud_low"] / 100.0) * np.clip(1 - wind / WIND_CALM, 0, 1)
+    ts = f["temp"] - dT
+    one = np.ones_like(Fm)
+    fog = FOG_LWC * (V_SETTLE + C_TURB * wind) * 3.6 * local_fog * porous * one
+    dew = np.minimum(DEW_MM_PER_K * np.maximum(f["dew"] - ts, 0.0), DEW_MAX) * porous * one
+    rain = np.maximum(f["precip"], 0.0) * porous * one
+    vpd = np.maximum(es_kpa(f["temp"]) - es_kpa(f["dew"]), 0.0)
+    evap = EVAP_A * (1.0 + EVAP_B * wind) * vpd * one
+    sun = SUN_MM_PER_KW * np.maximum(f["sw_eff"], 0.0) / 1000.0 * one
+    net = Fm + (fog + dew + rain - evap - sun) * dt_h
+    runoff = np.maximum(net - cap, 0.0)
+    out = np.clip(net, 0.0, cap)
+    pot = (evap + sun) * dt_h
+    short = np.maximum(-net, 0.0)                       # removal asked for that there was no water for
+    frac = np.where(pot > 0, np.maximum(pot - short, 0.0) / np.where(pot > 0, pot, 1.0), 0.0)
+    return out.astype(np.float32), dict(fog=fog * dt_h, dew=dew * dt_h, rain=rain * dt_h, evap=evap * dt_h * frac, sun=sun * dt_h * frac, runoff=runoff)
+
+
 def magnus_rh(t, td):
     """Relative humidity 0-1 from air and dew point temperature (Magnus)."""
     a, b = 17.625, 243.04
@@ -167,6 +242,8 @@ def step(W, svf, porous, f, local_fog, lit, dt_h, wind_ratio=1.0, use_sun=True, 
     evap = (K_EVAP_BASE + K_EVAP_WIND * wind) * np.maximum(0.0, 1 - rh)
     sw = np.maximum(f["sw"], 0.0) / 1000.0
     sun = K_DIFF * sw + (K_SUN * sw * lit if use_sun else 0.0)
+    if "sun_clear" in physics and "sw_eff" in f:   # guide 06: drying by the street's own sunlight S (direct on lit streets + diffuse), no separate K_DIFF
+        sun = K_SUN * np.maximum(f["sw_eff"], 0.0) / 1000.0
     out = np.clip(W + (dew + fog + rain - evap - sun) * dt_h, 0.0, 100.0)
     return out.astype(np.float32), dict(dew=dew * dt_h, fog=fog * dt_h, rain=rain * dt_h, evap=evap * dt_h)
 
@@ -258,6 +335,7 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     expo = fog_exposure(tr)
     az, el = sun_position(ser["t_utc"])
     dt_h = step_min / 60.0
+    film, sunc = "film" in P, "sun_clear" in P
     if state0 is not None:
         W = np.asarray(state0["W"], np.float32).copy()
         assert W.shape == (N,), "state0['W'] must have one value per street point"
@@ -266,8 +344,40 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     state_at = None
     frames = (n + out_every - 1) // out_every
     out = np.zeros((frames, N), np.float32)
+    extra_missing = ("slope" not in pts) if (film or sunc) else False   # guide 06 extra table absent: flat asphalt
+    if sunc:   # guide 06: clear-sky sun, road normal, cloudiness
+        from . import sunclear
+        ghi_c, dni_c, _ = sunclear.clear_sky(ser["t_utc"], SUN_LAT, SUN_LON)
+        nrm = sunclear.normals(pts.get("bearing", np.zeros(N)), pts.get("slope", np.zeros(N)))
+        k_ser = sunclear.k_from_sw(np.asarray(ser["shortwave_radiation"], float), ghi_c, el)
+        sun_u8 = np.zeros((frames, N), np.uint8)
+        sun_k = np.zeros(frames, np.float32)
+    if film:   # guide 05: water on the road, rain tracking
+        cap = storage_cap(pts.get("surf", np.zeros(N, np.uint8)), pts.get("slope", np.zeros(N)))
+        spb = max(1, int(round(60.0 / step_min)))
+        cause_n = max(1, int(round(CAUSE_H * 60.0 / step_min)))
+        Fm = np.zeros(N, np.float32)
+        hist = np.zeros((24, N), np.uint8)
+        hsr = np.full(N, HSR_MAX_H, np.float32)
+        rsw = np.zeros(N, np.float32)
+        if state0 is not None and "film" in state0:
+            Fm = np.asarray(state0["film"], np.float32).copy()
+            assert Fm.shape == (N,), "state0['film'] must have one value per street point"
+            if "rain_hist" in state0:
+                hist = np.asarray(state0["rain_hist"], np.uint8).copy()
+            if "hours_since_rain" in state0:
+                hsr = np.asarray(state0["hours_since_rain"], np.float32).copy()
+            if "rain_since_wash" in state0:
+                rsw = np.asarray(state0["rain_since_wash"], np.float32).copy()
+        rain_cur = np.zeros(N, np.float32)
+        film_out = np.zeros((frames, N), np.float16)
+        cause_out = np.zeros((frames, N), np.uint8)
+        ring = np.zeros((cause_n, 4, N), np.float16)
+        wet_bits = []
     lit_all = np.zeros((n, N), bool) if keep_lit else None
     dep = dict(fog=np.zeros(N), dew=np.zeros(N), rain=np.zeros(N), evap=np.zeros(N))
+    if film:
+        dep.update(sun=np.zeros(N), runoff=np.zeros(N))
     hor = pts.get("horizon")
     block_dirs = []
     for i in range(n):
@@ -287,15 +397,59 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
         if hor is not None and el[i] > 0:
             from .sun import sunlit
             lit = sunlit(hor, az[i], el[i])
+        if sunc:   # street sunlight S (W/m2): clear-sky beam on the tilted road where lit + diffuse by sky view, scaled by the cloudiness k
+            S = sunclear.street_irradiance(f["k"] if "k" in f else k_ser[i], ghi_c[i], dni_c[i], sunclear.cos_incidence(nrm, az[i], el[i]),
+                                           lit if use_sun else np.zeros(N, bool), sv, el[i])
+            f = dict(f, sw_eff=S)
+        elif film:
+            swp = np.maximum(f["sw"], 0.0)
+            f = dict(f, sw_eff=swp * lit + 0.125 * swp if use_sun else 0.125 * swp)   # as today's drying: direct on lit streets + K_DIFF / K_SUN of the shortwave everywhere
         if save_at is not None and i == save_at:  # state at the START of step i = initial state of a run that begins at that time
-            state_at = dict(W=W.copy())
-        W, parts = step(W, sv, porous, f, local, lit, dt_h, wr, use_sun, 1.0 if fog_gain is None else fog_gain, P)
-        if i % out_every == 0:
-            out[i // out_every] = W
+            if film:
+                state_at = dict(W=slip_of(Fm), film=Fm.copy(), rain_hist=hist.copy(), hours_since_rain=hsr.copy(), rain_since_wash=rsw.copy())
+            else:
+                state_at = dict(W=W.copy())
+        if film:
+            Fm, parts = step_film(Fm, sv, porous, f, local, cap, dt_h, wr)
+            r = np.maximum(np.asarray(f["precip"], np.float32), 0.0) * np.ones(N, np.float32)
+            hsr = np.minimum(np.where(r >= RAIN_WET_MM_H, 0.0, hsr + dt_h), HSR_MAX_H).astype(np.float32)
+            rain_cur += r * dt_h
+            if (i + 1) % spb == 0:   # an hour is complete: push it into the 24 h history; a washing hour resets rain_since_wash
+                hist = np.concatenate([hist[1:], np.clip(np.rint(rain_cur / RAIN_Q_MM), 0, 255).astype(np.uint8)[None]])
+                rsw = np.where(rain_cur >= WASH_MM_H, 0.0, np.minimum(rsw + rain_cur, RSW_MAX_MM)).astype(np.float32)
+                rain_cur = np.zeros(N, np.float32)
+            drz = r < DRIZZLE_MM_H
+            ring[i % cause_n] = np.stack([parts["fog"], parts["dew"], np.where(drz, parts["rain"], 0.0), np.where(drz, 0.0, parts["rain"])]).astype(np.float16)
+            wet_bits.append(np.packbits(Fm >= DRY_MM))
+            if i % out_every == 0:
+                fi = i // out_every
+                out[fi] = slip_of(Fm)
+                film_out[fi] = Fm
+                tot = np.stack([ring[:, s].sum(axis=0, dtype=np.float32) for s in range(4)])
+                cause_out[fi] = np.where(tot.max(axis=0) > 0, tot.argmax(axis=0) + 1, 0)
+        else:
+            W, parts = step(W, sv, porous, f, local, lit, dt_h, wr, use_sun, 1.0 if fog_gain is None else fog_gain, P)
+            if i % out_every == 0:
+                out[i // out_every] = W
+        if sunc and i % out_every == 0:
+            sun_u8[i // out_every] = np.clip(np.rint(S / 10.0), 0, 250)
+            sun_k[i // out_every] = float(np.mean(f["k"] if "k" in f else k_ser[i]))
         if keep_lit:
             lit_all[i] = lit
         for k in dep:
             dep[k] += parts[k]
+    extra = {}
+    if sunc:
+        extra.update(sun_u8=sun_u8, sun_k=sun_k, extra_missing=extra_missing)
+    if film:
+        nd = np.full(N, n, np.int32)   # dry-in: for every output frame the first step from then on at which the street is dry (read from the simulated steps)
+        dry_out = np.zeros((frames, N), np.uint8)
+        for j in range(n - 1, -1, -1):
+            nd = np.where(~np.unpackbits(wet_bits[j], count=N).astype(bool), j, nd)
+            if j % out_every == 0:
+                dry_out[j // out_every] = np.where(nd >= n, 255, np.minimum(np.ceil((nd - j) * dt_h - 1e-9), 254))
+        extra.update(film_mm=film_out, dry_in_h=dry_out, cause=cause_out, extra_missing=extra_missing,
+                     rain_track=dict(rain_mm_24h=hist.sum(axis=0, dtype=np.float32) * RAIN_Q_MM + rain_cur, hours_since_rain=hsr, rain_since_wash=rsw))
     diag = dict(dirs_used=(None if dirs is None else dirs.tolist()), mean_flow_dir=mdir, sun_az=az, sun_el=el, s=s, lit=lit_all, lag_steps=lag_steps, fog_mode=mode, fog_top=top, tracer=np.asarray(tr, np.float32),
-                out_every=out_every, block_dirs=block_dirs, physics=sorted(P), state_at=state_at, **{k + "_total": v for k, v in dep.items()})
+                out_every=out_every, block_dirs=block_dirs, physics=sorted(P), state_at=state_at, **extra, **{k + "_total": v for k, v in dep.items()})
     return out, diag

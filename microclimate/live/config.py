@@ -81,6 +81,15 @@ BAY_BOX = (-122.37, 37.74, -122.31, 37.78)      # central bay between San Franci
 CLOUD_ARCHIVE_DIR = os.environ.get("DEATHFOG_CLOUD_ARCHIVE_DIR") or None   # folder with recent run_<yyyymmddThhmm>.npz files (a checkout of branch live-archive, guide 02 part B) read for lead times; None = no archive yet
 CLOUDSCORE_PREV_ENV = "DEATHFOG_CLOUDSCORE_PREV"               # path of the previous rolling cloud_score.json (set by live_ci/refresh.sh)
 
+# ---- sunlight (guide 06; first guesses) ----
+EXTRA_FILE = "live_extra.npz"        # bearing, slope, surface class per street point; looked up next to the static table (release live-static-v1 extra asset)
+SAT_K = (1.0, 0.9, 0.6, 0.35)        # cloudiness factor of a GOES clear sky mask class: clear, probably clear, probably cloudy, cloudy
+K_SAT_WEIGHT = 0.5                   # share of (k_sat - k_model) added to the model's k in observed hours (fades out with FOG_E_FOLD_H)
+SUN_FILE = "sun{d}.u8"               # on-demand sunlight files, same layout as day{d}.u8: round(100 * S / 1000) capped at 250 (written only when sun_clear is on)
+DEPTH_FILE = "depth{d}.u8"           # water depth files (guide 05): round(255 * log1p(F / 0.01) / log1p(1 / 0.01)); written only when film is on
+DRY_FILE = "dry{d}.u8"               # hours until the street is dry again, 255 = not within the window
+CAUSE_FILE = "cause{d}.u8"           # main source of the water in the last 3 h: 0 none, 1 fog, 2 dew, 3 drizzle, 4 rain
+
 # ---- paths ----
 STATIC_DEFAULT = os.path.join(os.path.expanduser("~"), "deathfog-data", "live", "live_static.npz")
 

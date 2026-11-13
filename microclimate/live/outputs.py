@@ -46,6 +46,50 @@ def smooth_strips(a, strip_start, passes=2, edge=25.0):
     return out
 
 
+def ribbon_cols(a, Rb, how="mean"):
+    """Per-street-point array a [F, N] -> ribbon sample columns [F, S_district + S_city] like the day files: district samples as they are, city samples from
+    their left / right street points (how: 'mean', 'max' or 'left'). Integer input stays integer."""
+    SA, SB = len(Rb["A_src"]), len(Rb["B_srcL"])
+    a = np.asarray(a)
+    out = np.empty((a.shape[0], SA + SB), a.dtype)
+    out[:, :SA] = a[:, Rb["A_src"]]
+    L, R = a[:, Rb["B_srcL"]], a[:, Rb["B_srcR"]]
+    if how == "max":
+        out[:, SA:] = np.maximum(L, R)
+    elif how == "left":
+        out[:, SA:] = L
+    else:
+        m = 0.5 * (L.astype(np.float32) + R.astype(np.float32))
+        out[:, SA:] = np.rint(m) if np.issubdtype(a.dtype, np.integer) else m
+    return out
+
+
+def write_extras(out, diag, Rb, ranges, idx, local):
+    """On-demand files of the switches that are on (never part of the first paint): sun{d}.u8 (sun_clear), depth{d}.u8 dry{d}.u8 cause{d}.u8 (film).
+    Returns (index fields, file names)."""
+    fields, names = {}, []
+
+    def put(pattern, cols):
+        fl = []
+        for d, (a, b) in enumerate(ranges):
+            fn = pattern.format(d=d)
+            (out / fn).write_bytes(np.ascontiguousarray(cols[a:b]).tobytes())
+            fl.append(fn)
+        names.extend(fl)
+        return fl
+    if diag.get("sun_u8") is not None:
+        fields["sun"] = {"files": put(C.SUN_FILE, ribbon_cols(diag["sun_u8"], Rb, "mean")), "unit_wm2": 10, "max": 250, "layout": "same as frame_files: uint8 [frames, S], round(S / 10 W/m2), 0 = dark or night",
+                         "sun_el": np.round(diag["sun_el"][idx], 2).tolist(), "sun_az": np.round(diag["sun_az"][idx], 2).tolist(), "k_mean": np.round(diag["sun_k"], 3).tolist()}
+    if diag.get("film_mm") is not None:
+        depth = wetness.depth_u8(ribbon_cols(np.asarray(diag["film_mm"], np.float32), Rb, "mean"))
+        fields["film"] = {"slick_mm": wetness.FILM_SLICK, "dry_mm": wetness.DRY_MM, "note": "day files hold slip = 100 * (1 - exp(-F / slick_mm))",
+                          "depth_scale": {"ref_mm": wetness.DEPTH_REF_MM, "max_mm": wetness.DEPTH_MAX_MM, "formula": "u8 = round(255 * ln(1 + F / ref_mm) / ln(1 + max_mm / ref_mm))"},
+                          "files": {"depth": put(C.DEPTH_FILE, depth), "dry": put(C.DRY_FILE, ribbon_cols(diag["dry_in_h"], Rb, "max")),
+                                    "cause": put(C.CAUSE_FILE, ribbon_cols(diag["cause"], Rb, "left"))},
+                          "dry_unit_h": 1, "dry_none": 255, "cause_codes": ["none", "fog", "dew", "drizzle", "rain"]}
+    return fields, names
+
+
 def tile_lonlat():
     from pyproj import Transformer
     t = Transformer.from_crs(32610, 4326, always_xy=True)
@@ -132,6 +176,7 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
     ser = F["ser"]
     idx = np.arange(nF) * spf
     local = [t.astimezone(PT) for t in t_hours]
+    extra_fields, extra_files = write_extras(out, diag, Rb, ranges, idx, local)
     wj = {"t": [x.isoformat() for x in local], "temp_c": np.round(np.asarray(ser["temperature_2m"])[idx], 2).tolist(),
           "dewpoint_c": np.round(np.asarray(ser["dew_point_2m"])[idx], 2).tolist(), "wind_ms": np.round(np.asarray(ser["wind_speed_10m"])[idx], 2).tolist(),
           "wind_dir": np.round(np.asarray(ser["wind_dir"])[idx], 1).tolist(), "cloud_low_pct": np.round(np.asarray(ser["cloud_cover_low"])[idx], 1).tolist(),
@@ -161,9 +206,10 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
         "info": {"mean_flow_dir": round(float(diag["mean_flow_dir"]), 1), "block_flow_dirs": [round(float(x), 1) for x in diag["block_dirs"]],
                  "dirs_used": diag["dirs_used"], "points": int(W.shape[1]), "w_mean_last_frame": round(float(W[-1].mean()), 2)},
     }
+    index.update(extra_fields)   # only the switches that are on add keys: sun (sun_clear), film (film)
     (out / "index.json").write_text(json.dumps(index, indent=1))
     meta = {}
-    for fn in ["index.json", "weather.json", "ribbons_city.bin", "ribbons_city_meta.json"] + frame_files + fog_files:
+    for fn in ["index.json", "weather.json", "ribbons_city.bin", "ribbons_city_meta.json"] + frame_files + fog_files + extra_files:
         p = out / fn
         if p.exists():
             raw = p.read_bytes()

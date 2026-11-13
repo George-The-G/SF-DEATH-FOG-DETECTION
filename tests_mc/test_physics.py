@@ -44,9 +44,15 @@ class TestSwitches(unittest.TestCase):
 
     def test_known_names(self):
         self.assertEqual(set(wetness.KNOWN_PHYSICS), {"cloud_base", "lag_uniform", "vpd_evap", "total_cloud", "drizzle", "insitu_fog", "sun_clear", "film", "pavement", "grease"})
-        W, d = case(physics=wetness.KNOWN_PHYSICS)   # accepted; none of them changes anything yet
-        self.assertEqual(d["physics"], sorted(wetness.KNOWN_PHYSICS))
+        built = {"sun_clear", "film"}                # guides 06 and 05 are built: they change the result (tests_mc/test_sun_clear.py, test_film.py)
+        ph = tuple(k for k in wetness.KNOWN_PHYSICS if k not in built)
+        W, d = case(physics=ph)                      # accepted; the others change nothing yet
+        self.assertEqual(d["physics"], sorted(ph))
         self.assertEqual(digest(W, d), PRE_SWITCH_HASH)
+        for k in built:
+            Wk, dk = case(physics=(k,))
+            self.assertNotEqual(digest(Wk, dk), PRE_SWITCH_HASH, k)
+            self.assertTrue(np.isfinite(Wk).all())
 
     def test_parse_physics(self):
         self.assertEqual(compare.parse_physics("none"), ())

@@ -79,6 +79,31 @@ def top_street_diffs(Wa, Wb, S, k=10):
     return [dict(x=float(S["x"][i]), y=float(S["y"][i]), z=float(S["z"][i]), max_abs_diff=float(mx[i]), mean_abs_diff=float(dd[:, i].mean())) for i in order if mx[i] > 0]
 
 
+def film_summary(film_mm, dry_in, S, Rb, k_obs):
+    """Water on the road in mm (switch film, run B): mean, p90 and share of street-hours wet (>= wetness.DRY_MM) by band / class / time part; mean hours until dry
+    among the wet street-hours (255 = not within the window is left out)."""
+    rows, zr, cl = rows_of(np.asarray(film_mm, np.float32), S, Rb)
+    dry, _, _ = rows_of(np.asarray(dry_in, np.float32), S, Rb)
+    nF = rows.shape[0]
+    kb = 0 if k_obs is None else int(np.clip(k_obs, 0, nF))
+    parts = {"all": slice(0, nF), "observed": slice(0, kb), "forecast": slice(kb, nF)}
+    groups = {"all rows": np.ones(len(zr), bool), "district rows": cl == 0, "city rows": cl == 1}
+    for bn, (lo, hi) in zip(BAND_NAMES, BANDS):
+        groups["elev " + bn] = (zr >= lo) & (zr < hi)
+    out = {}
+    for pn, sl in parts.items():
+        out[pn] = {}
+        for gn, m in groups.items():
+            v = rows[sl][:, m]
+            dv = dry[sl][:, m]
+            wet = v >= wetness.DRY_MM
+            ok = wet & (dv < 255)
+            out[pn][gn] = dict(n=int(v.size), mean_mm=None if v.size == 0 else float(v.mean()), p90_mm=None if v.size == 0 else float(np.percentile(v, 90)),
+                               wet_share=None if v.size == 0 else float(wet.mean()), dry_in_mean_h=float(dv[ok].mean()) if ok.any() else None,
+                               not_dry_in_window_share=None if not wet.any() else float((wet & (dv >= 255)).mean() / wet.mean()))
+    return out
+
+
 def report(Wa, da, Wb, db, S, Rb, k_obs, pa, pb, now):
     """Pure function: the whole report dict from two simulations."""
     ra, zr, cl = rows_of(Wa, S, Rb)
@@ -89,8 +114,9 @@ def report(Wa, da, Wb, db, S, Rb, k_obs, pa, pb, now):
         va = float(np.mean(da[t])) if t in da else None
         vb = float(np.mean(db[t])) if t in db else None
         terms[t] = dict(a=va, b=vb, diff=None if va is None or vb is None else vb - va)
+    film = film_summary(db["film_mm"], db["dry_in_h"], S, Rb, k_obs) if db.get("film_mm") is not None else None
     return dict(generated_iso=now.isoformat(), physics_a=list(pa), physics_b=list(pb), observed_until_frame=k_obs, frames=int(Wa.shape[0]),
-                rows=int(ra.shape[1]), street_points=int(Wa.shape[1]), a=sa, b=sb, diff=diffs(sa, sb), terms=terms,
+                rows=int(ra.shape[1]), street_points=int(Wa.shape[1]), a=sa, b=sb, diff=diffs(sa, sb), terms=terms, film_b=film,
                 top_differences=top_street_diffs(Wa, Wb, S), max_abs_diff_points=float(np.abs(np.asarray(Wb, float) - np.asarray(Wa, float)).max()))
 
 
@@ -110,7 +136,14 @@ def to_markdown(r):
             L.append(f"| {gn} | {a['n']} | {_f(a['mean'])} | {_f(b['mean'])} | {_f(d['mean'], 4)} | {_f(a['p90'])} | {_f(b['p90'])} | {_f(d['p90'], 4)} | "
                      f"{_f(a['ge20'], 4)} | {_f(b['ge20'], 4)} | {_f(a['ge50'], 4)} | {_f(b['ge50'], 4)} |")
         L.append("")
-    L += ["## Terms (mean per point over the window, W units)", "", "| term | A | B | diff |", "|---|---|---|---|"]
+    if r.get("film_b"):
+        for pn in ("all", "observed", "forecast"):
+            L += [f"## B: water on the road in mm (film), {pn} frames", "", "| group | street-hours | mean mm | p90 mm | wet share | mean h until dry | wet and not dry in window |", "|---|---|---|---|---|---|---|"]
+            for gn, a in r["film_b"][pn].items():
+                L.append(f"| {gn} | {a['n']} | {_f(a['mean_mm'], 4)} | {_f(a['p90_mm'], 4)} | {_f(a['wet_share'], 4)} | {_f(a['dry_in_mean_h'], 2)} | {_f(a['not_dry_in_window_share'], 4)} |")
+            L.append("")
+        L += ["(with film, B's W columns above are slip = 100 * (1 - exp(-F / 0.02 mm)); A is today's index W: the two are different scales)", ""]
+    L += ["## Terms (mean per point over the window; W units, or mm for a film run)", "", "| term | A | B | diff |", "|---|---|---|---|"]
     for t, v in r["terms"].items():
         L.append(f"| {t} | {_f(v['a'], 3)} | {_f(v['b'], 3)} | {_f(v['diff'], 4)} |")
     L += ["", "## Ten largest per-street differences", "", "| x | y | z | max abs diff | mean abs diff |", "|---|---|---|---|---|"]
@@ -136,15 +169,15 @@ def run(physics_b, static=None, ribbons=None, cache=None, out_dir="reports/physi
     Rb = dict(np.load(ribbons)) if ribbons.exists() else None
     st = build.Status()
     try:
-        rr, obs, sector_fn, _ = build.gather(st, t0, now, cache)
+        rr, obs, sector_fn, goes_hours = build.gather(st, t0, now, cache)
     except fetch.FetchError as e:
         log(f"cannot compare: {e}")
         return 2
     res = []
     for P in (pa, pb):
-        F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P)
+        F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P, goes_hours=goes_hours)
         t = time.time()
-        W, diag = wetness.simulate(build.point_table(S), F["ser"], C.STEP_MIN, tracer_dirs=S["tracer"], dirs_deg=S["dirs"], forcing_fn=F["forcing_fn"], lag_block_h=3,
+        W, diag = wetness.simulate(build.point_table(S, build.load_extra(static, S, P, st, log)), F["ser"], C.STEP_MIN, tracer_dirs=S["tracer"], dirs_deg=S["dirs"], forcing_fn=F["forcing_fn"], lag_block_h=3,
                                    out_every=C.OUT_STEP_MIN // C.STEP_MIN, keep_lit=False, s_series=F["s_series"], fog_top=F["fog_top"], use_dirs=True, physics=P)
         log(f"simulate {sorted(P)}: {time.time() - t:.1f} s")
         res.append((W, diag, F))

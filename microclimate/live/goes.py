@@ -123,6 +123,7 @@ class LowCloud:
         ht = ht_raw[np.ix_(hr, hc)].astype(np.float32) * sc
         ht[ht_raw[np.ix_(hr, hc)] == fill] = np.nan
         self.nav, self.x, self.y = nav, x[c0:c1], y[r0:r1]
+        self.acm = np.asarray(acm)       # clear sky mask classes 0..3 (255 = none): the cloudiness factor of guide 06 is taken from them
         cloudy = (acm == 2) | (acm == 3)
         self.valid = acm != 255
         self.low = (cloudy & np.isfinite(ht) & (ht < C.LOW_TOP_M)).astype(np.float32)
@@ -141,6 +142,25 @@ class LowCloud:
         tx, ty = np.where(ok, fc, 0) - c0, np.where(ok, fr, 0) - r0
         v = (a[r0, c0] * (1 - tx) * (1 - ty) + a[r0, c0 + 1] * tx * (1 - ty) + a[r0 + 1, c0] * (1 - tx) * ty + a[r0 + 1, c0 + 1] * tx * ty)
         out[ok] = v[ok]
+        return out
+
+    def k_field(self):
+        """Cloudiness factor k per pixel from the mask class (C.SAT_K: clear 1.0, probably clear 0.9, probably cloudy 0.6, cloudy 0.35); NaN without a mask."""
+        k = np.full(self.acm.shape, np.nan, np.float32)
+        for c, v in enumerate(C.SAT_K):
+            k[self.acm == c] = v
+        return k
+
+    def k_cells(self, lat, lon, dlat, dlon):
+        """Mean cloudiness factor of the pixels (centres) inside the box lat +- dlat / 2, lon +- dlon / 2 of every cell centre (arrays [L]); NaN where the box holds no
+        pixel with a mask. Reads the scan only."""
+        plon, plat = self.pixel_lonlat()
+        kf = self.k_field()
+        out = np.full(len(lat), np.nan)
+        for i, (la, lo) in enumerate(zip(lat, lon)):
+            m = (np.abs(plat - la) <= dlat / 2.0) & (np.abs(plon - lo) <= dlon / 2.0) & np.isfinite(kf)
+            if m.any():
+                out[i] = float(kf[m].mean())
         return out
 
     def pixel_lonlat(self):

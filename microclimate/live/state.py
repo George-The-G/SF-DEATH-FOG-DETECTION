@@ -18,7 +18,7 @@ PT = ZoneInfo("America/Los_Angeles")
 MAX_BYTES = 3 * 1024 * 1024           # one state file must stay below this
 KEEP = 2                              # newest state files kept
 PATTERN = re.compile(r"^state_\d{8}T\d{2}\.npz$")
-FLOAT16 = ("W", "film", "ts", "tdeep", "rain_since_wash")   # arrays stored as float16 (the rest keep their dtype)
+FLOAT16 = ("W", "film", "ts", "tdeep", "rain_since_wash", "hours_since_rain")   # arrays stored as float16 (the rest keep their dtype)
 
 
 def name_for(t):

@@ -42,8 +42,24 @@ class Status:
         print(f"[source failed] {name}: {err}", flush=True)
 
 
-def point_table(S):
-    return {k: S[k] for k in ("x", "y", "z", "svf", "porous", "wind_ratio", "rel_wind", "horizon")} | {"tracer": S["tracer"][int(np.argmin(np.abs(S["dirs"] - 270.0)))]}
+def point_table(S, extra=None):
+    """Point dict for wetness.simulate. extra (city.load_extra, guide 06): replaces the bearing and adds slope and surface class (street direction, slope along it, class)."""
+    pts = {k: S[k] for k in ("x", "y", "z", "svf", "porous", "wind_ratio", "rel_wind", "horizon")} | {"tracer": S["tracer"][int(np.argmin(np.abs(S["dirs"] - 270.0)))]}
+    if extra is not None:
+        pts.update(bearing=extra["bearing"], slope=extra["slope"], surf=extra["surf"])
+    return pts
+
+
+def load_extra(static, S, P, st, log=print):
+    """live_extra.npz next to the static table, only when a switch needs it (sun_clear, film). A missing or mismatching file = flat asphalt: noted in the status."""
+    if not ({"sun_clear", "film"} & set(P)):
+        return None
+    from .. import city
+    ex = city.load_extra(Path(static).parent / C.EXTRA_FILE, len(S["x"]), S["x"])
+    if ex is None:
+        st.notes.append(f"{C.EXTRA_FILE} missing or not for this point table: flat asphalt streets (no slope, no surface class)")
+        log(st.notes[-1])
+    return ex
 
 
 def gather(st, t0, now, cache):
@@ -119,7 +135,8 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
         return _abort(out, st, now, t_run, "RRFS unavailable: previous good output kept")
     # ---- forcing
     try:
-        F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P)
+        extra = load_extra(static, S, P, st, log)
+        F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P, goes_hours=goes_hours)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"forcing failed: {e!r}")
@@ -145,7 +162,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
         state0, save_at = None, None
     # ---- model
     t_sim = time.time()
-    W, diag = wetness.simulate(point_table(S), F["ser"], C.STEP_MIN, tracer_dirs=S["tracer"], dirs_deg=S["dirs"], forcing_fn=F["forcing_fn"], lag_block_h=3,
+    W, diag = wetness.simulate(point_table(S, extra), F["ser"], C.STEP_MIN, tracer_dirs=S["tracer"], dirs_deg=S["dirs"], forcing_fn=F["forcing_fn"], lag_block_h=3,
                                out_every=C.OUT_STEP_MIN // C.STEP_MIN, keep_lit=False, s_series=F["s_series"], fog_top=F["fog_top"], use_dirs=True, physics=P,
                                state0=state0, save_at=save_at)
     sim_s = time.time() - t_sim
