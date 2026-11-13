@@ -6,7 +6,7 @@
 
 const $ = (id) => document.getElementById(id);
 let X = null;                                   // app context (see betaCtx() in app.js)
-const S = { color: 'slick', light: true, stations: false, sat: false };
+const S = { color: 'slick', light: true, stations: false, sat: false, tap: false };   // color becomes 'sun' in init() when the sunshine data exists; tap = "Tap info" (street card on tap), off by default
 const A = {};                                   // availability of the layers for this run
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
@@ -35,6 +35,7 @@ export async function init(ctx) {
   A.satHours = A.sat ? (idx.sat_score.satellite.hours_with_data | 0) : 0;
   A.stFile = (st && st.stations && st.stations.file) || null;
   A.stNow = A.stFile && st.stations.newest ? Object.keys(st.stations.newest).length : 0;
+  if (A.sun && A.live) S.color = 'sun';           // beta default: sunshine colouring (night and failed loads fall back to slick, see colorMode / loadSun)
   A.any = A.film || A.sun || A.sat || !!A.stFile;
   window.__betaOn = true; window.__betaLabel = (X.LV && X.LV.betaLabel) || '';
   buildSettings();
@@ -45,7 +46,11 @@ export async function init(ctx) {
   new ResizeObserver(measure).observe($('top'));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
   syncColorUi();
+  if (S.color === 'sun') loadSun().then(() => { colorMode(X.curF, true); });
 }
+
+/* street card on tap: off by default so stray taps on streets show nothing (called by app.js before every tip) */
+export function tapOff() { return !S.tap; }
 
 export function openSettings(id) {
   X.setSheet(true);
@@ -71,9 +76,10 @@ function buildSettings() {
   parts.push(play);
   { // always shown on the beta channel: layers with no data in this run are greyed with the reason
     const g = h(`<section class="bx-grp" id="bx-g-color"><div class="bx-gh">Colour and light<em id="bx-clnote"></em></div>
-      <div class="seg bx-seg" id="bx-color" role="group" aria-label="Street colour">
-        <button type="button" data-c="slick" class="on">${A.film ? 'Slippery' : 'Wet'}</button>
+      <div class="bx-crow"><div class="seg bx-seg" id="bx-color" role="group" aria-label="Street colour">
+        <button type="button" data-c="slick">${A.film ? 'Slippery' : 'Wet'}</button>
         <button type="button" data-c="sun"${A.sun ? '' : ' disabled'}>${A.sun ? 'Sunshine' : 'Sunshine · not in this run'}</button></div>
+        <div class="tgs bx-tapw"><label title="More info on tap: show the street card when you tap or hover a street"><input type="checkbox" id="bx-tap" aria-label="More info on tap"><span>Tap info</span></label></div></div>
       <div class="tgs bx-one"><label class="${A.sun ? '' : 'na'}"><input type="checkbox" id="bx-light"${A.sun ? ' checked' : ' disabled'}><span><i class="bx-tt"><b>Light the scene by the sun</b><small>${A.sun ? 'Day and night follow the selected hour' : 'No sun data in this run'}</small></i></span></label></div></section>`);
     parts.push(g);
   }
@@ -102,6 +108,10 @@ function buildSettings() {
     if (S.color === 'sun') loadSun().then(() => { colorMode(X.curF, true); });
     else colorMode(X.curF, true);
   });
+  const tp = $('bx-tap'); if (tp) {
+    try { if (localStorage.getItem('bx-tap') === '1') { tp.checked = true; S.tap = true; } } catch (e) { /* storage blocked */ }
+    tp.addEventListener('change', () => { S.tap = tp.checked; try { localStorage.setItem('bx-tap', S.tap ? '1' : '0'); } catch (e) { /* ignore */ } if (!S.tap) X.hideTip(); });
+  }
   const lt = $('bx-light'); if (lt) lt.addEventListener('change', () => { S.light = lt.checked; lightApply(X.curF, true); });
   const sb = $('bx-stn'); if (sb) sb.addEventListener('change', () => toggleStations(sb.checked));
   const sa = $('bx-sat'); if (sa) sa.addEventListener('change', () => toggleSat(sa.checked));

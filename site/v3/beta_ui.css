@@ -20,6 +20,11 @@ body.beta #sheet { max-height: min(340px, calc(100dvh - var(--top-h, 52px) - var
 .bx-tag:focus-visible { outline: 2px solid var(--cy); outline-offset: 2px; }
 .bx-stl { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
 .bx-seg { display: flex; width: 100%; }
+.bx-crow { display: flex; gap: 6px; align-items: stretch; }
+.bx-crow .bx-seg { flex: 1 1 auto; width: auto; min-width: 0; }
+.bx-crow .tgs.bx-tapw { display: flex; flex: none; margin: 0; }
+.bx-crow .tgs.bx-tapw label { display: flex; }
+body.beta .tgs.bx-tapw span { height: 100%; min-height: 38px; padding: 0 10px; white-space: nowrap; }
 .bx-seg button { flex: 1; min-width: 0; padding: 0 6px; white-space: nowrap; }
 .bx-seg button:disabled { opacity: 1; color: rgba(157, 176, 201, .45); background: none; border-style: dashed; }
 .bx-seg button.on { background: rgba(94, 242, 255, .14); color: var(--cy-ink); }

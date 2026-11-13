@@ -702,7 +702,9 @@ function pick(cx, cy, maxPx) {
   }
   return best;
 }
+const tapOff = () => !!(BX && BX.tapOff && BX.tapOff()); // beta: street card only while "Tap info" is ticked
 function showTip(k, xy) {
+  if (tapOff()) { hideTip(); return; }
   ensureWet();
   const v = wetNow[k], cat = CATS[v < 20 ? 0 : v < 50 ? 1 : v < 80 ? 2 : v < 95 ? 3 : 4];
   const when = night ? wall(night.start_iso, curF * night.step_min).time : '';
@@ -718,12 +720,14 @@ canvas.addEventListener('pointerdown', (e) => { if (fly) stopFly(); down = { x: 
 canvas.addEventListener('pointerup', (e) => {
   if (!down) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = performance.now() - down.t; down = null;
   if (moved < 8 && dt < 500 && e.pointerType !== 'mouse') {
+    if (tapOff()) return;
     const k = pick(e.clientX, e.clientY, 30); if (k >= 0) { hoverIdx = k; hoverXY = [e.clientX, e.clientY - 6]; showTip(k, hoverXY); } else hideTip();
   }
 });
 let moveQ = 0;
 canvas.addEventListener('pointermove', (e) => {
   if (e.pointerType !== 'mouse' || e.buttons) { if (e.buttons) hideTip(); return; }
+  if (tapOff()) return;
   const now = performance.now(); if (now - moveQ < 40) return; moveQ = now;
   const k = pick(e.clientX, e.clientY, 16);
   if (k >= 0) { hoverIdx = k; hoverXY = [e.clientX, e.clientY - 4]; showTip(k, hoverXY); } else hideTip();
