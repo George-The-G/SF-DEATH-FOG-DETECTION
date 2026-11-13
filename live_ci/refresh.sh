@@ -12,6 +12,8 @@ NEW=live_new
 STATIC=live_static
 ARCH=archive_new
 RC=1
+# Cache-busting: stamp the viewer scripts and styles of this deploy with a content hash (before any early exit, both modes). Never fails the run.
+python3 live_ci/stamp_version.py site/v3 || echo "viewer version stamp failed (ignored)"
 PROMOTED_RUN=0     # 1 when the published public build of this run used the promoted settings
 # Beta preview channel (config.BETA; opened with /v3/?beta=1): a second build of the same fetched inputs into its own folder, with its own state files, status.json and cloud
 # score. It runs after everything of the public build is done, never writes the run archive, and any failure of it is logged and ignored.
