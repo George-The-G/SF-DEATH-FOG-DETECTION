@@ -709,7 +709,7 @@ function pick(cx, cy, maxPx) {
   return best;
 }
 const LONG_PRESS_MS = 450, TAP_SLOP = 8;
-const longPress = () => !!BX; // data-layers UI: on touch the street card needs a press and hold (a short tap does nothing); the plain page keeps tap-to-show
+const longPress = () => !!BX; // data-layers UI: the street card needs a press and hold, with a finger or the mouse (no hover card, a short tap or click does nothing); the plain page keeps tap-to-show and hover
 function showTip(k, xy) {
   ensureWet();
   const v = wetNow[k], cat = CATS[v < 20 ? 0 : v < 50 ? 1 : v < 80 ? 2 : v < 95 ? 3 : 4];
@@ -725,9 +725,9 @@ let down = null;
 let pressTimer = 0, pressFired = 0;
 const cancelPress = () => { clearTimeout(pressTimer); pressTimer = 0; };
 canvas.addEventListener('pointerdown', (e) => {
-  if (fly) stopFly(); down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (e.pointerType === 'touch') hideTip();
+  if (fly) stopFly(); down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (e.pointerType === 'touch' || longPress()) hideTip();
   cancelPress();
-  if (longPress() && e.pointerType !== 'mouse' && e.isPrimary) { // press and hold: the card appears under the finger if it has not moved
+  if (longPress() && e.isPrimary && (e.pointerType !== 'mouse' || e.button === 0)) { // press and hold: the card appears under the finger if it has not moved
     const x = e.clientX, y = e.clientY;
     pressTimer = setTimeout(() => {
       pressTimer = 0; if (!down) return;
@@ -750,7 +750,11 @@ canvas.addEventListener('pointerup', (e) => {
 let moveQ = 0;
 canvas.addEventListener('pointermove', (e) => {
   if (down && pressTimer && Math.hypot(e.clientX - down.x, e.clientY - down.y) > TAP_SLOP) cancelPress(); // a drag is not a press
-  if (e.pointerType !== 'mouse' || e.buttons) { if (e.buttons) hideTip(); return; }
+  if (e.pointerType !== 'mouse' || e.buttons) { // dragging hides the card; with press and hold, finger jitter after the card shows must not
+    if (e.buttons && (!longPress() || (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 3 * TAP_SLOP))) hideTip();
+    return;
+  }
+  if (longPress()) return; // no hover card: press and hold instead
   const now = performance.now(); if (now - moveQ < 40) return; moveQ = now;
   const k = pick(e.clientX, e.clientY, 16);
   if (k >= 0) { hoverIdx = k; hoverXY = [e.clientX, e.clientY - 4]; showTip(k, hoverXY); } else hideTip();
@@ -1049,7 +1053,7 @@ function ui2Chip(force) { // route chip: wet line (avg, worst, peak hour) and pr
   const s = routeStat(R); if (s.avg < 0) { w.hidden = true; p.hidden = true; if (BX) BX.chip(null); return; }
   let pk = '';
   if (LV && LV.u8) { const f = livePeak(R); if (f >= 0) pk = ' · peaks ' + ptFmt(new Date(Date.parse(LV.idx.start_iso) + f * LV.idx.step_min * 60000).toISOString(), { weekday: 'short', hour: 'numeric', hour12: true }).replace(',', ''); }
-  w.innerHTML = `${BX && BX.slick() ? 'Slick' : 'Wet'} <b>${Math.round(s.avg)}</b> avg · <b style="color:${rgbCss(rampColor(s.mx))}">${Math.round(s.mx)}</b> worst${pk}`; w.hidden = false;
+  w.innerHTML = `Wet <b>${Math.round(s.avg)}</b> avg · <b style="color:${rgbCss(rampColor(s.mx))}">${Math.round(s.mx)}</b> worst${pk}`; w.hidden = false;
   p.style.background = profGradient(s.prof); p.hidden = false;
   if (BX) BX.chip(R);
 }

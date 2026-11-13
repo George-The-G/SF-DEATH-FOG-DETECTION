@@ -126,8 +126,9 @@ const betaHtml = () => '<h3 id="ab-beta"><span class="ab-btag">Beta</span>Beta p
   '<ul><li><b>Stations:</b> piers, a bridge, airports, hill and buoy stations at their real spots, compared with the model at the selected hour.</li>' +
   '<li><b>Satellite low cloud:</b> NOAA GOES-18, past hours only, drawn as a violet dashed outline. "Cloud match" is how well the model fog agrees with it over the last 24 hours.</li>' +
   '<li><b>Sunshine:</b> sun position, building shade, road slope and cloud (GOES sunlight where it is available).</li>' +
-  '<li><b>Slick and water depth:</b> a modelled water film with its drying time and cause.</li></ul>' +
-  '<p>Slick, water depth and sunshine are modelled, not measured, and have not been checked against real wet-road reports yet.</p>';
+  '<li><b>Wet and water depth:</b> the modelled thin film of water on the road, with its drying time and cause. It says how much water is there, not how slippery the road is, which also depends on grip.</li>' +
+  '<li><b>Road temp:</b> the modelled surface temperature of the street, from sun, cloud, wind and the road\'s heat memory. It starts from the recent air temperature and takes about three days to settle, so early values can read too cool.</li></ul>' +
+  '<p>Wet, water depth, sunshine and road temperature are modelled, not measured, and have not been checked against real wet-road reports yet.</p>';
 /* public page, once the layers are promoted (beta_ui.js sets window.__bxPromo): what the new layers are, no Beta wording */
 const promoHtml = () => '<h3 id="ab-layers">Data layers</h3>' +
   '<p>Weather stations, satellite low cloud and sunshine sit beside the model.' + (window.__betaLabel ? ' Model settings in this build: ' + escH(window.__betaLabel) + '.' : '') + '</p>' +

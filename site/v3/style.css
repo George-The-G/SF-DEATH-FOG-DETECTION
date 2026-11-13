@@ -14,6 +14,9 @@
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.3 var(--sans); overflow: hidden; }
 body { height: 100vh; height: 100dvh; -webkit-text-size-adjust: 100%; }
+/* App feel: no text selection, no iOS press-and-hold callout, no grey tap flash (a press and hold on a street opens its card instead). Form fields keep normal behaviour. */
+html, body, canvas { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+input, textarea { -webkit-user-select: text; user-select: text; }
 button, select, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:focus-visible, select:focus-visible, input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

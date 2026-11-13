@@ -35,7 +35,7 @@ export async function init(ctx) {
   A.satHours = A.sat ? (idx.sat_score.satellite.hours_with_data | 0) : 0;
   A.stFile = (st && st.stations && st.stations.file) || null;
   A.stNow = A.stFile && st.stations.newest ? Object.keys(st.stations.newest).length : 0;
-  // default colouring is wet / slick (the original dry-wet legend); Sunshine is chosen in the Slippery | Sunshine control (night and failed loads fall back to slick, see colorMode / loadSun)
+  // default colouring is wet / slick (the original dry-wet legend); Sunshine is chosen in the Wet | Sunshine | Road temp control (night and failed loads fall back to slick, see colorMode / loadSun)
   A.any = A.film || A.sun || A.sat || !!A.stFile;
   window.__betaOn = true; window.__bxPromo = !X.beta; window.__betaLabel = (X.LV && X.LV.betaLabel) || '';
   buildSettings();
@@ -76,11 +76,11 @@ function buildSettings() {
   { // always shown on the beta channel: layers with no data in this run are greyed with the reason
     const g = h(`<section class="bx-grp" id="bx-g-color"><div class="bx-gh">Colour and light<em id="bx-clnote"></em></div>
       <div class="bx-crow"><div class="seg bx-seg" id="bx-color" role="group" aria-label="Street colour">
-        <button type="button" data-c="slick">${A.film ? 'Slippery' : 'Wet'}</button>
+        <button type="button" data-c="slick">Wet</button>
         <button type="button" data-c="sun"${A.sun ? '' : ' disabled'}>${A.sun ? 'Sunshine' : 'Sunshine · not in this run'}</button>
         ${X.beta ? `<button type="button" data-c="ts"${A.tsurf ? '' : ' disabled title="Road temperature is not available in this run"'}>Road temp</button>` : ''}</div>
       </div>
-        <p class="bx-hint">On a touch screen, press and hold a street for its details. A short tap does nothing.${X.beta && !A.tsurf ? ' Road temperature is not available in this run.' : ''}</p>
+        <p class="bx-hint">Press and hold a street (finger or mouse) for its details. A short tap or click does nothing.${X.beta && !A.tsurf ? ' Road temperature is not available in this run.' : ''}</p>
       <div class="tgs bx-one"><label class="${A.sun ? '' : 'na'}"><input type="checkbox" id="bx-light"${A.sun ? ' checked' : ' disabled'}><span><i class="bx-tt"><b>Light the scene by the sun</b><small>${A.sun ? 'Day and night follow the selected hour' : 'No sun data in this run'}</small></i></span></label></div></section>`);
     parts.push(g);
   }
@@ -95,7 +95,7 @@ function buildSettings() {
     const ob = idx && idx.observed_until_frame != null ? X.ptFmt(idx.observed_until_iso, { weekday: 'short', hour: '2-digit', minute: '2-digit' }).replace(',', '') : null;
     const row = (cls, t, s) => `<div class="bx-av"><i class="${cls}"></i><span class="t">${t}</span><small>${esc(s)}</small></div>`;
     parts.push(h(`<section class="bx-grp" id="bx-g-data"><div class="bx-gh">Data on this night</div><div class="bx-avail">
-      ${row(A.film ? 'y' : 'n', 'Slippery and water depth', A.film ? 'model' : 'wetness index only')}
+      ${row(A.film ? 'y' : 'n', 'Wet and water depth', A.film ? 'model' : 'wetness index only')}
       ${row(A.stFile ? 'y' : 'n', 'Weather stations', A.stFile ? (A.stNow ? A.stNow + ' reporting' : 'file present') : 'not in this run')}
       ${row(satOk ? 'y' : 'n', 'Satellite low cloud', satOk ? A.satHours + ' h of scans' : A.sat ? 'none in window' : 'not in this run')}
       ${row(A.sun ? 'y' : 'n', 'Sunshine', A.sun ? 'model + GOES sunlight' : 'not in this run')}
@@ -117,7 +117,7 @@ function buildSettings() {
 function syncColorUi() {
   const col = $('bx-color'); if (!col) return;
   [...col.children].forEach((b) => b.classList.toggle('on', b.dataset.c === S.color));
-  const n = $('bx-clnote'); if (n) n.textContent = S.color === 'sun' ? (sunErr ? 'could not load' : sunArr ? (modeOn ? 'W/m² on the street' : 'night: showing slick') : 'loading…')
+  const n = $('bx-clnote'); if (n) n.textContent = S.color === 'sun' ? (sunErr ? 'could not load' : sunArr ? (modeOn ? 'W/m² on the street' : 'night: showing wet') : 'loading…')
     : S.color === 'ts' ? (tsErr ? 'could not load' : tsArr ? tsNote() : 'loading…') : '';
 }
 
@@ -194,8 +194,8 @@ function legend() {
     rp.style.background = SUNRAMP; tk.innerHTML = '<span>0</span><span>900 W/m²</span>';
     lg.setAttribute('aria-label', 'Legend: sunshine on the street, 0 to 900 watts per square metre. Open settings');
   } else {
-    rp.style.background = ramp0; tk.innerHTML = A.film ? '<span>dry</span><span>slick</span>' : '<span>dry</span><span>wet</span>';
-    lg.setAttribute('aria-label', A.film ? 'Legend: slick, 0 dry to 100 slick. Open settings' : 'Legend: wetness, 0 dry to 100 wet. Open settings');
+    rp.style.background = ramp0; tk.innerHTML = '<span>dry</span><span>wet</span>';
+    lg.setAttribute('aria-label', A.film ? 'Legend: water on the road, 0 dry to 100 wet. Open settings' : 'Legend: wetness, 0 dry to 100 wet. Open settings');
   }
 }
 
@@ -318,7 +318,7 @@ function tipHtml(k, v, when) {
   if (Fm != null && wet && cau !== undefined && causeName(cau)) rows += `<dt>Cause</dt><dd>${causeName(cau)}</dd>`;
   if (ra.road != null || ra.air != null) rows += `<dt>${ra.road != null ? 'Road' : 'Air'}</dt><dd>${ra.road != null ? Math.round(F2(ra.road)) + '°F' : ''}${ra.road != null && ra.air != null ? ' · air ' : ''}${ra.air != null ? Math.round(F2(ra.air)) + '°F' : ''}</dd>`;
   if (r24 != null) rows += `<dt>Rain 24 h</dt><dd>${r24 < 0.05 ? '0' : r24.toFixed(1)} mm</dd>`;
-  return `<div class="bx-tipc"><div class="big"><b style="color:${X.rgbCss(X.rampColor(v))}">${Math.round(v)}</b><span>slick · ${name}</span></div><dl>${rows}</dl><div class="wh">${tail}</div></div>`;
+  return `<div class="bx-tipc"><div class="big"><b style="color:${X.rgbCss(X.rampColor(v))}">${Math.round(v)}</b><span>wet · ${name}</span></div><dl>${rows}</dl><div class="wh">${tail}</div></div>`;
 }
 export function tipReset() { const t = $('tip'); if (t) t.classList.remove('bx-tc'); }
 
@@ -349,9 +349,9 @@ export function chip(R) {
   el.innerHTML = `Water <b>${fmtMm(mean)} mm</b> · dries in <b>${med === 255 ? 'not soon' : med <= 1 ? '<1 h' : '~' + med + ' h'}</b>${cs.length ? ' · ' + cs.join(' + ') : ''}`;
 }
 
-/* flyover sub-line: "slick 84 · 0.05 mm here" */
+/* flyover sub-line: "wet 84 · 0.05 mm here" */
 export function flyHere(R, s, w) {
-  let t = `slick ${w}`;
+  let t = `wet ${w}`;
   if (A.film && X.LV) {
     const i = Math.round(X.curF), d = frameDay(i), dp = auxArr('depth', d);
     if (dp) {
