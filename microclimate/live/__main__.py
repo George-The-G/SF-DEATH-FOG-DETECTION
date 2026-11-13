@@ -40,12 +40,12 @@ def main(argv):
                            inputs_out=opt(argv, "--save-inputs")))
     elif cmd == "compare":
         from . import compare
-        if "--physics" not in argv and "--anchors" not in argv:
-            sys.exit("compare needs --physics a,b (or --physics none), or --anchors")
+        if "--physics" not in argv and "--anchors" not in argv and "--east" not in argv:
+            sys.exit("compare needs --physics a,b (or --physics none), or --anchors, or --east")
         base = opt(argv, "--base")
         try:
             sys.exit(compare.run(compare.parse_physics(opt(argv, "--physics")), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"),
-                                 opt(argv, "--out", "reports/physics_compare"), anchors="--anchors" in argv, base=None if base is None else compare.parse_physics(base)))
+                                 opt(argv, "--out", "reports/physics_compare"), anchors="--anchors" in argv, east="--east" in argv, base=None if base is None else compare.parse_physics(base)))
         except ValueError as e:
             sys.exit(f"compare: {e}")
     elif cmd == "ribbons":

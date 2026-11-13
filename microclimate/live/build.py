@@ -62,11 +62,12 @@ def load_extra(static, S, P, st, log=print):
     return ex
 
 
-def attach_station_wind(obs, static, S):
-    """obs["station_wind"] (guide 03): the simulated wind vectors at the stations, from station_wind.npz next to the static table; None when missing or unreadable."""
+def attach_station_wind(obs, static, S, east=False):
+    """obs["station_wind"] (guide 03): the simulated wind vectors at the stations, from station_wind.npz next to the static table (east=True, guide 14: from live_east.npz,
+    whose directions S["dirs"] already carry); None when missing or unreadable."""
     try:
         from . import stations as _stations
-        obs["station_wind"] = _stations.load_station_wind(Path(static).parent / C.STATION_WIND_FILE, S["dirs"])
+        obs["station_wind"] = _stations.load_station_wind(Path(static).parent / (C.EAST_FILE if east else C.STATION_WIND_FILE), S["dirs"])
     except Exception:  # noqa: BLE001
         obs["station_wind"] = None
 
@@ -137,8 +138,9 @@ def settings(beta=False, physics=None, carry_state=None):
     if beta:
         b = dict(C.BETA)
         return dict(physics=tuple(C.BETA["physics"] if physics is None else physics), nudge_anchors=bool(b.get("nudge_anchors", False)),
-                    carry_state=bool(b.get("carry_state", False) if carry_state is None else carry_state))
-    return dict(physics=tuple(C.PHYSICS if physics is None else physics), nudge_anchors=bool(C.NUDGE_ANCHORS), carry_state=bool(C.CARRY_STATE if carry_state is None else carry_state))
+                    carry_state=bool(b.get("carry_state", False) if carry_state is None else carry_state), wind_east=bool(b.get("wind_east", False)))
+    return dict(physics=tuple(C.PHYSICS if physics is None else physics), nudge_anchors=bool(C.NUDGE_ANCHORS), carry_state=bool(C.CARRY_STATE if carry_state is None else carry_state),
+                wind_east=bool(C.WIND_EAST))
 
 
 def beta_label(s):
@@ -150,6 +152,8 @@ def beta_label(s):
         parts.append("station anchors")
     if s["carry_state"]:
         parts.append("carried state")
+    if s.get("wind_east"):
+        parts.append("east wind (street wind only)")
     return ", ".join(parts) if parts else "no changes"
 
 
@@ -276,18 +280,30 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     dsr_hours, dsr_stats = None, None
     if "sun_clear" in P and C.SUN_DSR:
         dsr_hours, dsr_stats = fetch_dsr(st, t0, now, out, log)
+    # ---- east wind directions (guide 14): only when the switch is on AND live_east.npz fits this static table; otherwise the west library as before (noted in the status)
+    east_info = None
+    if S_set["wind_east"]:
+        from . import east as _east
+        S_e, east_info = _east.apply(S, static.parent / C.EAST_FILE)
+        if S_e is not None:
+            S = S_e
+        else:
+            st.notes.append(f"wind_east is on but not applied: {east_info['reason']}")
+            log(st.notes[-1])
+    east_on = bool(east_info and east_info.get("applied"))
     # ---- forcing
-    nudge0 = C.NUDGE_ANCHORS
+    nudge0, east0 = C.NUDGE_ANCHORS, C.WIND_EAST
     try:
         extra = load_extra(static, S, P, st, log)
-        attach_station_wind(obs, static, S)
+        attach_station_wind(obs, static, S, east=east_on)
         C.NUDGE_ANCHORS = S_set["nudge_anchors"]      # this build's setting only; restored below (the beta build must never leave its value behind)
+        C.WIND_EAST = east_on                         # same for the east wind switch (anchors carry directions in [180, 540) then)
         F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P, goes_hours=goes_hours, z=S["z"], dsr_hours=dsr_hours)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"forcing failed: {e!r}")
     finally:
-        C.NUDGE_ANCHORS = nudge0
+        C.NUDGE_ANCHORS, C.WIND_EAST = nudge0, east0
     if inputs_out and not beta:
         sz = save_inputs(inputs_out, now, snap, goes_hours, st)
         log(f"fetched inputs for the beta build: {sz} bytes")
@@ -393,7 +409,9 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     if beta:   # the preview channel says so in its own status (the page badge reads "beta")
         status["channel"] = "beta"
         status["beta"] = dict(label=beta_label(S_set), physics=list(S_set["physics"]), nudge_anchors=S_set["nudge_anchors"], carry_state=S_set["carry_state"],
-                              sun_dsr=bool(C.SUN_DSR and "sun_clear" in P), inputs=inp_info)
+                              wind_east=bool(S_set["wind_east"]), sun_dsr=bool(C.SUN_DSR and "sun_clear" in P), inputs=inp_info)
+        if east_info is not None:
+            status["wind_east"] = east_info
         if dsr_stats is not None:
             status["dsr"] = dsr_stats
     (out / "status.json").write_text(json.dumps(status, indent=1, default=str))
