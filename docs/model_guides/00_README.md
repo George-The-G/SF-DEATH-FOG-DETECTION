@@ -27,7 +27,7 @@ One guide per piece of work. Nothing here is built.
 | 05 | Slippery versus water depth, rain tracking | The two outputs the user asked for | M |
 | 06 | Clear-sky sun, shadows, cloudiness; sunlight data for the viewer | Correct and visible sunshine | M |
 | 07 | Pavement temperature with heat memory | Realistic dew and drying | M-L |
-| 08 | Cloud base and street-level temperature | Hills in cloud, flats under it | M |
+| 08 | Cloud base and street-level temperature | Hills in cloud, flats under it | M, built (beta only, switch `cloud_base`) |
 | 09 | Fog-front lag speed | Correct fog arrival time in sheltered streets | S |
 | 10 | Evaporation by vapour pressure; total cloud in cooling | Interim fix until 07 is on | S |
 | 11 | Drizzle | Wetting below thick stratus | S-M |

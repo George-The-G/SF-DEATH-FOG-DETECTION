@@ -70,6 +70,15 @@ INV_DT = 0.0                  # degC: T increase between consecutive pressure le
 ELEV_WIND_GAIN = 0.10         # profile mode: fog-deposition wind factor grows by this fraction per 100 m street elevation above 30 m
 ELEV_WIND_REF_M = 30.0
 
+# ---- cloud base (guide 08, switch "cloud_base") ----
+BASE_RAMP_M = 60.0     # m below the cloud base over which a street goes from out of cloud (0) to in cloud (1); first guess (base estimate good to ~+-100 m)
+LCL_M_PER_K = 125.0    # cloud base height above the surface per kelvin of T - Td
+LAPSE_DRY = 0.0098     # K/m, air temperature below the cloud base
+LAPSE_MOIST = 0.006    # K/m, between the base and the fog top (first guess)
+LAPSE_DEW = 0.0018     # K/m, dew point below the cloud base
+BASE_DZ_CLIP_M = 400.0 # street height above / below the model terrain is clipped to this in the lapse adjustment
+BASE_OFFSET_CLIP_M = 300.0  # |station-fitted correction of the base formula| is clipped to this
+
 # ---- physics switches (guide 01): named model changes, all OFF unless a caller passes them to simulate(physics=...) ----
 KNOWN_PHYSICS = ("cloud_base", "lag_uniform", "vpd_evap", "total_cloud", "drizzle", "insitu_fog", "sun_clear", "film", "pavement", "grease")
 
@@ -256,10 +265,11 @@ def onshore_weight(wdir):
     return np.where((d >= 180.0) & (d <= 360.0), w, 0.0)
 
 
-def fog_inflow(ta, td, cloud_low, wdir):
-    """Advected fog inflow strength s(t) in 0..1 (arrays over time or scalars)."""
+def fog_inflow(ta, td, cloud_low, wdir, use_gap=True):
+    """Advected fog inflow strength s(t) in 0..1 (arrays over time or scalars). use_gap=False (switch cloud_base) drops the T - Td factor:
+    the cloud base test per street already counts the gap."""
     gap = np.asarray(ta, float) - np.asarray(td, float)
-    return (np.clip(1.0 - gap / GAP_FOG, 0, 1) * np.sqrt(np.clip(np.asarray(cloud_low, float) / CLOUD_FOG, 0, 1))
+    return ((np.clip(1.0 - gap / GAP_FOG, 0, 1) if use_gap else 1.0) * np.sqrt(np.clip(np.asarray(cloud_low, float) / CLOUD_FOG, 0, 1))
             * onshore_weight(wdir))
 
 
@@ -386,7 +396,7 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     porous = pts["porous"]
     refined = USE_REFINED if refined is None else refined
     wr = pts.get("wind_ratio", 1.0) * (pts["rel_wind"] if refined and "rel_wind" in pts else 1.0)  # local wind / 10 m wind
-    s = fog_inflow(ser["temperature_2m"], ser["dew_point_2m"], ser["cloud_cover_low"], ser["wind_dir"])
+    s = fog_inflow(ser["temperature_2m"], ser["dew_point_2m"], ser["cloud_cover_low"], ser["wind_dir"], use_gap="cloud_base" not in P)
     if s_series is not None:
         s = np.asarray(s_series, float)
     wdir = np.asarray(ser["wind_dir"], float)
@@ -478,6 +488,7 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
         dep.update(sun=np.zeros(N), runoff=np.zeros(N))
     hor = pts.get("horizon")
     block_dirs = []
+    in_cloud = np.zeros(N)
     for i in range(n):
         if blk and i % blk == 0:  # time-varying lag: mean flow of this block
             sl = slice(i, min(n, i + blk))
@@ -494,6 +505,10 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
         local = lagged(s, i - lag_steps) * (expo if E is None else (Wt[i] @ E if dw is None else (np.asarray(dw) * E).sum(axis=0)))
         if prof:  # street counts as inside the fog only while the (lagged) fog top is above it
             local = local * fogtop.fog_top_ramp(lagged(top, i - lag_steps), pts["z"])
+            if "cloud_base" in P and "cloud_base" in f:   # guide 08: streets below the cloud base are under the cloud, not in it
+                wb = fogtop.cloud_base_ramp(f["cloud_base"], pts["z"])
+                local = local * wb
+                in_cloud += wb * dt_h
         lit = np.zeros(N, bool)
         if hor is not None and el[i] > 0:
             from .sun import sunlit
@@ -560,6 +575,8 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
                      rain_track=dict(rain_mm_24h=hist.sum(axis=0, dtype=np.float32) * RAIN_Q_MM + rain_cur, hours_since_rain=hsr, rain_since_wash=rsw))
     if pavm:
         extra.update(ts_u8=ts_out, ts_end=ts_s, tdeep_end=td_s)
+    if "cloud_base" in P:
+        extra["in_cloud_hours"] = in_cloud
     diag = dict(dirs_used=(None if dirs is None else dirs.tolist()), mean_flow_dir=mdir, sun_az=az, sun_el=el, s=s, lit=lit_all, lag_steps=lag_steps, fog_mode=mode, fog_top=top, tracer=np.asarray(tr, np.float32),
                 out_every=out_every, block_dirs=block_dirs, physics=sorted(P), state_at=state_at, **extra, **{k + "_total": v for k, v in dep.items()})
     return out, diag

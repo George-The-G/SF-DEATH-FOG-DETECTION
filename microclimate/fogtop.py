@@ -40,6 +40,27 @@ def fog_top_ramp(top, z, half_width=None):
     return smoothstep((np.asarray(top, float) - np.asarray(z, float)) / (2.0 * hw) + 0.5)
 
 
+def cloud_base_ramp(base, z, half_width=None):
+    """Guide 08: in-cloud weight of a street at elevation z under a cloud base (both m above sea level): 1 at or above the base, smoothstep down
+    to 0 at half_width (default BASE_RAMP_M) below it. Non-decreasing in z, non-increasing in base. Broadcasts."""
+    rw = _w().BASE_RAMP_M if half_width is None else half_width
+    return smoothstep((np.asarray(z, float) - np.asarray(base, float)) / rw + 1.0)
+
+
+def street_temperature(T, Td, z, zm, base, top):
+    """Guide 08: air temperature and dew point at the street (elevation z) from the lattice values T, Td at model terrain height zm: dry lapse below
+    the cloud base, moist lapse from base to top, constant above the top; dew point lapse below the base, never above T. Heights clipped to +-400 m."""
+    w = _w()
+    zm = np.asarray(zm, float)
+    zc = np.clip(np.asarray(z, float), zm - w.BASE_DZ_CLIP_M, zm + w.BASE_DZ_CLIP_M)
+    b = np.asarray(base, float)
+    seg1 = np.minimum(zc, b) - zm                                   # below the base (negative when the street is below the model terrain)
+    seg2 = np.maximum(np.minimum(zc, np.asarray(top, float)) - b, 0.0)   # base..top (in cloud)
+    t = np.asarray(T, float) - w.LAPSE_DRY * seg1 - w.LAPSE_MOIST * seg2
+    td = np.minimum(np.asarray(Td, float) - w.LAPSE_DEW * (zc - zm), t)
+    return t.astype(np.float32), td.astype(np.float32)
+
+
 def blend_bands(bands, z_target, centres=None):
     """bands [N,4] (tracer per source band) -> [N]; linear interpolation in height between the band centres, clamped
     to the first/last band outside the range. z_target [N] or scalar, above sea level."""

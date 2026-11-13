@@ -270,7 +270,8 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
         info["flags"].append("no pressure-level profile: fog top from the fallback constant")
 
     # --- fog source s(t): model, then observation correction
-    s_model = wetness.fog_inflow(cT, cTd, cCL, cdir)
+    cb_on = "cloud_base" in info["physics"]
+    s_model = wetness.fog_inflow(cT, cTd, cCL, cdir, use_gap=not cb_on)   # guide 08: the cloud base test per street counts the gap instead
     s_series = s_model.copy()
     dir_h = np.array([circ_mean_deg(cdir[(g > k - 0.5) & (g <= k + 0.5)]) for k in range(nh)])
     smod_h = np.array([s_model[(g > k - 0.5) & (g <= k + 0.5)].mean() for k in range(nh)])
@@ -343,6 +344,13 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
         top = np.maximum(top, cf)
     top = np.minimum(top, wetness.FOG_TOP_MAX_M + 400.0)
 
+    # --- cloud base correction (guide 08): hourly offset of the T - Td formula from the airport ceilings
+    cb_off = None
+    if cb_on:
+        off_h = base_offset_hourly(mt, t_h, nh, info)
+        cb_off, _ = fade_series(off_h, g, C.FOG_E_FOLD_H, "add", 0.0)
+        info["cloud_base"]["offset_last"] = float(cb_off[min(int(now_h / (step_min / 60.0)), n - 1)])
+
     # --- per-point gather
     idx, w4 = lat_t.weights(*_xy_to_ll(lat_t, x, y))
     Ts, Tds, CLs, PRs, SWs, Us, Vs = (np.ascontiguousarray(a) for a in (T, Td, CL, PR, SW, U, Vv))
@@ -364,6 +372,19 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
         if CCs is not None:
             out["cloud"] = gat(CCs)
         return out
+    if cb_on:
+        zm_pts = interp_at(np.asarray(rrfs["elev"], float), idx, w4)
+        zs = zm_pts if z is None else np.asarray(z, float)
+        lattice_fn = forcing_fn
+
+        def forcing_fn(i, f, _base=lattice_fn):   # noqa: F811
+            out = _base(i, f)
+            base = (zm_pts + wetness.LCL_M_PER_K * np.maximum(out["temp"] - out["dew"], 0.0) + cb_off[i]).astype(np.float32)
+            out["temp"], out["dew"] = fogtop.street_temperature(out["temp"], out["dew"], zs, zm_pts, base, top[i])
+            out["cloud_base"] = base
+            return out
+        cb_coast = float(np.mean(ser["elevation_m"])) + wetness.LCL_M_PER_K * np.maximum(cT - cTd, 0.0) + cb_off
+        sun_out = dict(sun_out, cloud_base_coast=cb_coast.astype(np.float32))
     extra = {}
     if anch is not None:
         try:
@@ -382,6 +403,31 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
     info["coast_lattice_points"] = int(west.sum())
     return dict(ser=ser, s_series=s_series, fog_top=top, forcing_fn=forcing_fn, info=info, s_model=s_model, obs_until=obs_until,
                 dir_hourly=dir_h, lattice_cl=CL, goes_frac=goes_frac, khaf=khaf, t_hours=t_h, idx=idx, w=w4, lattice=lat_t, **sun_out, **pav_out, **extra)
+
+
+def base_offset_hourly(mt, t_h, nh, info):
+    """Guide 08: per hour the median over KHAF / KSFO / KOAK (ceiling at or below C.CEIL_MAX_FT in that hour) of obs_base - lcl, where
+    obs_base = ceiling + station elevation and lcl = station elevation + 125 (T - Td) of the same report; clipped to +-300 m, 3 h rolling median.
+    NaN where no station reports a ceiling. Fills info['cloud_base']."""
+    diffs = [[] for _ in range(nh)]
+    used = set()
+    for st in C.METAR_IDS:
+        for x_ in (mt or {}).get(st, []) or []:
+            if not (np.isfinite(x_["ceil_ft"]) and x_["ceil_ft"] <= C.CEIL_MAX_FT and np.isfinite(x_["temp"]) and np.isfinite(x_["dewp"])):
+                continue
+            k = int(np.argmin([abs((x_["t"] - t_h[j]).total_seconds()) for j in range(nh)]))
+            if abs((x_["t"] - t_h[k]).total_seconds()) > 1800:
+                continue
+            elev = C.METAR_ELEV_M.get(st, 0.0)
+            diffs[k].append(x_["ceil_ft"] * 0.3048 - wetness.LCL_M_PER_K * max(x_["temp"] - x_["dewp"], 0.0))   # elev cancels: (ceil*0.3048 + elev) - (elev + 125 dT)
+            used.add(st)
+    raw = np.array([np.median(d) if d else np.nan for d in diffs])
+    raw = np.clip(raw, -wetness.BASE_OFFSET_CLIP_M, wetness.BASE_OFFSET_CLIP_M)
+    off = rolling_median(raw, C.ROLL_H)
+    info["cloud_base"] = dict(offset_last=None, stations_used=sorted(used), hours_with_ceiling=int(np.isfinite(raw).sum()))
+    if not np.isfinite(raw).any():
+        info["flags"].append("cloud_base: no airport ceiling, base from T - Td only")
+    return off
 
 
 def pavement_cold_start(T_l, th, hours=24.0):

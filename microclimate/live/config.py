@@ -16,7 +16,7 @@ PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS)
 # Beta preview channel (site/v3/live_beta/, opened with /v3/?beta=1): a second build of the same fetched inputs with these settings. It is applied ONLY by `build --beta`
 # (build.run(beta=True)); the public build never reads it. Staging order (user's decision 2026-11-12): stage 1 = station anchors + clear-sky sun, stage 2 = carry_state,
 # stage 3 = film + pavement. A stage goes to the public settings above only after the user has looked at the preview and approved it.
-BETA = dict(physics=("sun_clear", "film", "pavement"), nudge_anchors=True, carry_state=True, wind_east=True)
+BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base"), nudge_anchors=True, carry_state=True, wind_east=True)
 # WIND_EAST (guide 14): the east wind-direction fields (22.5 .. 135 deg; 157.5 is an accepted gap) feed the STREET WIND only: station-anchor wind fit and
 # the direction weights. Needs live_east.npz next to the static table; the fog tracer weight for east / offshore wind stays zero. False = the public model, bit for bit.
 # The public build reads this value; the beta build reads BETA["wind_east"] only. build.run sets it for the duration of one build (like NUDGE_ANCHORS).
@@ -48,6 +48,8 @@ COOPS_STATION = "9414290"
 COOPS_LL = (37.8063, -122.4659)      # Fort Point / Presidio (San Francisco)
 METAR_URL = "https://aviationweather.gov/api/data/metar"
 METAR_IDS = ("KHAF", "KSFO", "KOAK")
+METAR_ELEV_M = {"KHAF": 20.0, "KSFO": 4.0, "KOAK": 3.0}   # airport elevations (m) for the cloud base correction (guide 08)
+CEIL_MAX_FT = 3000.0                 # ceilings above this are not used to correct the cloud base formula (guide 08)
 METAR_LL = {"KHAF": (37.5134, -122.5011), "KSFO": (37.6196, -122.3656), "KOAK": (37.7213, -122.2208)}
 NWS_URL = "https://api.weather.gov/stations/{id}/observations"
 NWS_STATIONS = {"SFOC1": (37.77056, -122.42694)}    # San Francisco downtown (T, Td, RH only)
