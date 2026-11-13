@@ -69,7 +69,7 @@ function buildSettings() {
   const label = (X.LV && X.LV.betaLabel) || '';
   parts.push(h(`<div class="bx-note"><span class="bx-tag-s">Beta</span><span>Beta preview: stations, satellite cloud, sunshine and water depth are on test and may change.${label ? ' Settings: ' + esc(label) + '.' : ''} Not the public forecast.</span></div>`));
   parts.push(play);
-  if (A.film || A.sun) {
+  { // always shown on the beta channel: layers with no data in this run are greyed with the reason
     const g = h(`<section class="bx-grp" id="bx-g-color"><div class="bx-gh">Colour and light<em id="bx-clnote"></em></div>
       <div class="seg bx-seg" id="bx-color" role="group" aria-label="Street colour">
         <button type="button" data-c="slick" class="on">${A.film ? 'Slippery' : 'Wet'}</button>
@@ -78,7 +78,7 @@ function buildSettings() {
     parts.push(g);
   }
   parts.push(map);
-  if (A.any) {
+  {
     const stSub = A.stFile ? `${A.stNow || ''} ${A.stNow ? 'reporting' : 'at real spots'}`.trim() : 'No station file in this run';
     const satSub = !A.sat ? 'Not in this run' : A.satHours > 0 ? `GOES-18 · ${A.satHours} h of scans` : 'No satellite scans in this window';
     const satOk = A.sat && A.satHours > 0;
@@ -224,6 +224,7 @@ function auxArr(kind, d) { // Uint8Array of that day (frames_in_day x ST) or nul
   }
   return e.u8;
 }
+const auxBad = (d) => ['depth', 'dry', 'cause'].some((k) => { const e = aux.get(k + d); return !!(e && e.err); });
 function auxVal(kind, f, k) { // value of sample k at the nearest hourly frame, undefined while not loaded
   const i = Math.round(f), d = frameDay(i), u8 = auxArr(kind, d); if (!u8) return undefined;
   return u8[(i - X.idx.frame_ranges[d][0]) * X.LV.ST + k];
@@ -267,7 +268,7 @@ function tipHtml(k, v, when) {
   const ra = roadAir(f, k), r24 = rain24(i), Fm = dep === undefined ? null : depthMm(dep);
   const wet = Fm != null && Fm >= dryMm();
   let rows = '';
-  rows += `<dt>Water</dt><dd>${Fm == null ? 'loading…' : fmtMm(Fm) + ' mm' + (wet ? ' film' : '')}</dd>`;
+  rows += `<dt>Water</dt><dd>${Fm == null ? (auxBad(frameDay(i)) ? 'not available' : 'loading…') : fmtMm(Fm) + ' mm' + (wet ? ' film' : '')}</dd>`;
   if (Fm != null) rows += `<dt>Dries in</dt><dd>${wet ? driesTxt(dry) : 'dry now'}</dd>`;
   if (Fm != null && wet && cau !== undefined && causeName(cau)) rows += `<dt>Cause</dt><dd>${causeName(cau)}</dd>`;
   if (ra.road != null || ra.air != null) rows += `<dt>${ra.road != null ? 'Road' : 'Air'}</dt><dd>${ra.road != null ? Math.round(F2(ra.road)) + '°F' : ''}${ra.road != null && ra.air != null ? ' · air ' : ''}${ra.air != null ? Math.round(F2(ra.air)) + '°F' : ''}</dd>`;
@@ -287,7 +288,7 @@ export function chip(R) {
   const f = X.curF, i = Math.round(f), d = frameDay(i);
   const dp = auxArr('depth', d), dr = auxArr('dry', d), ca = auxArr('cause', d);
   document.body.classList.add('bx-water'); el.hidden = false;
-  if (!dp || !dr || !ca) { el.textContent = 'Water · loading…'; return; }
+  if (!dp || !dr || !ca) { el.textContent = auxBad(d) ? 'Water · not available' : 'Water · loading…'; return; }
   const ks = R.bxKs || (R.bxKs = X.liveRouteCols(R)), row = (i - X.idx.frame_ranges[d][0]) * X.LV.ST, wn = X.wetNow, lim = dryMm();
   let sum = 0, n = 0, nw = 0; const dh = new Uint16Array(256), cc = new Uint16Array(8);
   for (const k of ks) {
@@ -335,7 +336,7 @@ function readout() {
   let html = '';
   if (S.stations) {
     const rep = SP.filter((p) => p.rep).length, e = meanErrF();
-    html += `<button type="button" class="bx-oc" aria-label="Stations: open settings"><i class="bx-k stn"></i><span>Stations</span> <b>${D ? rep : '…'}</b>${e != null ? ` <span>· 24 h err</span> <b>±${e.toFixed(1)}°F</b>` : ''}</button>`;
+    html += `<button type="button" class="bx-oc" aria-label="Stations reporting and mean 24 hour air temperature error: open settings" title="Stations reporting · mean 24 h air error"><i class="bx-k stn"></i><span>Stations</span> <b>${D ? rep : '…'}</b>${e != null ? ` <b>· ±${e.toFixed(1)}°F</b>` : ''}</button>`;
   }
   if (S.sat) {
     const hd = scoreDoc && scoreDoc.headline;
