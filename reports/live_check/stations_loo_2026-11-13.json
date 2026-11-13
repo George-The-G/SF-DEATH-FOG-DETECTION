@@ -1,0 +1,926 @@
+{
+ "start": "2026-10-14T02:00:00+00:00",
+ "end": "2026-11-12T02:00:00+00:00",
+ "hours": 697,
+ "stations": {
+  "FTPC1": {
+   "T": {
+    "raw": {
+     "n": 638,
+     "mae": 0.92,
+     "bias": -0.45
+    },
+    "city": {
+     "n": 638,
+     "mae": 0.85,
+     "bias": 0.34
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 1.24,
+     "bias": 0.99
+    },
+    "hill": false
+   },
+   "wind": {
+    "raw": {
+     "n": 638,
+     "mae": 2.41,
+     "rmse": 2.71
+    },
+    "city": {
+     "n": 638,
+     "mae": 2.83,
+     "rmse": 3.39
+    },
+    "speed_raw": {
+     "n": 638,
+     "mae": 1.42,
+     "bias": 0.8
+    },
+    "speed_city": {
+     "n": 638,
+     "mae": 0.62,
+     "bias": 0.19
+    },
+    "anchor": {
+     "n": 697,
+     "mae": 2.04,
+     "rmse": 2.43
+    },
+    "speed_anchor": {
+     "n": 697,
+     "mae": 1.58,
+     "bias": -1.42
+    },
+    "city_in_sample": true,
+    "hill": false
+   }
+  },
+  "PXOC1": {
+   "T": {
+    "raw": {
+     "n": 638,
+     "mae": 2.35,
+     "bias": -1.67
+    },
+    "city": {
+     "n": 638,
+     "mae": 1.72,
+     "bias": -0.94
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 1.23,
+     "bias": -0.32
+    },
+    "hill": false
+   },
+   "wind": {
+    "raw": {
+     "n": 638,
+     "mae": 1.85,
+     "rmse": 2.11
+    },
+    "city": {
+     "n": 638,
+     "mae": 2.34,
+     "rmse": 2.72
+    },
+    "speed_raw": {
+     "n": 638,
+     "mae": 1.05,
+     "bias": 0.23
+    },
+    "speed_city": {
+     "n": 638,
+     "mae": 1.03,
+     "bias": -0.15
+    },
+    "anchor": {
+     "n": 697,
+     "mae": 1.92,
+     "rmse": 2.2
+    },
+    "speed_anchor": {
+     "n": 697,
+     "mae": 1.39,
+     "bias": -1.05
+    },
+    "city_in_sample": false,
+    "hill": false
+   }
+  },
+  "PXSC1": {
+   "T": {
+    "raw": {
+     "n": 638,
+     "mae": 2.55,
+     "bias": -2.0
+    },
+    "city": {
+     "n": 638,
+     "mae": 1.87,
+     "bias": -1.27
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 1.37,
+     "bias": -0.67
+    },
+    "hill": false
+   },
+   "Td": {
+    "raw": {
+     "n": 638,
+     "mae": 2.72,
+     "bias": -2.3
+    },
+    "city": {
+     "n": 638,
+     "mae": 2.81,
+     "bias": -2.52
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 2.51,
+     "bias": -2.08
+    },
+    "hill": false
+   }
+  },
+  "OBXC1": {
+   "T": {
+    "raw": {
+     "n": 638,
+     "mae": 1.2,
+     "bias": -1.11
+    },
+    "city": {
+     "n": 638,
+     "mae": 0.97,
+     "bias": -0.38
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 1.4,
+     "bias": 0.28
+    },
+    "hill": false
+   },
+   "Td": {
+    "raw": {
+     "n": 638,
+     "mae": 1.45,
+     "bias": -1.17
+    },
+    "city": {
+     "n": 638,
+     "mae": 1.57,
+     "bias": -1.39
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 1.19,
+     "bias": -0.82
+    },
+    "hill": false
+   }
+  },
+  "OKXC1": {
+   "T": {
+    "raw": {
+     "n": 638,
+     "mae": 2.03,
+     "bias": -1.0
+    },
+    "city": {
+     "n": 638,
+     "mae": 1.64,
+     "bias": -0.27
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 1.13,
+     "bias": 0.4
+    },
+    "hill": false
+   },
+   "wind": {
+    "raw": {
+     "n": 638,
+     "mae": 1.74,
+     "rmse": 1.99
+    },
+    "city": {
+     "n": 638,
+     "mae": 1.85,
+     "rmse": 2.2
+    },
+    "speed_raw": {
+     "n": 638,
+     "mae": 0.99,
+     "bias": -0.04
+    },
+    "speed_city": {
+     "n": 638,
+     "mae": 1.12,
+     "bias": -0.34
+    },
+    "anchor": null,
+    "speed_anchor": null,
+    "city_in_sample": false,
+    "hill": false
+   }
+  },
+  "AAMC1": {
+   "T": {
+    "raw": {
+     "n": 638,
+     "mae": 2.02,
+     "bias": -1.62
+    },
+    "city": {
+     "n": 638,
+     "mae": 1.45,
+     "bias": -0.89
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 0.88,
+     "bias": -0.26
+    },
+    "hill": false
+   },
+   "wind": {
+    "raw": {
+     "n": 638,
+     "mae": 1.52,
+     "rmse": 1.77
+    },
+    "city": {
+     "n": 638,
+     "mae": 2.1,
+     "rmse": 2.47
+    },
+    "speed_raw": {
+     "n": 638,
+     "mae": 0.87,
+     "bias": 0.34
+    },
+    "speed_city": {
+     "n": 638,
+     "mae": 1.06,
+     "bias": 0.04
+    },
+    "anchor": null,
+    "speed_anchor": null,
+    "city_in_sample": false,
+    "hill": false
+   }
+  },
+  "LNDC1": {
+   "T": {
+    "raw": {
+     "n": 638,
+     "mae": 2.21,
+     "bias": -2.05
+    },
+    "city": {
+     "n": 638,
+     "mae": 1.57,
+     "bias": -1.32
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 1.02,
+     "bias": -0.71
+    },
+    "hill": false
+   },
+   "wind": {
+    "raw": {
+     "n": 638,
+     "mae": 1.39,
+     "rmse": 1.62
+    },
+    "city": {
+     "n": 638,
+     "mae": 1.75,
+     "rmse": 2.06
+    },
+    "speed_raw": {
+     "n": 638,
+     "mae": 0.84,
+     "bias": 0.54
+    },
+    "speed_city": {
+     "n": 638,
+     "mae": 0.96,
+     "bias": 0.24
+    },
+    "anchor": null,
+    "speed_anchor": null,
+    "city_in_sample": false,
+    "hill": false
+   }
+  },
+  "SFOC1": {
+   "T": {
+    "raw": {
+     "n": 636,
+     "mae": 2.12,
+     "bias": -2.0
+    },
+    "city": {
+     "n": 636,
+     "mae": 1.75,
+     "bias": -1.59
+    },
+    "anchor": {
+     "n": 636,
+     "mae": 0.99,
+     "bias": -0.61
+    },
+    "hill": false
+   },
+   "Td": {
+    "raw": {
+     "n": 636,
+     "mae": 1.9,
+     "bias": 1.33
+    },
+    "city": {
+     "n": 636,
+     "mae": 2.17,
+     "bias": 1.45
+    },
+    "anchor": {
+     "n": 636,
+     "mae": 2.37,
+     "bias": 1.93
+    },
+    "hill": false
+   }
+  },
+  "OAMC1": {
+   "T": {
+    "raw": {
+     "n": 631,
+     "mae": 2.08,
+     "bias": -1.7
+    },
+    "city": {
+     "n": 631,
+     "mae": 1.44,
+     "bias": -0.97
+    },
+    "anchor": {
+     "n": 631,
+     "mae": 1.05,
+     "bias": -0.3
+    },
+    "hill": false
+   },
+   "Td": {
+    "raw": {
+     "n": 631,
+     "mae": 2.1,
+     "bias": -1.91
+    },
+    "city": {
+     "n": 631,
+     "mae": 2.29,
+     "bias": -2.14
+    },
+    "anchor": {
+     "n": 631,
+     "mae": 1.91,
+     "bias": -1.65
+    },
+    "hill": false
+   }
+  },
+  "KSFO": {
+   "T": {
+    "raw": {
+     "n": 638,
+     "mae": 1.69,
+     "bias": -1.05
+    },
+    "city": {
+     "n": 638,
+     "mae": 1.29,
+     "bias": -0.39
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 0.94,
+     "bias": 0.36
+    },
+    "hill": false
+   },
+   "Td": {
+    "raw": {
+     "n": 638,
+     "mae": 1.39,
+     "bias": -0.3
+    },
+    "city": {
+     "n": 638,
+     "mae": 1.43,
+     "bias": -0.7
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 1.32,
+     "bias": 0.15
+    },
+    "hill": false
+   },
+   "wind": {
+    "raw": {
+     "n": 627,
+     "mae": 2.02,
+     "rmse": 2.33
+    },
+    "city": {
+     "n": 627,
+     "mae": 2.63,
+     "rmse": 3.09
+    },
+    "speed_raw": {
+     "n": 627,
+     "mae": 1.43,
+     "bias": -0.75
+    },
+    "speed_city": {
+     "n": 627,
+     "mae": 1.71,
+     "bias": -1.14
+    },
+    "anchor": null,
+    "speed_anchor": null,
+    "city_in_sample": false,
+    "hill": false
+   }
+  },
+  "KOAK": {
+   "T": {
+    "raw": {
+     "n": 638,
+     "mae": 1.11,
+     "bias": -0.61
+    },
+    "city": {
+     "n": 638,
+     "mae": 0.97,
+     "bias": 0.14
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 1.3,
+     "bias": 0.82
+    },
+    "hill": false
+   },
+   "Td": {
+    "raw": {
+     "n": 638,
+     "mae": 1.2,
+     "bias": 0.08
+    },
+    "city": {
+     "n": 638,
+     "mae": 1.31,
+     "bias": -0.19
+    },
+    "anchor": {
+     "n": 638,
+     "mae": 1.29,
+     "bias": 0.58
+    },
+    "hill": false
+   },
+   "wind": {
+    "raw": {
+     "n": 633,
+     "mae": 1.54,
+     "rmse": 1.8
+    },
+    "city": {
+     "n": 633,
+     "mae": 2.24,
+     "rmse": 2.64
+    },
+    "speed_raw": {
+     "n": 633,
+     "mae": 1.01,
+     "bias": -0.13
+    },
+    "speed_city": {
+     "n": 633,
+     "mae": 1.29,
+     "bias": -0.43
+    },
+    "anchor": null,
+    "speed_anchor": null,
+    "city_in_sample": false,
+    "hill": false
+   }
+  },
+  "KHAF": {
+   "T": {
+    "raw": {
+     "n": 635,
+     "mae": 1.95,
+     "bias": 0.5
+    },
+    "city": {
+     "n": 635,
+     "mae": 2.44,
+     "bias": 1.54
+    },
+    "anchor": {
+     "n": 635,
+     "mae": 2.85,
+     "bias": 1.98
+    },
+    "hill": false
+   },
+   "Td": {
+    "raw": {
+     "n": 635,
+     "mae": 1.68,
+     "bias": -0.25
+    },
+    "city": {
+     "n": 635,
+     "mae": 1.85,
+     "bias": -0.64
+    },
+    "anchor": {
+     "n": 635,
+     "mae": 1.69,
+     "bias": 0.21
+    },
+    "hill": false
+   },
+   "wind": {
+    "raw": {
+     "n": 635,
+     "mae": 2.07,
+     "rmse": 2.35
+    },
+    "city": {
+     "n": 635,
+     "mae": 2.37,
+     "rmse": 2.81
+    },
+    "speed_raw": {
+     "n": 635,
+     "mae": 1.57,
+     "bias": 0.49
+    },
+    "speed_city": {
+     "n": 635,
+     "mae": 1.62,
+     "bias": -0.01
+    },
+    "anchor": null,
+    "speed_anchor": null,
+    "city_in_sample": false,
+    "hill": false
+   }
+  },
+  "ONOC1": {
+   "T": {
+    "raw": {
+     "n": 634,
+     "mae": 2.93,
+     "bias": -2.61
+    },
+    "city": {
+     "n": 634,
+     "mae": 2.4,
+     "bias": -1.88
+    },
+    "anchor": {
+     "n": 634,
+     "mae": 1.76,
+     "bias": -1.13
+    },
+    "hill": true
+   },
+   "Td": {
+    "raw": {
+     "n": 634,
+     "mae": 1.83,
+     "bias": 0.03
+    },
+    "city": {
+     "n": 634,
+     "mae": 1.98,
+     "bias": -0.19
+    },
+    "anchor": {
+     "n": 634,
+     "mae": 1.72,
+     "bias": 0.48
+    },
+    "hill": true
+   },
+   "wind": {
+    "raw": {
+     "n": 634,
+     "mae": 2.39,
+     "rmse": 2.64
+    },
+    "city": {
+     "n": 634,
+     "mae": 1.99,
+     "rmse": 2.41
+    },
+    "speed_raw": {
+     "n": 634,
+     "mae": 2.39,
+     "bias": 2.39
+    },
+    "speed_city": {
+     "n": 634,
+     "mae": 1.99,
+     "bias": 1.99
+    },
+    "anchor": null,
+    "speed_anchor": null,
+    "city_in_sample": false,
+    "hill": true
+   }
+  },
+  "OKSC1": {
+   "T": {
+    "raw": {
+     "n": 633,
+     "mae": 2.39,
+     "bias": -2.01
+    },
+    "city": {
+     "n": 633,
+     "mae": 1.91,
+     "bias": -1.28
+    },
+    "anchor": {
+     "n": 633,
+     "mae": 1.23,
+     "bias": -0.33
+    },
+    "hill": true
+   },
+   "Td": {
+    "raw": {
+     "n": 633,
+     "mae": 2.0,
+     "bias": -1.09
+    },
+    "city": {
+     "n": 633,
+     "mae": 2.22,
+     "bias": -1.31
+    },
+    "anchor": {
+     "n": 633,
+     "mae": 1.77,
+     "bias": -0.8
+    },
+    "hill": true
+   },
+   "wind": {
+    "raw": {
+     "n": 633,
+     "mae": 1.85,
+     "rmse": 2.07
+    },
+    "city": {
+     "n": 633,
+     "mae": 1.82,
+     "rmse": 2.35
+    },
+    "speed_raw": {
+     "n": 633,
+     "mae": 1.74,
+     "bias": 1.69
+    },
+    "speed_city": {
+     "n": 633,
+     "mae": 1.54,
+     "bias": 1.43
+    },
+    "anchor": null,
+    "speed_anchor": null,
+    "city_in_sample": false,
+    "hill": true
+   }
+  },
+  "HSPC1": {
+   "T": {
+    "raw": {
+     "n": 630,
+     "mae": 2.16,
+     "bias": -1.99
+    },
+    "city": {
+     "n": 630,
+     "mae": 1.85,
+     "bias": -1.26
+    },
+    "anchor": {
+     "n": 630,
+     "mae": 1.5,
+     "bias": -0.54
+    },
+    "hill": true
+   },
+   "Td": {
+    "raw": {
+     "n": 630,
+     "mae": 1.55,
+     "bias": 0.51
+    },
+    "city": {
+     "n": 630,
+     "mae": 1.51,
+     "bias": 0.28
+    },
+    "anchor": {
+     "n": 630,
+     "mae": 1.62,
+     "bias": 1.01
+    },
+    "hill": true
+   },
+   "wind": {
+    "raw": {
+     "n": 630,
+     "mae": 1.93,
+     "rmse": 2.17
+    },
+    "city": {
+     "n": 630,
+     "mae": 2.6,
+     "rmse": 3.0
+    },
+    "speed_raw": {
+     "n": 630,
+     "mae": 1.15,
+     "bias": 0.26
+    },
+    "speed_city": {
+     "n": 630,
+     "mae": 1.33,
+     "bias": -0.25
+    },
+    "anchor": null,
+    "speed_anchor": null,
+    "city_in_sample": false,
+    "hill": true
+   }
+  },
+  "MDEC1": {
+   "T": {
+    "raw": {
+     "n": 635,
+     "mae": 2.56,
+     "bias": -2.45
+    },
+    "city": {
+     "n": 635,
+     "mae": 2.09,
+     "bias": -1.71
+    },
+    "anchor": {
+     "n": 635,
+     "mae": 1.33,
+     "bias": 0.06
+    },
+    "hill": true
+   },
+   "Td": {
+    "raw": {
+     "n": 635,
+     "mae": 2.37,
+     "bias": 0.58
+    },
+    "city": {
+     "n": 635,
+     "mae": 2.55,
+     "bias": 0.36
+    },
+    "anchor": {
+     "n": 635,
+     "mae": 2.52,
+     "bias": 1.41
+    },
+    "hill": true
+   },
+   "wind": {
+    "raw": {
+     "n": 635,
+     "mae": 2.33,
+     "rmse": 2.61
+    },
+    "city": {
+     "n": 635,
+     "mae": 3.07,
+     "rmse": 3.44
+    },
+    "speed_raw": {
+     "n": 635,
+     "mae": 1.3,
+     "bias": -0.73
+    },
+    "speed_city": {
+     "n": 635,
+     "mae": 1.78,
+     "bias": -1.24
+    },
+    "anchor": null,
+    "speed_anchor": null,
+    "city_in_sample": false,
+    "hill": true
+   }
+  },
+  "GGBC1": {
+   "wind": {
+    "raw": {
+     "n": 631,
+     "mae": 5.02,
+     "rmse": 5.86
+    },
+    "city": {
+     "n": 631,
+     "mae": 4.65,
+     "rmse": 5.48
+    },
+    "speed_raw": {
+     "n": 631,
+     "mae": 1.49,
+     "bias": 0.52
+    },
+    "speed_city": {
+     "n": 631,
+     "mae": 1.26,
+     "bias": -0.17
+    },
+    "anchor": {
+     "n": 690,
+     "mae": 3.9,
+     "rmse": 5.0
+    },
+    "speed_anchor": {
+     "n": 690,
+     "mae": 1.5,
+     "bias": -1.14
+    },
+    "city_in_sample": false,
+    "hill": false
+   }
+  },
+  "OMHC1": {
+   "wind": {
+    "raw": {
+     "n": 638,
+     "mae": 1.61,
+     "rmse": 1.88
+    },
+    "city": {
+     "n": 638,
+     "mae": 2.2,
+     "rmse": 2.58
+    },
+    "speed_raw": {
+     "n": 638,
+     "mae": 0.95,
+     "bias": -0.19
+    },
+    "speed_city": {
+     "n": 638,
+     "mae": 1.19,
+     "bias": -0.49
+    },
+    "anchor": null,
+    "speed_anchor": null,
+    "city_in_sample": false,
+    "hill": false
+   }
+  }
+ },
+ "wind_fit": {
+  "hours_fitted": 697,
+  "regional": 609,
+  "citywide": 88,
+  "offshore_flagged": 363,
+  "qc_dropped": 83,
+  "hours": 697
+ },
+ "note": "raw = RRFS forecast at the station; city = today's citywide correction; anchor = guide 03 fit without that station. Fort Point wind city column is in-sample."
+}

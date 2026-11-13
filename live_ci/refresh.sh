@@ -77,8 +77,8 @@ echo "::endgroup::"
 
 echo "::group::static tables (release live-static-v1)"
 mkdir -p "$STATIC"
-for f in live_static.npz live_ribbons.npz ribbons_city.bin ribbons_city_meta.json; do
-  [ -s "$STATIC/$f" ] || gh release download live-static-v1 -p "$f" -D "$STATIC" --repo "$REPO" --clobber || echo "download of $f failed"
+for f in live_static.npz live_ribbons.npz ribbons_city.bin ribbons_city_meta.json station_wind.npz; do
+  [ -s "$STATIC/$f" ] || gh release download live-static-v1 -p "$f" -D "$STATIC" --repo "$REPO" --clobber || echo "download of $f failed (station_wind.npz is optional: the wind anchors stay off without it)"
 done
 ls -l "$STATIC"
 echo "::endgroup::"
