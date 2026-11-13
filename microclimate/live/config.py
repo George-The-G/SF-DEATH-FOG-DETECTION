@@ -19,6 +19,10 @@ BETA = dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False, wind_
 # The public build reads this value; the beta build reads BETA["wind_east"] only. build.run sets it for the duration of one build (like NUDGE_ANCHORS).
 WIND_EAST = False
 EAST_FILE = "live_east.npz"           # release asset of live-static-v1 (wind vectors at the stations for the 15 library directions); optional
+# Settings the PUBLIC build runs with when it is started with `build --promoted` (live_ci/refresh.sh does that when DEATHFOG_LIVE_PROMOTE is true; the job falls back to the old settings,
+# C.PHYSICS / C.NUDGE_ANCHORS / C.CARRY_STATE, if such a build fails). Approved 2026-11-13: clear-sky sun (GOES sunlight) + station anchors, exactly the stage 1 beta. Nothing else:
+# no carried state, film, pavement or east wind (wind_east stays False here on purpose; the east wind is under test on the beta channel). Beta (C.BETA) moves on to the next stage on its own; this dict changes only with an explicit approval.
+PROMOTED = dict(physics=("sun_clear",), nudge_anchors=True, carry_state=False, wind_east=False)
 BETA_DIR = "live_beta"                # published folder of the beta channel, next to live/
 
 # ---- RRFS through Open-Meteo (HRRR on Open-Meteo is discontinued 2026-11-30: do not use it) ----

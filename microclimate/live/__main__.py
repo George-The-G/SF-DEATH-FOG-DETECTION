@@ -3,6 +3,7 @@
   build   [--out DIR] [--static PATH] [--ribbons PATH] [--cache DIR] [--physics a,b|none] [--carry-state] [--archive DIR]   one live run (default out: site/v3/live;
           physics default: config.PHYSICS)
           [--save-inputs FILE]   write the fetched inputs for a beta build of the same job
+          [--promoted]   the public build with config.PROMOTED settings (status "promoted": true; what the page needs to show the data layers)
           [--beta [--inputs FILE]]   the beta preview channel: settings from config.BETA only (default out: site/v3/live_beta), fetched inputs from FILE (the
                                  public build's --save-inputs file) or its own fetch; never writes the run archive
   compare --physics a,b|none [--base x,y] [--anchors] [--static PATH] [--out DIR]   same inputs, config.PHYSICS (or --base) versus the given switches; writes
@@ -32,12 +33,12 @@ def main(argv):
         beta = "--beta" in argv
         try:
             from .. import wetness
-            wetness.check_physics(ph if ph is not None else build.settings(beta)["physics"])
+            wetness.check_physics(ph if ph is not None else build.settings(beta, promoted="--promoted" in argv)["physics"])
         except ValueError as e:
             sys.exit(f"build: {e}")
         sys.exit(build.run(opt(argv, "--out", "site/v3/" + config.BETA_DIR if beta else "site/v3/live"), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"), physics=ph,
                            carry_state=True if "--carry-state" in argv else None, archive_dir=opt(argv, "--archive"), beta=beta, inputs=opt(argv, "--inputs"),
-                           inputs_out=opt(argv, "--save-inputs")))
+                           inputs_out=opt(argv, "--save-inputs"), promoted="--promoted" in argv and not beta))
     elif cmd == "compare":
         from . import compare
         if "--physics" not in argv and "--anchors" not in argv and "--east" not in argv:

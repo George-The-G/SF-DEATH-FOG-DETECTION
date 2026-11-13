@@ -12,10 +12,16 @@ const SRC_DIRS = SRC_Q === 'mock' ? ['replay_mock/'] : SRC_Q === 'synth' ? ['rep
 const QP = new URLSearchParams(location.search);
 const UI2 = QP.get('ui') !== '1'; // redesigned chrome (body.ui2) for everyone; ?ui=1 keeps the old chrome (replay only), see UI_REDESIGN_PLAN.md
 if (UI2) document.body.classList.add('ui2');
-let BX = null; // beta preview data layers (beta_ui.js), loaded with import() only when BETA; null on the public page
+let BX = null; // data layers (beta_ui.js), loaded with import() only when UIX (promoted public output, or ?beta=1); null otherwise
 let RNG = null; // ui2 live: visible frame window {lo, hi} of the time bar (null = every frame)
 const LIVE = UI2 && !(QP.get('live') === '0' || QP.has('night') || QP.has('src')); // live data is the default; ?live=0, ?night=<id> or ?src= open the past-night replays
-const BETA = QP.has('beta') && QP.get('beta') !== '0'; // ?beta=1: the beta preview channel (live_beta/, other model settings) with a badge; never the default
+const BETA = QP.has('beta') && QP.get('beta') !== '0'; // ?beta=1: the beta preview channel (live_beta/, the NEXT settings under test) with a Beta tag; never the default
+/* The data layers UI (beta_ui.js) is on for everyone whose public live output says it was built with the promoted settings (status.json "promoted", written by `build --promoted`).
+   If the scheduled job falls back to the old settings (or DEATHFOG_LIVE_PROMOTE is false) that flag is absent and the page is exactly the old public page. ?beta=1 is unchanged. */
+const PROMO_P = BETA ? Promise.resolve(null) : (() => { const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 5000); return fetch('live/status.json', { cache: 'no-store', signal: ac.signal }).then((r) => (r.ok ? r.json() : null)).catch(() => null).finally(() => clearTimeout(tm)); })();
+const PST = await PROMO_P; // the public live status (small); bootLive reuses it
+const PROMO = !!(PST && PST.promoted && !BETA);
+const UIX = BETA || PROMO; // data layers UI on
 const RAMP = [[0, '#3a8696'], [18, '#6fb09f'], [24, '#f4e04d'], [50, '#f2c230'], [65, '#ee8a2c'], [80, '#d9531e'], [90, '#b3202f'], [100, '#7a0f3b']];
 const CATS = ['dry', 'damp', 'slick', 'wet', 'icy-fog'];
 const $ = (id) => document.getElementById(id);
@@ -547,7 +553,7 @@ async function ensureRibbons(n) {
   if (rib && ribPath === n.ribbons) return;
   const mp = n.ribbons.replace(/\.bin$/, '_meta.json');
   const [buf, m] = await Promise.all([withTimeout(getBuf(n.ribbons), 60000, 'ribbons'), getJSON(mp)]);
-  const r = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, alt: BETA });
+  const r = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, alt: UIX });
   r.build(buf, m);
   if (rib) rib.dispose();
   rib = r; ribMeta = m; ribPath = n.ribbons; r.setDistrictVisible($('disttoggle').checked); r.setRouteColors(ROUTES.map((R) => R.def.color));
@@ -811,7 +817,7 @@ function liveBar(idx, st) { // ui2 only: status inputs, data notices in the dock
   LV.real = real; LV.ageMin = ageMin; LV.asof = asof;
   const fo = LQ === 'forecast' || !!(st && st.mode && st.mode !== 'observations_nudged') || idx.observed_until_frame == null;
   const stack = document.createElement('div'); stack.id = 'lvstack'; $('dock').prepend(stack);
-  const bl = BETA ? String((st && st.beta && st.beta.label) || 'settings not stated').replace(/[<>&"]/g, '') : '';
+  const bl = BETA ? String((st && st.beta && st.beta.label) || 'settings not stated').replace(/[<>&"]/g, '') : PROMO ? String((st && st.promoted && st.promoted.label) || '').replace(/[<>&"]/g, '') : '';
   if (BETA) document.title = 'Beta preview · ' + document.title;
   LV.betaLabel = bl; LV.betaBanner = BETA ? `<div class="lvb warn">Beta preview: ${bl}. Not the public forecast.</div>` : ''; // the dock banner is the fallback only: beta_ui.js shows the Beta tag on the status line and a note in settings instead
   stack.innerHTML = (ageMin != null && ageMin > 90 ? `<div class="lvb warn">Data delayed. Last update was ${fmtAge(ageMin)} ago. Showing the most recent run.</div>` : '') +
@@ -875,7 +881,7 @@ const goNight = (v) => { // the Night list switches between live and a past nigh
   const s = q.toString(); location.href = location.pathname + (s ? '?' + s : '');
 };
 function liveNightList() { // live first; the past nights are added once their index has loaded
-  const sel = $('night'); sel.innerHTML = '<option value="live">Live (beta)</option>';
+  const sel = $('night'); sel.innerHTML = `<option value="live">${UIX ? 'Live' : 'Live (beta)'}</option>`;
   loadIndex().then(([ri]) => {
     sel.insertAdjacentHTML('beforeend', '<optgroup label="Past nights">' + ri.nights.map((n) => `<option value="r:${n.id}">${nightLabel(n)}${n.approx_direction ? ' *' : ''}</option>`).join('') + '</optgroup>');
     sel.value = 'live';
@@ -883,7 +889,7 @@ function liveNightList() { // live first; the past nights are added once their i
 }
 async function bootLive() {
   base = BETA ? 'live_beta/' : 'live/';
-  const st = await getJSON(base + 'status.json', { cache: 'no-store' }).catch(() => null);
+  const st = !BETA && PST ? PST : await getJSON(base + 'status.json', { cache: 'no-store' }).catch(() => null);
   const V = st && st.generated_iso ? '?v=' + encodeURIComponent(st.generated_iso) : ''; // a new run is a new URL, so index, days and fog always belong together
   const idx = await withTimeout(getJSON(base + 'index.json' + V), 15000, 'live index');
   const S1 = idx.ribbons_n, S2 = idx.ribbons_city_n, ST = S1 + S2, nF = idx.n_frames, f0 = idx.frame_ranges[0][1] - idx.frame_ranges[0][0];
@@ -894,7 +900,7 @@ async function bootLive() {
   await ensureRibbons({ ribbons: 'data/ribbons.bin' });
   if (rib.samples.S !== S1) throw new Error(`live index expects ${S1} district samples, ribbons.bin has ${rib.samples.S}`);
   const [cb, cm] = await Promise.all([withTimeout(getBuf(base + idx.ribbons_city), 60000, 'city ribbons'), getJSON(base + idx.ribbons_city_meta)]);
-  rib2 = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, alt: BETA }); rib2.build(cb, cm); rib2.mesh.renderOrder = 9; rib2Meta = cm; // under the district/route ribbons
+  rib2 = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, alt: UIX }); rib2.build(cb, cm); rib2.mesh.renderOrder = 9; rib2Meta = cm; // under the district/route ribbons
   setStatus('Loading live street wetness…');
   const [d0, wx] = await Promise.all([withTimeout(getBuf(base + idx.frame_files[0] + V), 60000, 'day 0'), getJSON(base + idx.weather + V).catch(() => null)]);
   if (d0.byteLength !== f0 * ST) throw new Error(`${idx.frame_files[0]} has ${d0.byteLength} bytes, expected ${f0 * ST}`);
@@ -1053,7 +1059,7 @@ if (UI2) ui2Build();
 /* ------------------------------------------------------------------ beta preview layers (?beta=1 only): stations, satellite, sunshine, water depth, see beta_ui.js */
 function betaCtx() {
   return {
-    THREE, scene, camera, controls, EX, canvas, $, isTouch, CITY, rampColor, rgbCss, wall, ptFmt, compass, routeBins, liveRouteCols, flyTo, setSheet, hideTip,
+    THREE, scene, camera, controls, EX, canvas, $, isTouch, beta: BETA, CITY, rampColor, rgbCss, wall, ptFmt, compass, routeBins, liveRouteCols, flyTo, setSheet, hideTip,
     lights: { hemi, moon, amb },
     ROUTES: () => ROUTES, refresh: () => { ui2Refresh(true); if (hoverIdx >= 0) showTip(hoverIdx, hoverXY); }, trackNow: () => ui2Track(), getBuf, getJSON,
     get LV() { return LV; }, get idx() { return LV ? LV.idx : null; }, get status() { return LV ? LV.st : null; }, get night() { return night; }, get weather() { return weather; },
@@ -1062,7 +1068,7 @@ function betaCtx() {
   };
 }
 async function initBeta() {
-  if (!BETA || BX || !UI2) return;
+  if (!UIX || BX || !UI2) return;
   try { const m = await import('./beta_ui.js'); await m.init(betaCtx()); BX = m; if (typeof BX.frame === 'function' && night) BX.frame(curF); }
   catch (e) { console.warn('beta layers unavailable', e); BX = null; const s = $('lvstack'); if (s && LV && LV.betaBanner) s.insertAdjacentHTML('afterbegin', LV.betaBanner); }
 }
@@ -1091,7 +1097,7 @@ async function initBeta() {
       return;
     }
     index = idx; base = dir; $('badge').hidden = !idx.mock; if (idx.mock) $('badge').textContent = 'Mock data';
-    $('night').innerHTML = (UI2 ? '<option value="live">Live (beta)</option>' : '') + idx.nights.map((n, i) => `<option value="${i}">${nightLabel(n)}${n.approx_direction ? ' *' : ''}</option>`).join('');
+    $('night').innerHTML = (UI2 ? `<option value="live">${UIX ? 'Live' : 'Live (beta)'}</option>` : '') + idx.nights.map((n, i) => `<option value="${i}">${nightLabel(n)}${n.approx_direction ? ' *' : ''}</option>`).join('');
     const qn = new URLSearchParams(location.search).get('night');
     let firstFog = idx.nights.findIndex((n) => n.id === qn);
     if (firstFog < 0) { // default: strongest fog night
