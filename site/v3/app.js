@@ -573,6 +573,7 @@ const FOGV = BETA && QP.get('fog') !== 'sheets'; // beta default: volumetric fog
 const LAB = FOGV && QP.get('lab') === '1'; // fog lab: ?beta=1&lab=1 adds a panel to compare fog techniques and settings (foglab.js); its settings stay in this browser only
 let labParams = null; if (LAB) { try { labParams = JSON.parse(localStorage.getItem('foglab.v1') || 'null'); } catch (e) { labParams = null; } }
 const fog = (FOGV ? createFogVol : createFog)({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast, params: labParams || undefined });
+if (LAB) window.__fogLab = { fog, renderer, scene, camera }; // lab benchmark handle (tools/fogbench.cjs)
 if (LAB) import('./foglab.js').then((m) => m.mountFogLab({ fog, getSky: () => SKY, densEl: document.getElementById('fogdens') })).catch((e) => console.warn('fog lab unavailable', e));
 if (FOGV) { // volumetric fog looks right at a lower density: slider 5 to 60 percent, starting at 45 (the sheets keep 30 to 200 at 100)
   const fd = document.getElementById('fogdens'); if (fd) { fd.min = 5; fd.max = 60; fd.value = 45; } fog.setDensity(0.45);
@@ -702,7 +703,7 @@ function applyTime(force) {
       $('wx-temp').textContent = gF(weather.temp_c) + ' °F'; $('wx-dew').textContent = gF(weather.dewpoint_c) + ' °F';
       $('wx-wind').textContent = (weather.wind_ms && weather.wind_ms[i] != null ? (weather.wind_ms[i] * 2.23694).toFixed(0) : '--') + ' mph ' + (weather.wind_dir ? compass(weather.wind_dir[i]) : '');
       $('wx-cloud').textContent = g(weather.cloud_low_pct, 0) + ' %';
-      if (FOGV) fog.setWeather({ top: weather.fog_top_m ? weather.fog_top_m[i] : null, series: weather.fog_top_m, at: f, wind_ms: weather.wind_ms, wind_dir: weather.wind_dir });
+      if (FOGV) fog.setWeather({ top: weather.fog_top_m ? weather.fog_top_m[i] : null, series: weather.fog_top_m, at: f, step_min: night.step_min, wind_ms: weather.wind_ms, wind_dir: weather.wind_dir });
       const s = weather.sun_el ? weather.sun_el[i] : null; $('wx-sun').textContent = s == null ? '--' : (s > 0 ? 'up ' : 'down ') + minus(s.toFixed(0)) + '°';
       const t = $('wx-temp').textContent.replace(' ', ''), dp = $('wx-dew').textContent.replace(' °F', '°F'), wd = $('wx-wind').textContent.trim() + ($('wx-note').hidden ? '' : '*');
       if (LV && LV.el) liveWx(i);

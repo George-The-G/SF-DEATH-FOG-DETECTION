@@ -1,15 +1,22 @@
 /* Volumetric fog (beta, ?beta=1). Two techniques behind one interface, picked by params.mode:
    - 'march': procedural ray march through a fog slab (what beta shows today).
-   - 'voxel': the fog is baked into a 3D texture over the whole fog grid (density in R, light reaching each voxel from above in G),
-     then the screen pass samples that volume. The baked noise covers the whole grid without tiling, self-shadowing is free, and the
-     volume is rebaked only when time, density or a setting changes (a few ms on the GPU), so a paused view never moves.
+   - 'voxel': the fog is baked into 3D textures over the whole fog grid (density in R, light reaching each voxel from above in G),
+     one volume per data hour, and the screen pass samples the two hours around the shown time and blends them. The baked noise covers
+     the whole grid without tiling and self-shadowing is free.
+   Voxel speed-ups (each has a lab switch):
+     cache  - a volume is baked once per data hour (two layer passes on the GPU) and reused while the time moves inside that hour;
+     skip   - a coarse occupancy grid (320 m cells, from the data) lets rays jump over fog-free columns;
+     motion - while the camera moves, the fog pass runs at half resolution with fewer steps;
+     accum  - when the camera and time stand still, a few jittered full-quality passes are averaged, then the fog pass stops
+              entirely and the averaged image is reused (cost close to zero, and no dither grain).
    Same public interface as fog.js (build, clear, ready, setVisible, setDensity, setFrame, update) plus renderFrame() which app.js calls instead of
-   renderer.render, setParams()/params for the fog lab (?beta=1&lab=1, foglab.js), and setWeather() for the fog top series.
+   renderer.render, setParams()/params for the fog lab (?beta=1&lab=1, foglab.js), setWeather() for the fog top series, bench() for the lab benchmark.
    Pipeline per frame: scene -> render target with depth texture; fog pass at 50-100% resolution reading that depth; composite to the canvas.
    A frame-time governor steps down tiers 3 -> 2 -> 1 -> 0; tier 0 is the old sheets (fog.js). */
 import { createFog as createSheets } from './fog.js';
 
 const PX_REF = 16; // sprite value that maps to full density after the sqrt stretch (same as fog.js)
+const OCC_CELLS = 4; // occupancy cell = 4 x 4 fog cells (320 m)
 const TIERS = [null, // 0 = old sheets
   { scale: 0.5, steps: 5, vsteps: 10, oct: 1, ms: 0 },
   { scale: 0.5, steps: 10, vsteps: 18, oct: 2, ms: 0 },
@@ -32,12 +39,16 @@ export const DEFAULTS = {
   blur: 1,         // depth-aware blur of the fog buffer
   steps: 0,        // 0 = tier default
   res: 0,          // fog buffer scale; 0 = tier default
-  vres: 2,         // voxel: horizontal voxels per fog cell (1 = 80 m, 2 = 40 m)
-  vlayers: 24,     // voxel: vertical layers
+  vres: 0,         // voxel: horizontal voxels per fog cell (1 = 80 m, 2 = 40 m); 0 = auto (phone 1, computer 2)
+  vlayers: 0,      // voxel: vertical layers; 0 = auto (phone 16, computer 24)
   shadow: 1,       // voxel: self-shadow strength
   sun: 1,          // sunlight multiplier
   night: 1,        // night ambient floor multiplier
   auto: true,      // frame-time governor
+  skip: 1,         // voxel: empty-space skipping
+  accum: 6,        // voxel: still-frame refinement passes (0 = off: the fog is drawn every frame)
+  motion: 1,       // voxel: half resolution and fewer steps while the camera moves
+  motionSteps: 0.6, // voxel: step multiplier while moving
 };
 
 const VERT = `varying vec2 vUv; void main(){ vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); }`;
@@ -62,7 +73,7 @@ const RAY = `
     t1 = min(min(t1, tScene), t0 + 40000.);
     if (t1 <= t0) { gl_FragColor = vec4(0.); return; }
     float N = float(uSteps);
-    float jit = mix(.5, fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(.06711056, .00583715)))), uDither);
+    float jit = mix(.5, fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(.06711056, .00583715))) + uJit), uDither);
     float T = 1.; vec3 C = vec3(0.);
     float cs = dot(rd, uSun), ph = .3 + 1.7 * hg(cs, .6) * 12.566 * .35;
     float cm = dot(rd, uMoon), phm = .3 + 1.2 * hg(cm, .55) * 12.566 * .3;`;
@@ -72,7 +83,7 @@ const COMMON_U = `
   precision highp sampler3D;
   uniform sampler2D uDepth, uTex, uHt; uniform sampler3D uNoise;
   uniform mat4 uInvProj; uniform mat3 uCamRot; uniform vec3 uCam;
-  uniform float uNear, uFar, uTime, uDens, uH, uYmax, uHtMax, uFrame, uNT;
+  uniform float uNear, uFar, uTime, uDens, uH, uYmax, uHtMax, uFrame, uNT, uJit;
   uniform vec4 uTiles; uniform vec2 uTexel, uGo, uGs;
   uniform vec3 uSun, uSunCol, uMoon, uAmb, uMoonCol, uOff;
   uniform float uSunI, uCity, uEX, uDbg, uFollow, uSoft, uDetail, uWarp, uDither;
@@ -122,7 +133,8 @@ const FOG_FS = COMMON_U + TILE + `
     gl_FragColor = vec4(C, 1. - T);
   }`;
 
-/* ---- technique 2: voxel volume. Bake A: density per voxel. Volume layer v (0..1) sits at y = ground * uFollow + v * uVH (scene units). */
+/* ---- technique 2: voxel volume. Bake A: density per voxel for ONE data hour (uFrame is an integer here).
+   Volume layer v (0..1) sits at y = ground * uFollow + v * uVH (scene units). */
 const BAKE_A = `
   precision highp float; precision highp sampler3D; varying vec2 vUv;
   uniform sampler2D uTex, uHt; uniform sampler3D uNoise;
@@ -135,8 +147,7 @@ const BAKE_A = `
     float gh = texture2D(uHt, q).r * uHtMax;
     float base = gh * uFollow, y = base + v * uVH;
     if (y < gh) { gl_FragColor = vec4(0.); return; }
-    float fa = floor(uFrame), ft = uFrame - fa;
-    float px = mix(tile(fa, q), tile(fa + 1., q), ft) * 255.;
+    float px = tile(uFrame, q) * 255.;
     float cov = max(clamp(sqrt(px / ${PX_REF.toFixed(1)}) * uDens, 0., 1.), uDbg);
     if (cov < .004) { gl_FragColor = vec4(0.); return; }
     // world metres; non-commensurate tile sizes and rotations so the 64^3 noise never repeats visibly over the grid
@@ -169,24 +180,42 @@ const BAKE_B = `
     gl_FragColor = vec4(texture(uA, vec3(vUv, v)).r, exp(-tau), 0., 1.);
   }`;
 
+/* Voxel render: two hour volumes A and B blended by uMixT; with advection the two are shifted along the wind so the noise drifts
+   instead of cross-fading. Rays jump over columns the coarse occupancy grid marks empty. */
 const VOX_FS = COMMON_U + `
-  uniform sampler3D uVol; uniform float uVH, uK, uShadow;
+  uniform sampler3D uVolA, uVolB; uniform sampler2D uOcc; uniform vec2 uOccN, uDrift;
+  uniform float uVHa, uVHb, uMixT, uK, uShadow, uSkip;
   void main(){` + RAY + `
     float sy = max(uSun.y, .15);
-    for (int i = 0; i < 48; i++) {
-      if (i >= uSteps) break;
-      float u0 = (float(i) + jit) / N, u1 = (float(i) + 1. + jit) / N;
+    vec2 rxz = vec2(abs(rd.x) < 1e-6 ? 1e-6 : rd.x, abs(rd.z) < 1e-6 ? 1e-6 : rd.z);
+    vec2 dA = -uDrift * uMixT, dB = uDrift * (1. - uMixT);
+    float fi = 0.;
+    for (int it = 0; it < 96; it++) {
+      if (fi >= N) break;
+      float u0 = (fi + jit) / N, u1 = (fi + 1. + jit) / N;
       float ta = t0 + (t1 - t0) * u0 * u0, tb = t0 + (t1 - t0) * u1 * u1, dt = tb - ta, t = .5 * (ta + tb);
+      fi += 1.;
       vec3 p = ro + rd * t;
       vec2 g = (p.xz - uGo) / uGs, qg = clamp(g, 0., 1.);
-      float inside = 1. - smoothstep(0., 8000., length((g - qg) * uGs));
+      float og = length((g - qg) * uGs);
+      vec2 cell = min(floor(g * uOccN), ceil(uOccN) - 1.);
+      if (uSkip > 0. && og == 0. && texelFetch(uOcc, ivec2(cell), 0).r < .5) { // empty coarse column: jump to where the ray leaves it
+        vec2 bmin = uGo + cell / uOccN * uGs, bmax = bmin + uGs / uOccN;
+        vec2 tt = (mix(bmin, bmax, step(0., rxz)) - p.xz) / rxz;
+        float tE = t + max(min(tt.x, tt.y), 0.) + .5;
+        if (tE >= t1) break;
+        fi = max(fi, floor(sqrt((tE - t0) / (t1 - t0)) * N - jit));
+        continue;
+      }
       float gh = texture2D(uHt, qg).r * uHtMax;
       if (p.y < gh) continue;
-      float v = (p.y - gh * uFollow) / uVH;
-      if (v < 0. || v > 1.) continue;
-      vec2 gm = g; float og = length((g - qg) * uGs); // past the edge: wobble the mirror line so it does not show as a straight seam
+      float base = gh * uFollow, va = (p.y - base) / uVHa, vb = (p.y - base) / uVHb;
+      if (va < 0. || min(va, vb) > 1.) continue;
+      float inside = 1. - smoothstep(0., 8000., og);
+      vec2 gm = g; // past the edge the volume wraps mirrored (fog over the ocean keeps its texture); wobble the mirror line so it shows no seam
       if (og > 0.) gm += (texture(uNoise, vec3(p.x / 1900., .5, p.z / 1900.)).rb - .5) * min(og, 1500.) / uGs * 1.4;
-      vec2 s = texture(uVol, vec3(gm, v)).rg; // unclamped: the volume wraps mirrored past the grid edge, so fog over the ocean keeps its texture instead of stretching into streaks
+      vec2 s = va <= 1. ? texture(uVolA, vec3(gm + dA, va)).rg : vec2(0., 1.);
+      if (uMixT > .001) s = mix(s, vb <= 1. ? texture(uVolB, vec3(gm + dB, vb)).rg : vec2(0., 1.), uMixT);
       float d = s.r * inside;
       if (d < .002) continue;
       // fine erosion close to the camera only (fades out where steps get long, so it cannot alias into streaks)
@@ -196,13 +225,17 @@ const VOX_FS = COMMON_U + `
       float sh = pow(tr, 1. / sy);
       vec3 L = uAmb * (.4 + .6 * sqrt(tr)) + uSunCol * (sh + .2 * sqrt(sh)) * ph * uSunI;
       L += uMoonCol * phm * max(uMoon.y, 0.) * sqrt(tr);
-      L += vec3(1., .55, .22) * uCity * .02 * (1. - v) * (.4 + .6 * d);
+      L += vec3(1., .55, .22) * uCity * .02 * (1. - va) * (.4 + .6 * d);
       float a = 1. - exp(-d * uK * dt);
       C += T * a * L; T *= 1. - a;
       if (T < .02) break;
     }
     gl_FragColor = vec4(C, 1. - T);
   }`;
+
+/* running average for still-frame refinement */
+const ACC_FS = `precision highp float; varying vec2 vUv; uniform sampler2D uPrev, uNew; uniform float uW;
+  void main(){ gl_FragColor = mix(texture2D(uPrev, vUv), texture2D(uNew, vUv), uW); }`;
 
 const COMP_FS = `
   precision highp float; varying vec2 vUv; uniform sampler2D uScene, uFog, uDepthC; uniform vec2 uFogTexel; uniform float uNearC, uFarC, uBlur;
@@ -214,7 +247,7 @@ const COMP_FS = `
       for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
         if (i == 0 && j == 0) continue;
         vec2 uv2 = vUv + vec2(float(i), float(j)) * uFogTexel * 1.25;
-        float w = exp(-abs(lin(uv2) - dc) / (dc * .04 + 1.)) * (i == 0 || j == 0 ? .8 : .55);
+        float w = exp(-abs(lin(uv2) - dc) / (dc * .04 + 1.)) * (i == 0 || j == 0 ? .8 : .55) * uBlur;
         acc += texture2D(uFog, uv2) * w; ws += w;
       }
       f = acc / ws;
@@ -268,32 +301,48 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     uDepth: { value: null }, uTex: { value: null }, uHt: { value: null },
     uInvProj: { value: new THREE.Matrix4() }, uCamRot: { value: new THREE.Matrix3() }, uCam: { value: V3() },
     uNear: { value: 8 }, uFar: { value: 90000 }, uTime: { value: 0 }, uDens: { value: 1 }, uH: { value: 300 * EX }, uYmax: { value: 900 }, uHtMax: { value: 1 },
-    uFrame: { value: 0 }, uNT: { value: 1 }, uTiles: { value: new THREE.Vector4() }, uTexel: { value: V2() },
+    uFrame: { value: 0 }, uNT: { value: 1 }, uJit: { value: 0 }, uTiles: { value: new THREE.Vector4() }, uTexel: { value: V2() },
     uGo: { value: V2() }, uGs: { value: new THREE.Vector2(1, 1) }, uOff: { value: V3() },
     uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: V3() }, uMoon: { value: new THREE.Vector3(0, -1, 0) }, uAmb: { value: new THREE.Vector3(.3, .36, .5) }, uMoonCol: { value: V3() },
     uDbg: { value: new URLSearchParams(location.search).has('fogdbg') ? 0.6 : 0 }, uNoise: { value: noiseTex }, uSunI: { value: 0 }, uCity: { value: 0 }, uEX: { value: EX },
     uSteps: { value: 8 }, uOct: { value: 2 }, uFollow: { value: 1 }, uSoft: { value: .35 }, uDetail: { value: 1 }, uWarp: { value: 1 }, uDither: { value: 1 },
-    uVol: { value: null }, uVH: { value: 300 }, uK: { value: .0231 }, uShadow: { value: 1 },
+    uVolA: { value: null }, uVolB: { value: null }, uVHa: { value: 300 }, uVHb: { value: 300 }, uMixT: { value: 0 }, uDrift: { value: V2() },
+    uOcc: { value: null }, uOccN: { value: new THREE.Vector2(1, 1) }, uSkip: { value: 1 }, uK: { value: .0231 }, uShadow: { value: 1 },
   };
   const quad = (fs, uni) => { const m = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: VERT, fragmentShader: fs, depthTest: false, depthWrite: false }); const s = new THREE.Scene(), me = new THREE.Mesh(quadGeo, m); me.frustumCulled = false; s.add(me); return s; };
   const marchScene = quad(FOG_FS, U), voxScene = quad(VOX_FS, U);
   const CU = { uScene: { value: null }, uFog: { value: null }, uDepthC: { value: null }, uFogTexel: { value: V2() }, uNearC: { value: 8 }, uFarC: { value: 90000 }, uBlur: { value: 1 } };
   const compScene = quad(COMP_FS, CU);
-  // voxel bake passes (uniform objects shared with U where the value is the same)
-  const BA = { uTex: U.uTex, uHt: U.uHt, uNoise: U.uNoise, uTiles: U.uTiles, uTexel: U.uTexel, uGo: U.uGo, uGs: U.uGs, uOff: U.uOff, uNT: U.uNT, uFrame: U.uFrame, uHtMax: U.uHtMax,
-    uFollow: U.uFollow, uVH: U.uVH, uTop: { value: 200 }, uDens: U.uDens, uSoft: U.uSoft, uBump: { value: .25 }, uWarp: U.uWarp, uEX: U.uEX, uLayer: { value: 0 }, uD: { value: 24 }, uDbg: U.uDbg };
-  const BB = { uA: { value: null }, uLayer: BA.uLayer, uD: BA.uD, uVH: U.uVH, uK: { value: .0231 } };
+  const AU = { uPrev: { value: null }, uNew: { value: null }, uW: { value: 1 } };
+  const accScene = quad(ACC_FS, AU);
+  // voxel bake passes (uniform objects shared with U where the value is the same for every hour)
+  const BA = { uTex: U.uTex, uHt: U.uHt, uNoise: U.uNoise, uTiles: U.uTiles, uTexel: U.uTexel, uGo: U.uGo, uGs: U.uGs, uOff: { value: V3() }, uNT: U.uNT, uFrame: { value: 0 }, uHtMax: U.uHtMax,
+    uFollow: U.uFollow, uVH: { value: 300 }, uTop: { value: 200 }, uDens: U.uDens, uSoft: U.uSoft, uBump: { value: .25 }, uWarp: U.uWarp, uEX: U.uEX, uLayer: { value: 0 }, uD: { value: 24 }, uDbg: U.uDbg };
+  const BB = { uA: { value: null }, uLayer: BA.uLayer, uD: BA.uD, uVH: BA.uVH, uK: { value: .0231 } };
   const bakeAScene = quad(BAKE_A, BA), bakeBScene = quad(BAKE_B, BB);
-  let volA = null, volB = null, volKey = '', dirty = true, lastBake = 0, bakeMs = 0;
 
   let tier = isTouch ? 2 : 3, want = true, ready = false, last = null, lastNow = 0, tex = null, htTex = null, grid = null, lastL = null, wx = null, topM = 200;
   const qs = new URLSearchParams(location.search); if (qs.has('tier')) tier = Math.max(0, Math.min(3, +qs.get('tier') || 0));
   const baseTier = tier || 3;
-  const dts = []; let sceneRT = null, fogRT = null, rtW = 0, rtH = 0, rtMs = -1, rtScale = -1;
+  const dts = []; let sceneRT = null, fogRT = null, motionRT = null, accRT = [null, null], rtW = 0, rtH = 0, rtMs = -1, rtScale = -1;
   const sz = new THREE.Vector2();
 
+  // ---- voxel state: hour volume cache, occupancy, refinement
+  const cache = []; // { k, rt, ver, vh, used }
+  let scratch = null, volKey = '', bakeVer = 0, bakeMs = 0, bakes = 0, frameNo = 0;
+  let spritePx = null, spriteW = 0, occTex = null, occKey = '';
+  let accN = 0, accCur = 0, lastKey = '', lastMoveT = -1e9, lastFullT = 0, phase = 'off', lastR = null, lastScn = null, lastCam = null;
+  const camEls = new Float64Array(32);
+  let stepMin = 60;
+
   const scaleNow = () => (P.res > 0 ? P.res : TIERS[tier].scale);
-  function disposeRT() { if (sceneRT) { sceneRT.dispose(); sceneRT.depthTexture && sceneRT.depthTexture.dispose(); } if (fogRT) fogRT.dispose(); sceneRT = fogRT = null; }
+  const vres = () => P.vres || (isTouch ? 1 : 2), vlayers = () => P.vlayers || (isTouch ? 16 : 24);
+  const rtOpts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false };
+  function disposeRT() {
+    if (sceneRT) { sceneRT.dispose(); sceneRT.depthTexture && sceneRT.depthTexture.dispose(); }
+    [fogRT, motionRT, accRT[0], accRT[1]].forEach((r) => r && r.dispose());
+    sceneRT = fogRT = motionRT = null; accRT = [null, null]; accN = 0;
+  }
   function ensureRT(renderer) {
     const T = TIERS[tier], sc = scaleNow(); renderer.getDrawingBufferSize(sz);
     const w = Math.max(2, sz.x | 0), h = Math.max(2, sz.y | 0);
@@ -301,27 +350,100 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     disposeRT(); rtW = w; rtH = h; rtMs = T.ms; rtScale = sc;
     const dt = new THREE.DepthTexture(w, h); dt.format = THREE.DepthFormat; dt.type = THREE.UnsignedIntType;
     sceneRT = new THREE.WebGLRenderTarget(w, h, { samples: T.ms, depthTexture: dt, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.UnsignedByteType });
-    fogRT = new THREE.WebGLRenderTarget(Math.max(2, Math.round(w * sc)), Math.max(2, Math.round(h * sc)), { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
-    U.uDepth.value = sceneRT.depthTexture; CU.uScene.value = sceneRT.texture; CU.uFog.value = fogRT.texture; CU.uDepthC.value = sceneRT.depthTexture; CU.uFogTexel.value.set(1 / fogRT.width, 1 / fogRT.height);
+    const fw = Math.max(2, Math.round(w * sc)), fh = Math.max(2, Math.round(h * sc));
+    fogRT = new THREE.WebGLRenderTarget(fw, fh, rtOpts);
+    motionRT = new THREE.WebGLRenderTarget(Math.max(2, fw >> 1), Math.max(2, fh >> 1), rtOpts);
+    accRT = [new THREE.WebGLRenderTarget(fw, fh, rtOpts), new THREE.WebGLRenderTarget(fw, fh, rtOpts)];
+    U.uDepth.value = sceneRT.depthTexture; CU.uScene.value = sceneRT.texture; CU.uDepthC.value = sceneRT.depthTexture;
   }
 
-  function ensureVol() {
+  /* ---- hour volumes */
+  function ensureVolStore() {
     if (!grid) return false;
-    const w = grid.w * P.vres, h = grid.h * P.vres, d = P.vlayers, key = w + 'x' + h + 'x' + d;
-    if (volA && key === volKey) return true;
-    if (volA) { volA.dispose(); volB.dispose(); }
-    const o = { depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.UnsignedByteType };
-    volA = new THREE.WebGL3DRenderTarget(w, h, d, { ...o, format: THREE.RedFormat });
-    volB = new THREE.WebGL3DRenderTarget(w, h, d, { ...o, format: THREE.RGFormat });
-    [[volA, THREE.RedFormat], [volB, THREE.RGFormat]].forEach(([r, f]) => { const t = r.texture; t.format = f; t.type = THREE.UnsignedByteType; t.minFilter = t.magFilter = THREE.LinearFilter; t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; t.wrapR = THREE.ClampToEdgeWrapping; t.generateMipmaps = false; });
-    volKey = key; BA.uD.value = d; BB.uA.value = volA.texture; U.uVol.value = volB.texture; dirty = true;
+    const w = grid.w * vres(), h = grid.h * vres(), d = vlayers(), key = w + 'x' + h + 'x' + d;
+    if (scratch && key === volKey) return true;
+    cache.forEach((e) => e.rt.dispose()); cache.length = 0; if (scratch) scratch.dispose();
+    const o = { depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.UnsignedByteType, format: THREE.RedFormat };
+    scratch = new THREE.WebGL3DRenderTarget(w, h, d, o); setupVolTex(scratch.texture, THREE.RedFormat);
+    volKey = key; BA.uD.value = d; BB.uA.value = scratch.texture;
     return true;
   }
-  function bake(renderer) {
-    const t0 = performance.now();
-    for (let l = 0; l < P.vlayers; l++) { BA.uLayer.value = l; renderer.setRenderTarget(volA, l); renderer.render(bakeAScene, ortho); }
-    for (let l = 0; l < P.vlayers; l++) { BA.uLayer.value = l; renderer.setRenderTarget(volB, l); renderer.render(bakeBScene, ortho); }
-    bakeMs = performance.now() - t0; dirty = false; lastBake = t0;
+  function setupVolTex(t, f) { t.format = f; t.type = THREE.UnsignedByteType; t.minFilter = t.magFilter = THREE.LinearFilter; t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; t.wrapR = THREE.ClampToEdgeWrapping; t.generateMipmaps = false; }
+  function newVolRT() {
+    const [w, h, d] = volKey.split('x').map(Number);
+    const r = new THREE.WebGL3DRenderTarget(w, h, d, { depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.UnsignedByteType, format: THREE.RGFormat });
+    setupVolTex(r.texture, THREE.RGFormat); return r;
+  }
+  const hoursOf = (k) => k * (grid ? grid.frame_min || 60 : 60) / 60; // data hour k -> hours since the start
+  function topForHour(k) {
+    if (P.topSrc === 'fixed') return P.topFixed;
+    if (wx && wx.series) return topAt(wx.series, hoursOf(k) * 60 / stepMin, P);
+    if (wx && wx.top != null) return Math.min(P.topMax, Math.max(P.topMin, wx.top));
+    return 200;
+  }
+  function windOffset(hours, out) { // metres the noise has drifted with the mean wind after `hours`
+    if (wx && wx.wind && P.advect > 0) out.set(wx.wind[0], 0, wx.wind[1]).multiplyScalar(hours * 3600 * P.advect); else out.set(0, 0, 0);
+    return out;
+  }
+  function bakeHour(renderer, e, k) {
+    const t0 = performance.now(), top = topForHour(k) * EX, vh = top * (1 + P.bump * .8) + 4, D = vlayers();
+    BA.uFrame.value = k; BA.uTop.value = top; BA.uVH.value = vh; windOffset(hoursOf(k), BA.uOff.value);
+    for (let l = 0; l < D; l++) { BA.uLayer.value = l; renderer.setRenderTarget(scratch, l); renderer.render(bakeAScene, ortho); }
+    for (let l = 0; l < D; l++) { BA.uLayer.value = l; renderer.setRenderTarget(e.rt, l); renderer.render(bakeBScene, ortho); }
+    e.k = k; e.ver = bakeVer; e.vh = vh; e.stamp = ++bakes;
+    bakeMs = performance.now() - t0; // CPU-side submit time (the GPU work is asynchronous); bench() measures it synchronously
+  }
+  function getVol(renderer, k, budget, keep) {
+    let e = cache.find((c) => c.k === k);
+    if (e && e.ver === bakeVer) { e.used = frameNo; return e; }
+    if (budget.n <= 0) return e || null; // stale (or nothing): reuse what there is, bake next frame
+    if (!e) {
+      if (cache.length < 3) { e = { k, rt: newVolRT(), ver: -1 }; cache.push(e); }
+      else { e = cache.filter((c) => !keep.includes(c.k)).sort((a, b) => a.used - b.used)[0]; }
+    }
+    budget.n--; bakeHour(renderer, e, k); e.used = frameNo; return e;
+  }
+
+  /* ---- coarse occupancy (320 m columns) from the sprite pixels, for hours kA and kB, dilated so drift and filtering never cut fog off */
+  function readSprite(img) {
+    try {
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      const cx = c.getContext('2d', { willReadFrequently: true }); cx.drawImage(img, 0, 0);
+      const d = cx.getImageData(0, 0, img.width, img.height).data, out = new Uint8Array(img.width * img.height);
+      for (let i = 0, j = 0; i < out.length; i++, j += 4) out[i] = d[j];
+      spritePx = out; spriteW = img.width;
+    } catch (e) { spritePx = null; } // unreadable: no skipping
+  }
+  function updateOcc(kA, kB) {
+    if (!grid) return;
+    const ow = Math.ceil(grid.w / OCC_CELLS), oh = Math.ceil(grid.h / OCC_CELLS);
+    const drift = P.advect > 0 && wx && wx.wind ? Math.hypot(wx.wind[0], wx.wind[1]) * 3600 * P.advect : 0;
+    const r = 1 + Math.ceil(drift / (OCC_CELLS * grid.cell_m));
+    const key = [kA, kB, ow, oh, r, U.uDbg.value > 0, !!spritePx, U.uDens.value > 0].join(',');
+    if (key === occKey && occTex) return; occKey = key;
+    const raw = new Uint8Array(ow * oh);
+    if (!spritePx || U.uDbg.value > 0) raw.fill(255);
+    else for (const k of [kA, kB]) {
+      const tr = Math.floor(k / grid.cols), tc = k - tr * grid.cols, x0 = tc * grid.w, y0 = tr * grid.h;
+      for (let y = 0; y < grid.h; y++) {
+        const row = (y0 + y) * spriteW + x0, oy = Math.floor(y / OCC_CELLS) * ow;
+        for (let x = 0; x < grid.w; x++) if (spritePx[row + x] > 0) raw[oy + Math.floor(x / OCC_CELLS)] = 255;
+      }
+    }
+    const occ = new Uint8Array(ow * oh);
+    for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
+      let m = 0;
+      for (let dy = -r; dy <= r && !m; dy++) for (let dx = -r; dx <= r; dx++) {
+        const yy = y + dy, xx = x + dx; if (yy < 0 || yy >= oh || xx < 0 || xx >= ow) continue;
+        if (raw[yy * ow + xx]) { m = 255; break; }
+      }
+      occ[y * ow + x] = m;
+    }
+    if (occTex && (occTex.image.width !== ow || occTex.image.height !== oh)) { occTex.dispose(); occTex = null; }
+    if (!occTex) { occTex = new THREE.DataTexture(occ, ow, oh, THREE.RedFormat, THREE.UnsignedByteType); occTex.minFilter = occTex.magFilter = THREE.NearestFilter; occTex.flipY = false; }
+    else occTex.image.data.set(occ);
+    occTex.needsUpdate = true; U.uOcc.value = occTex;
+    U.uOccN.value.set(grid.w / OCC_CELLS, grid.h / OCC_CELLS); // the grid measured in occupancy cells (the last cell may be partial)
   }
 
   /* everything that depends on settings, time or weather */
@@ -329,20 +451,19 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     const h = wx ? wx.at : 0; topM = topAt(wx && wx.series, h, P);
     if (P.topSrc !== 'fixed' && wx && !wx.series && wx.top != null) topM = Math.min(P.topMax, Math.max(P.topMin, wx.top));
     const top = topM * EX, mx = U.uHtMax.value;
-    U.uH.value = top; BA.uTop.value = top; U.uVH.value = top * (1 + P.bump * .8) + 4;
-    U.uYmax.value = mx * P.follow + (P.mode === 'voxel' ? U.uVH.value : top) + 2;
-    // noise drift with the mean wind over the series, driven by simulation time so a paused view stays still
-    if (wx && wx.wind && P.advect > 0) U.uOff.value.set(wx.wind[0], 0, wx.wind[1]).multiplyScalar(h * 3600 * P.advect); else U.uOff.value.set(0, 0, 0);
-    dirty = true;
+    U.uH.value = top;
+    if (P.mode !== 'voxel') U.uYmax.value = mx * P.follow + top + 2;
+    windOffset(U.uFrame.value * (grid ? grid.frame_min || 60 : 60) / 60, U.uOff.value);
   }
   function applyParams() {
     U.uFollow.value = P.follow; U.uSoft.value = P.soft; U.uDetail.value = P.detail; U.uWarp.value = P.warp; U.uDither.value = P.dither;
-    BA.uBump.value = P.bump; U.uShadow.value = P.shadow; CU.uBlur.value = qs.get('blur') === '0' ? 0 : P.blur;
+    BA.uBump.value = P.bump; U.uShadow.value = P.shadow; U.uSkip.value = P.skip ? 1 : 0;
     const K = .0105 / EX * 2.2 * 1.5; U.uK.value = K; BB.uK.value = K * .55; // shadow uses a lower extinction: forward scattering lets more sun through
     if (P.mode === 'sheets') { if (tier !== 0) setTier(0, 'lab'); }
     else if (tier === 0) setTier(baseTier, 'lab');
-    applyTop(); if (lastL) setLight(lastL);
+    bakeVer++; occKey = ''; applyTop(); if (lastL) setLight(lastL);
   }
+  let lightSig = '';
   function setLight(L) {
     if (!L) return; lastL = L;
     const lin = (a) => a.map((x) => Math.pow(Math.max(x, 0), 2.2));
@@ -351,6 +472,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     U.uSun.value.set(...L.sunDir); U.uSunCol.value.set(...L.sunCol); U.uSunI.value = (Math.max(L.sunDir[1], 0) > 0 ? 1.1 : 0) * P.sun;
     U.uMoon.value.set(...L.moonDir); U.uMoonCol.value.set(.35, .42, .6).multiplyScalar(.28 * L.illum * P.night);
     U.uCity.value = Math.min(1, Math.max(0, (-L.sunEl - 4) / 10));
+    lightSig = [U.uAmb.value.toArray(), U.uSun.value.toArray(), U.uSunCol.value.toArray(), U.uSunI.value, U.uMoon.value.toArray(), U.uMoonCol.value.toArray(), U.uCity.value].join();
   }
 
   function setTier(n, why) {
@@ -365,7 +487,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     return new Promise((resolve) => {
       new THREE.TextureLoader().load(png, (t) => {
         t.minFilter = t.magFilter = THREE.LinearFilter; t.generateMipmaps = false; t.flipY = false; t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-        if (tex) tex.dispose(); tex = t;
+        if (tex) tex.dispose(); tex = t; readSprite(t.image);
         const meta = getMeta(), terrainH = getTerrainH(), wm = g.w * g.cell_m, hm = g.h * g.cell_m, ox = g.x0 - meta.x0, oz = -(g.y0 - meta.y0);
         // ground height texture (scene units, 1 texel per fog cell), 8 bit: height / uHtMax
         const w = g.w, h = g.h, raw = new Float32Array(w * h); let mx = 1;
@@ -383,40 +505,126 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     });
   }
 
-  function renderFrame(renderer, scn, camera) {
-    if (tier === 0 || !ready || !want) { renderer.render(scn, camera); return; }
-    const T = TIERS[tier], vox = P.mode === 'voxel'; ensureRT(renderer);
-    const prev = renderer.getRenderTarget();
-    if (vox && ensureVol() && dirty && performance.now() - lastBake > 33) bake(renderer); // at most ~30 bakes a second while the time slider moves
+  function camMoved(camera) {
+    const a = camera.matrixWorld.elements, b = camera.projectionMatrix.elements; let moved = false;
+    for (let i = 0; i < 16; i++) {
+      if (Math.abs(camEls[i] - a[i]) > 1e-4 * (1 + Math.abs(a[i]))) moved = true; camEls[i] = a[i];
+      if (Math.abs(camEls[16 + i] - b[i]) > 1e-6 * (1 + Math.abs(b[i]))) moved = true; camEls[16 + i] = b[i];
+    }
+    return moved;
+  }
+  function setCamUniforms(camera) {
     U.uInvProj.value.copy(camera.projectionMatrixInverse); U.uCamRot.value.setFromMatrix4(camera.matrixWorld); U.uCam.value.copy(camera.position);
     U.uNear.value = CU.uNearC.value = camera.near; U.uFar.value = CU.uFarC.value = camera.far;
-    U.uSteps.value = Math.min(48, P.steps > 0 ? P.steps : (vox ? T.vsteps : T.steps)); U.uOct.value = T.oct;
+  }
+  function stepsFor(vox) { const T = TIERS[tier]; return Math.min(48, P.steps > 0 ? P.steps : (vox ? T.vsteps : T.steps)); }
+  function fogPass(renderer, target, steps, jit) {
+    U.uSteps.value = steps; U.uJit.value = jit;
+    renderer.setRenderTarget(target); renderer.render(P.mode === 'voxel' ? voxScene : marchScene, ortho);
+  }
+  /* pick and (if needed) bake the hour volumes for the shown time; sets the voxel uniforms; returns a state signature */
+  function prepVoxel(renderer) {
+    if (!ensureVolStore()) return null;
+    frameNo++;
+    const f = Math.max(0, Math.min(U.uNT.value - 1, U.uFrame.value)), kA = Math.floor(f), kB = Math.min(kA + 1, U.uNT.value - 1);
+    let mixT = kB > kA ? f - kA : 0;
+    const budget = { n: cache.some((c) => c.ver === bakeVer) ? 1 : 2 }; // bake at most one hour per frame once something is on screen
+    let eA = getVol(renderer, kA, budget, [kA, kB]), eB = mixT > .001 ? getVol(renderer, kB, budget, [kA, kB]) : null;
+    if (!eA && eB) { eA = eB; mixT = 0; }
+    if (!eA) return null;
+    if (!eB) { eB = eA; if (eA.k !== kB) mixT = 0; }
+    U.uVolA.value = eA.rt.texture; U.uVolB.value = eB.rt.texture; U.uVHa.value = eA.vh; U.uVHb.value = eB.vh; U.uMixT.value = mixT;
+    U.uYmax.value = U.uHtMax.value * P.follow + Math.max(eA.vh, eB.vh) + 2;
+    if (P.advect > 0 && wx && wx.wind && grid) { const s = 3600 * (grid.frame_min || 60) / 60 * P.advect; U.uDrift.value.set(wx.wind[0] * s / U.uGs.value.x, wx.wind[1] * s / U.uGs.value.y); }
+    else U.uDrift.value.set(0, 0);
+    updateOcc(eA.k, eB.k);
+    return `${eA.k}:${eA.stamp}|${eB.k}:${eB.stamp}|${mixT.toFixed(4)}`;
+  }
+
+  function renderFrame(renderer, scn, camera) {
+    lastR = renderer; lastScn = scn; lastCam = camera;
+    if (tier === 0 || !ready || !want) { phase = 'off'; renderer.render(scn, camera); return; }
+    const vox = P.mode === 'voxel', prev = renderer.getRenderTarget(), now = performance.now();
+    ensureRT(renderer);
+    const vsig = vox ? prepVoxel(renderer) : '';
+    if (vox && vsig === null) { renderer.setRenderTarget(prev); renderer.render(scn, camera); phase = 'waiting for data'; return; }
+    setCamUniforms(camera);
     renderer.setRenderTarget(sceneRT); renderer.render(scn, camera);
-    renderer.setRenderTarget(fogRT); renderer.render(vox ? voxScene : marchScene, ortho);
+    if (!vox) { // procedural march: unchanged pipeline (its noise drifts with wall time, so every frame is new)
+      fogPass(renderer, fogRT, stepsFor(false), 0); CU.uFog.value = fogRT.texture; CU.uBlur.value = qs.get('blur') === '0' ? 0 : P.blur;
+      CU.uFogTexel.value.set(1 / fogRT.width, 1 / fogRT.height); phase = 'march';
+    } else {
+      if (camMoved(camera)) { lastMoveT = now; accN = 0; }
+      const key = [vsig, U.uDens.value, lightSig, U.uDbg.value, rtW, rtH, rtScale, U.uOff.value.x, U.uOff.value.z, bakeVer].join('|');
+      if (key !== lastKey) { lastKey = key; accN = 0; }
+      if (now - lastFullT > 3000 && accN >= P.accum) accN = 0; // refresh now and then (catches scene changes the fog cannot see)
+      const blur0 = qs.get('blur') === '0' ? 0 : P.blur;
+      if (P.motion && now - lastMoveT < 150) { // camera moving: half resolution, fewer steps, no refinement
+        fogPass(renderer, motionRT, Math.max(6, Math.round(stepsFor(true) * P.motionSteps)), 0);
+        CU.uFog.value = motionRT.texture; CU.uFogTexel.value.set(1 / motionRT.width, 1 / motionRT.height); CU.uBlur.value = blur0; accN = 0; phase = 'moving';
+      } else if (P.accum > 0) {
+        if (accN < P.accum) { // one more jittered full-quality pass, averaged in
+          fogPass(renderer, fogRT, stepsFor(true), accN === 0 ? 0 : (accN * 0.6180339887) % 1);
+          const dst = accRT[accCur ^ 1]; AU.uPrev.value = accRT[accCur].texture; AU.uNew.value = fogRT.texture; AU.uW.value = 1 / (accN + 1);
+          renderer.setRenderTarget(dst); renderer.render(accScene, ortho); accCur ^= 1; accN++; lastFullT = now; phase = 'refining';
+        } else phase = 'still (fog reused)';
+        CU.uFog.value = accRT[accCur].texture; CU.uFogTexel.value.set(1 / fogRT.width, 1 / fogRT.height); CU.uBlur.value = blur0 * Math.max(0, 1 - (accN - 1) / 4);
+      } else {
+        fogPass(renderer, fogRT, stepsFor(true), 0); CU.uFog.value = fogRT.texture; CU.uFogTexel.value.set(1 / fogRT.width, 1 / fogRT.height); CU.uBlur.value = blur0; phase = 'every frame';
+      }
+    }
     renderer.setRenderTarget(prev); renderer.render(compScene, ortho);
   }
 
+  /* lab benchmark: median ms of the fog pass alone (GPU-synchronised with a 1-pixel read), plus a synchronised bake of one hour */
+  function bench(n = 5, opts = {}) {
+    const r = lastR; if (!r || !fogRT || tier === 0) return null;
+    const gl = r.getContext(), px = new Uint8Array(4), vox = P.mode === 'voxel', prev = r.getRenderTarget();
+    if (lastCam) setCamUniforms(lastCam);
+    if (vox) prepVoxel(r);
+    const steps = opts.motion ? Math.max(6, Math.round(stepsFor(vox) * P.motionSteps)) : stepsFor(vox), target = opts.motion ? motionRT : fogRT;
+    const times = [];
+    fogPass(r, target, steps, 0); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); // warm-up
+    for (let i = 0; i < n; i++) { const t0 = performance.now(); fogPass(r, target, steps, 0); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); times.push(performance.now() - t0); }
+    let bake = null;
+    if (vox && opts.bake !== false && cache.length) {
+      const e = cache[0], t0 = performance.now(); bakeHour(r, e, e.k); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); bake = performance.now() - t0;
+    }
+    r.setRenderTarget(prev); accN = 0;
+    times.sort((a, b) => a - b);
+    return { ms: times[times.length >> 1], min: times[0], steps, res: scaleNow() * (opts.motion ? .5 : 1), mode: P.mode, bakeMs: bake, size: [target.width, target.height], info: info() };
+  }
+
   const stats = () => { if (!dts.length) return { med: 0, p95: 0 }; const s = [...dts].sort((a, b) => a - b); return { med: s[s.length >> 1], p95: s[Math.min(s.length - 1, Math.floor(s.length * .95))] }; };
+  function info() {
+    if (!tier) return 'fog tier 0 (sheets)';
+    const vox = P.mode === 'voxel', st = stepsFor(vox);
+    if (!vox) return `fog march tier ${tier} (${st} steps, ${Math.round(scaleNow() * 100)}% res) top ${Math.round(topM)} m`;
+    const [w, h, d] = (volKey || '0x0x0').split('x');
+    return `fog voxel tier ${tier} (${st} steps, ${Math.round(scaleNow() * 100)}% res, ${w}x${h}x${d} voxels) top ${Math.round(topM)} m\n${phase}${phase === 'refining' ? ' ' + accN + '/' + P.accum : ''}; ${bakes} hour bakes, last ${bakeMs.toFixed(1)} ms submit`;
+  }
 
   return {
-    build, renderFrame,
+    build, renderFrame, bench, info,
     clear() { ready = false; sheets.clear(); },
     get ready() { return ready || sheets.ready; },
     get tier() { return tier; },
     setTier,
     setVisible(v) { want = v; if (tier === 0) sheets.setVisible(v); },
-    setDensity(v) { U.uDens.value = v; sheets.setDensity(v); dirty = true; },
-    setFrame(f) { if (f !== U.uFrame.value) dirty = true; U.uFrame.value = f; sheets.setFrame(f); },
-    /* weather for the shown time: at = fractional hour index into the hourly series, series = fog_top_m, wind_ms/wind_dir = hourly arrays (dir = from, degrees).
-       { top } alone keeps the old behaviour. */
+    setDensity(v) { if (v !== U.uDens.value) { U.uDens.value = v; bakeVer++; occKey = ''; } sheets.setDensity(v); },
+    setFrame(f) { if (f !== U.uFrame.value) { U.uFrame.value = f; applyTop(); } sheets.setFrame(f); },
+    /* weather for the shown time: at = fractional index into the weather series, series = fog_top_m, step_min = weather step,
+       wind_ms/wind_dir = hourly arrays (dir = from, degrees). { top } alone keeps the old behaviour. */
     setWeather(w) {
       if (!w) return;
+      if (w.step_min) stepMin = w.step_min;
       const nw = { top: w.top, at: w.at != null ? w.at : 0, series: w.series || null, windSrc: w.wind_ms || null, wind: wx && wx.windSrc && wx.windSrc === w.wind_ms ? wx.wind : null };
       if (!nw.wind && w.wind_ms && w.wind_dir) { // mean wind vector (towards) in scene axes: x east, z = -north
         let ex = 0, ez = 0, n = 0; w.wind_ms.forEach((s, i) => { const d = w.wind_dir[i]; if (s == null || d == null) return; const r = d * Math.PI / 180; ex += -Math.sin(r) * s; ez += Math.cos(r) * s; n++; });
         nw.wind = n ? [ex / n, ez / n] : null;
       }
-      wx = nw; applyTop();
+      const seriesChanged = !wx || wx.series !== nw.series || wx.windSrc !== nw.windSrc;
+      wx = nw; if (seriesChanged) bakeVer++; applyTop();
     },
     setLight,
     get params() { return { ...P }; },
@@ -430,11 +638,6 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
         const med = stats().med;
         if (med > 22) { dts.length = 0; setTier(tier - 1, med.toFixed(0) + ' ms median'); }
       }
-    },
-    info() {
-      if (!tier) return 'fog tier 0 (sheets)';
-      const T = TIERS[tier], vox = P.mode === 'voxel', st = P.steps > 0 ? P.steps : (vox ? T.vsteps : T.steps);
-      return `fog ${vox ? 'voxel' : 'march'} tier ${tier} (${st} steps, ${Math.round(scaleNow() * 100)}% res${vox ? `, bake ${bakeMs.toFixed(1)} ms` : ''}) top ${Math.round(topM)} m`;
     },
   };
 }

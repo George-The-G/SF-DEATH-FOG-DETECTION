@@ -35,8 +35,13 @@ const CONTROLS = [
   ['Quality'],
   ['steps', 'Steps (0 = auto)', 'range', 0, 48, 1],
   ['res', 'Resolution', 'select', [[0, 'Auto'], [0.5, '50%'], [0.75, '75%'], [1, '100%']]],
-  ['vres', 'Voxel size', 'select', [[1, '80 m'], [2, '40 m']]],
-  ['vlayers', 'Voxel layers', 'select', [[16, '16'], [24, '24'], [32, '32']]],
+  ['vres', 'Voxel size', 'select', [[0, 'Auto'], [1, '80 m'], [2, '40 m']], null, null, 'Auto = 80 m on phones, 40 m on computers'],
+  ['vlayers', 'Voxel layers', 'select', [[0, 'Auto'], [16, '16'], [24, '24'], [32, '32']], null, null, 'Auto = 16 on phones, 24 on computers'],
+  ['Speed-ups (voxel)'],
+  ['skip', 'Skip empty space', 'check', null, null, null, 'Rays jump over 320 m columns that have no fog'],
+  ['accum', 'Still refinement', 'select', [[0, 'Off (draw every frame)'], [4, '4 passes'], [6, '6 passes'], [8, '8 passes']], null, null, 'When nothing moves, average a few passes, then stop drawing the fog and reuse it'],
+  ['motion', 'Cheaper while moving', 'check', null, null, null, 'Half resolution and fewer steps while the camera moves'],
+  ['motionSteps', 'Steps while moving', 'range', 0.3, 1, 0.05],
   ['dither', 'Dither', 'range', 0, 1, 0.05],
   ['blur', 'Blur', 'check'],
   ['auto', 'Auto quality drop', 'check', null, null, null, 'Off in the lab so the look does not change while you compare'],
@@ -73,6 +78,7 @@ export function mountFogLab({ fog, getSky, densEl }) {
   el.innerHTML = `<header><b>Fog lab</b><button data-a="min" title="Collapse">–</button></header><div class="fl-body">
     <div class="presets"></div><div class="ctl"></div>
     <div class="read" aria-live="off"></div>
+    <div class="row"><button data-a="bench" title="Times the fog pass alone (a few seconds)">Measure fog cost</button></div>
     <div class="row"><button data-a="copy">Copy settings</button><button data-a="reset">Reset</button></div></div>`;
   document.body.appendChild(el);
   const pr = el.querySelector('.presets'), ctl = el.querySelector('.ctl'), read = el.querySelector('.read');
@@ -98,7 +104,7 @@ export function mountFogLab({ fog, getSky, densEl }) {
       row.appendChild(inp);
     } else if (kind === 'check') {
       row.className = 'sel'; inp = document.createElement('input'); inp.type = 'checkbox';
-      inp.onchange = () => set({ [k]: k === 'blur' ? (inp.checked ? 1 : 0) : inp.checked });
+      inp.onchange = () => set({ [k]: (k === 'blur' || k === 'skip' || k === 'motion') ? (inp.checked ? 1 : 0) : inp.checked });
       row.appendChild(inp);
     } else {
       inp = document.createElement('input'); inp.type = 'range'; inp.min = a; inp.max = b; inp.step = step;
@@ -123,6 +129,14 @@ export function mountFogLab({ fog, getSky, densEl }) {
     const a = e.target && e.target.dataset ? e.target.dataset.a : null; if (!a) return;
     if (a === 'min') { el.classList.toggle('min'); e.target.textContent = el.classList.contains('min') ? '+' : '–'; }
     if (a === 'reset') set({ ...DEFAULTS, auto: false });
+    if (a === 'bench' && fog.bench) { // fog pass alone, GPU-synchronised: full quality, then the moving-camera version
+      e.target.disabled = true; benchTxt = '\nmeasuring...';
+      setTimeout(() => {
+        const b = fog.bench(8), m = fog.params.mode === 'voxel' ? fog.bench(8, { motion: true, bake: false }) : null;
+        benchTxt = b ? `\nfog pass ${b.ms.toFixed(1)} ms (${b.size[0]}x${b.size[1]}, ${b.steps} steps)` + (m ? `, moving ${m.ms.toFixed(1)} ms` : '') + (b.bakeMs != null ? `, hour bake ${b.bakeMs.toFixed(1)} ms` : '') : '\nnot available';
+        e.target.disabled = false;
+      }, 50);
+    }
     if (a === 'copy') {
       const txt = JSON.stringify({ ...fog.params, density: densEl ? +densEl.value : null });
       const done = () => { e.target.textContent = 'Copied'; setTimeout(() => { e.target.textContent = 'Copy settings'; }, 1500); };
@@ -131,9 +145,10 @@ export function mountFogLab({ fog, getSky, densEl }) {
     }
   });
 
-  // readout: frame time over the last 60 frames, technique, fog top now
+  // readout: frame time over the last 60 frames, technique, fog top now, last measurement
+  let benchTxt = '';
   setInterval(() => {
     const s = fog.stats ? fog.stats() : { med: 0, p95: 0 };
-    read.textContent = `frame ${s.med.toFixed(1)} ms median, ${s.p95.toFixed(1)} ms p95 (~${s.med ? Math.round(1000 / s.med) : '--'} fps)\n${fog.info()}`;
+    read.textContent = `frame ${s.med.toFixed(1)} ms median, ${s.p95.toFixed(1)} ms p95 (~${s.med ? Math.round(1000 / s.med) : '--'} fps)\n${fog.info()}${benchTxt}`;
   }, 500);
 }
