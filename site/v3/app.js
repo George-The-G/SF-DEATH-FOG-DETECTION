@@ -252,14 +252,18 @@ function buildBuildings(buf) {
   }
   const dummy = new THREE.Object3D();
   // far look (beta, Settings > Performance): roof only. Shares the near mesh's buffers, so it costs no extra memory.
-  const roofGeo = new THREE.BufferGeometry();
-  roofGeo.setAttribute('position', new THREE.Float32BufferAttribute([-.5, 1, .5, .5, 1, .5, .5, 1, -.5, -.5, 1, .5, .5, 1, -.5, -.5, 1, -.5], 3));
-  roofGeo.setAttribute('normal', new THREE.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], 3));
+  /* roof quad + a dark contact quad on the ground, a little wider than the footprint. Without the walls the ground behind a tower looked lighter, as if a building were missing;
+     the dark quad stands in for the wall's shade and the shadow it throws. Vertex colours: roof white, contact quad dark (they multiply the per-building tint). */
+  const roofGeo = new THREE.BufferGeometry(), W = 0.75, SH = 0.3;
+  const quadY = (y, w) => [-w, y, w, w, y, w, w, y, -w, -w, y, w, w, y, -w, -w, y, -w];
+  roofGeo.setAttribute('position', new THREE.Float32BufferAttribute([...quadY(1, .5), ...quadY(0.01, W)], 3));
+  roofGeo.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(12).fill([0, 1, 0]).flat(), 3));
+  roofGeo.setAttribute('color', new THREE.Float32BufferAttribute([...new Array(6).fill([1, 1, 1]).flat(), ...new Array(6).fill([SH, SH, SH]).flat()], 3));
   const matFar = PERFON ? mat.clone() : null;
-  if (matFar) matFar.color.setScalar(FAR_TINT);
+  if (matFar) { matFar.color.setScalar(FAR_TINT); matFar.vertexColors = true; matFar.polygonOffset = true; matFar.polygonOffsetFactor = -1; matFar.polygonOffsetUnits = -1; }
   const lodTiles = [];
   const tileOf = new Map(); // tile key -> { ix, iz, far: [meshes shown only far], near: [meshes shown only near] }
-  const tileRec = (key) => { let t = tileOf.get(key); if (!t) { const ix = Math.floor(key / 1000), iz = key - ix * 1000; tileOf.set(key, t = { x0: ix * 1000, x1: ix * 1000 + 1000, z0: -(iz * 1000 + 1000), z1: -iz * 1000, near: [], far: [], isFar: false }); lodTiles.push(t); } return t; };
+  const tileRec = (key) => { let t = tileOf.get(key); if (!t) { const ix = Math.floor(key / 1000), iz = key - ix * 1000; tileOf.set(key, t = { x0: ix * 1000, x1: ix * 1000 + 1000, z0: -(iz * 1000 + 1000), z1: -iz * 1000, near: [], far: [], isFar: false, hmax: 0 }); lodTiles.push(t); } return t; };
   for (const [key, ids] of tiles) {
     const im = new THREE.InstancedMesh(boxGeo, mat, ids.length);
     ids.forEach((k, n) => {
@@ -276,6 +280,7 @@ function buildBuildings(buf) {
       imF.boundingSphere = im.boundingSphere; imF.matrixAutoUpdate = false; imF.visible = false;
       group.add(imF);
       const t = tileRec(key); t.near.push(im); t.far.push(imF);
+      for (const k of ids) t.hmax = Math.max(t.hmax, bh[k] * hQ);
     }
   }
 
@@ -291,7 +296,8 @@ function buildBuildings(buf) {
     let W = null, R = null, Wc = null, Rc = null;
     if (PERFON) {
       const key = Math.floor(sx / n * xyQ / 1000) * 1000 + Math.floor(sz / n * xyQ / 1000);
-      let g = pw.get(key); if (!g) pw.set(key, g = { wp: [], wc: [], rp: [], rc: [] });
+      let g = pw.get(key); if (!g) pw.set(key, g = { wp: [], wc: [], rp: [], rc: [], hmax: 0 });
+      g.hmax = Math.max(g.hmax, ph[k] * hQ);
       W = g.wp; Wc = g.wc; R = g.rp; Rc = g.rc;
     } else { W = R = pos; Wc = Rc = colr; }
     const pushW = (x, y, z) => { W.push(x, y, z); Wc.push(c.r, c.g, c.b); };
@@ -315,6 +321,7 @@ function buildBuildings(buf) {
   if (PERFON) {
     for (const [key, g] of pw) {
       const t = tileRec(key);
+      t.hmax = Math.max(t.hmax, g.hmax);
       if (g.wp.length) t.near.push(polyMesh(g.wp, g.wc, polyMat)); // walls: drawn only near
       if (g.rp.length) polyMesh(g.rp, g.rc, polyMat); // roofs: always
     }
@@ -967,7 +974,10 @@ function updateBuildingLod(force) {
   let nFar = 0, ch = false;
   for (const t of tiles) {
     const dx = Math.max(t.x0 - c.x, 0, c.x - t.x1), dz = Math.max(t.z0 - c.z, 0, c.z - t.z1), d = Math.hypot(dx, c.y, dz);
-    const want = PERF.lod && (t.isFar ? d > dF * 0.9 : d > dF * 1.1);
+    /* taller buildings keep their walls further out (size grows with the square root of the tallest building in the tile), and so do tiles seen side-on:
+       from a steep angle the roofs carry the look, from a low angle the walls are most of what you see (downtown skyline) */
+    const sinE = d > 0 ? c.y / d : 1, side = 1 - sinE * sinE, k = Math.sqrt(Math.max(t.hmax, 16) / 16) * (1 + 1.5 * side), dk = dF * k;
+    const want = PERF.lod && (t.isFar ? d > dk * 0.9 : d > dk * 1.1);
     if (want !== t.isFar || force) { t.isFar = want; for (const m of t.near) m.visible = !want; for (const m of t.far) m.visible = want; ch = true; }
     if (want) nFar++;
   }
