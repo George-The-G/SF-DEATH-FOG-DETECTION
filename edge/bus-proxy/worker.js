@@ -67,6 +67,17 @@ export async function handle(request, env, deps) {
     const H = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
     if (!env.API_KEY_511) return new Response(JSON.stringify({ configured: false, problem: 'secret API_KEY_511 is missing' }), { status: 503, headers: H });
     let ds; try { ds = JSON.parse(env.DISTRICTS || '[]'); } catch { return new Response(JSON.stringify({ configured: true, problem: 'DISTRICTS is not valid JSON' }), { status: 500, headers: H }); }
+    const near = (url.searchParams.get('near') || '').split(',').map(Number), rad = Math.min(1000, Number(url.searchParams.get('r')) || 250);
+    if (near.length === 2 && near.every(Number.isFinite)) { // stop finder: ?near=lat,lon&r=metres lists Muni stops around a point (to pick stopCode values)
+      try {
+        const st = await cached(deps, 'stops', 3600, () => once('stops', async () => {
+          const j = await getUp(deps, env, 'stops', { operator_id: env.AGENCY || 'SF' }), pts = arr(j?.Contents?.dataObjects?.ScheduledStopPoint);
+          return pts.map((p) => [String(p.id), String(p.Name || ''), num(p.Location?.Latitude), num(p.Location?.Longitude)]).filter((p) => Number.isFinite(p[2]));
+        }));
+        const k = Math.cos(near[0] * Math.PI / 180) * 111320, out = st.v.map((p) => ({ stopCode: p[0], name: p[1], m: Math.round(Math.hypot((p[3] - near[1]) * k, (p[2] - near[0]) * 110540)) })).filter((p) => p.m <= rad).sort((x, y) => x.m - y.m).slice(0, 15);
+        return new Response(JSON.stringify({ near, radiusM: rad, of: st.v.length, stops: out }), { headers: H });
+      } catch (e) { return new Response(JSON.stringify({ upstream: redact(e.message, env.API_KEY_511) }), { status: 502, headers: H }); }
+    }
     try {
       const h = await cached(deps, 'health', 120, () => once('health', async () => {
         const j = await getUp(deps, env, 'VehicleMonitoring', { agency: env.AGENCY || 'SF' }), acts = arr(j?.Siri?.ServiceDelivery?.VehicleMonitoringDelivery?.VehicleActivity ?? j?.Siri?.ServiceDelivery?.VehicleMonitoringDelivery?.[0]?.VehicleActivity);
