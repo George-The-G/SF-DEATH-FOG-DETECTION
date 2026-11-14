@@ -9,9 +9,10 @@ const CSS = `
 .bspop .x:hover,.bspop .x:focus-visible{color:#fff;background:#2a3745;outline:none}
 .bspop .ln{display:flex;align-items:center;gap:8px;padding-right:30px}
 .bspop .bd{font:700 13px Inter,system-ui,sans-serif;background:var(--c,#4fd8ee);color:#0b1118;border-radius:5px;padding:1px 7px}
+.bspop .dv{margin-left:auto;font:600 11px Inter,system-ui,sans-serif;color:#e8eef4;background:#0e141b;border:1px solid #2a3745;border-radius:6px;padding:4px 10px;min-height:28px;cursor:pointer}.bspop .dv:hover,.bspop .dv:focus-visible{border-color:var(--c,#4fd8ee);outline:none}.bspop .dv.on{background:var(--c,#4fd8ee);color:#0b1118;border-color:var(--c,#4fd8ee)}
 .bspop .dr{font-size:11.5px;color:#93a3b3;margin-top:2px}
 .bspop .rw{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline;margin:8px 0 4px}
-.bspop .rw span{color:#93a3b3;font-size:12px}.bspop .rw b{font:600 26px Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums}.bspop .rw .b2{font-size:18px}
+.bspop .rw span{color:#93a3b3;font-size:12px;max-width:110px}.bspop .rw b{font:600 26px Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums}.bspop .rw .b2{font-size:18px}
 .bspop .st{font-size:11px;color:#6fdc9b}.bspop .st.stale{color:#f0b24a}.bspop .st.down{color:#ff8a80}.bspop .st.demo{color:#f0b24a}
 .bspop .cr{font-size:10.5px;color:#93a3b3;margin-top:6px;border-top:1px solid #2a3745;padding-top:5px}.bspop .cr a{color:#93a3b3}
 .bsleader{position:fixed;left:0;top:0;width:2px;z-index:29;background:#4fd8ee;opacity:.8;transform-origin:top left;pointer-events:none;display:none}
@@ -65,6 +66,7 @@ export function createStop({ THREE, scene, canvas, camera, id, line, name, dirTe
     id, group: g, isOpen: () => open, open: () => setOpen(true), close: () => setOpen(false),
     /* a = { next: [epoch s...], t: when the feed produced it (epoch s) } or null; status: 'live' | 'down' */
     setArrivals(a, status) { arr = a; this.status = status; },
+    arrivals() { return arr ? arr.next : []; },
     update(now) { // now: epoch seconds
       const sc = getScale(); body.scale.setScalar(1.5 * sc);
       const tt = (performance.now() - t0) / 1000; ring.scale.setScalar(1 + .08 * Math.sin(tt * 3)); ring.material.opacity = .45 + .35 * Math.sin(tt * 3);
@@ -89,5 +91,45 @@ export function createStop({ THREE, scene, canvas, camera, id, line, name, dirTe
       else { leader.style.display = 'block'; leader.style.left = x0 + 'px'; leader.style.top = y0 + 'px'; leader.style.height = len + 'px'; leader.style.transform = `rotate(${Math.atan2(-(x - x0), y - y0)}rad)`; }
     },
     dispose() { scene.remove(g); pop.remove(); leader.remove(); },
+  };
+}
+
+/* Card for a tapped bus: hovers above it (anchored in 3-D like the stop popup) and stays until its X is pressed.
+   info() is called every frame and returns { title, big, bigLabel, lines: [..], mood: 'ok'|'stale'|'down'|'' } for what to show. */
+export function createBusCard({ THREE, camera, line, color, onClose, onDrive }) { // onDrive(true|false): small Drive button, hidden when not given
+  addCss();
+  const pop = document.createElement('div'); pop.className = 'bspop off'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Bus ' + line);
+  pop.style.setProperty('--c', '#' + new THREE.Color(color).getHexString());
+  pop.innerHTML = `<button class="x" aria-label="Close bus card and stop following">&times;</button><div class="ln"><span class="bd"></span><b class="nm"></b>${onDrive ? '<button class="dv" type="button" aria-pressed="false">Drive</button>' : ''}</div>
+    <div class="rw"><span class="bl">To the bottom stop</span><b class="n1">--</b></div><div class="st"></div><div class="dr extra"></div>
+    <div class="cr">Following this bus. Drag to look around, scroll or pinch to zoom.<br>Data provided by <a href="https://511.org" target="_blank" rel="noopener">511.org</a></div>`;
+  const q = (s) => pop.querySelector(s);
+  document.body.appendChild(pop);
+  const leader = document.createElement('div'); leader.className = 'bsleader'; document.body.appendChild(leader);
+  let open = false, driving = false;
+  const setDriving = (on) => { driving = !!on; const b = q('.dv'); if (b) { b.textContent = driving ? 'Stop driving' : 'Drive'; b.classList.toggle('on', driving); b.setAttribute('aria-pressed', String(driving)); } q('.cr').firstChild.textContent = driving ? 'You are driving. Stick or WASD to steer, R for back on the street, Esc to stop.' : 'Following this bus. Drag to look around, scroll or pinch to zoom.'; };
+  const close = () => { if (driving) setDriving(false); open = false; pop.classList.add('off'); leader.style.display = 'none'; if (onClose) onClose(); };
+  if (onDrive) q('.dv').addEventListener('click', (e) => { e.stopPropagation(); onDrive(!driving); });
+  q('.x').addEventListener('click', (e) => { e.stopPropagation(); close(); });
+  pop.addEventListener('pointerdown', (e) => e.stopPropagation());
+  const v = new THREE.Vector3();
+  return {
+    get isOpen() { return open; },
+    show(title) { open = true; q('.nm').textContent = title; q('.bd').textContent = line; pop.classList.remove('off'); },
+    close, setDriving, get driving() { return driving; },
+    update(anchor, info) { // anchor: THREE.Vector3 world point above the bus
+      if (!open) return;
+      q('.n1').textContent = info.big; q('.bl').textContent = info.bigLabel; const st = q('.st'); st.textContent = info.status || ''; st.className = 'st ' + (info.mood || '');
+      q('.extra').textContent = info.extra || '';
+      v.copy(anchor).project(camera);
+      const W = innerWidth, H = innerHeight, pw = pop.offsetWidth, ph = pop.offsetHeight, x = (v.x * .5 + .5) * W, y = (1 - (v.y * .5 + .5)) * H, behind = v.z > 1;
+      pop.classList.toggle('dim', behind);
+      const px = Math.min(W - pw - 6, Math.max(6, x - pw / 2)), py = Math.min(H - ph - 6, Math.max(6, y - ph - 14));
+      pop.style.transform = `translate(${px}px,${py}px)`;
+      const x0 = Math.min(px + pw - 10, Math.max(px + 10, x)), y0 = py + ph, len = Math.hypot(x - x0, y - y0);
+      if (behind || len < 6) leader.style.display = 'none';
+      else { leader.style.display = 'block'; leader.style.left = x0 + 'px'; leader.style.top = y0 + 'px'; leader.style.height = len + 'px'; leader.style.transform = `rotate(${Math.atan2(-(x - x0), y - y0)}rad)`; }
+    },
+    dispose() { pop.remove(); leader.remove(); },
   };
 }
