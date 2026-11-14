@@ -106,7 +106,7 @@ export function createBusCard({ THREE, camera, line, color, onClose, onDrive }) 
   const q = (s) => pop.querySelector(s);
   document.body.appendChild(pop);
   const leader = document.createElement('div'); leader.className = 'bsleader'; document.body.appendChild(leader);
-  let open = false, driving = false;
+  let open = false, driving = false, hidden = false;
   const setDriving = (on) => { driving = !!on; const b = q('.dv'); if (b) { b.textContent = driving ? 'Stop driving' : 'Drive'; b.classList.toggle('on', driving); b.setAttribute('aria-pressed', String(driving)); } q('.cr').firstChild.textContent = driving ? 'You are driving. Stick or WASD to steer, R for back on the street, Esc to stop.' : 'Following this bus. Drag to look around, scroll or pinch to zoom.'; };
   const close = () => { if (driving) setDriving(false); open = false; pop.classList.add('off'); leader.style.display = 'none'; if (onClose) onClose(); };
   if (onDrive) q('.dv').addEventListener('click', (e) => { e.stopPropagation(); onDrive(!driving); });
@@ -115,10 +115,11 @@ export function createBusCard({ THREE, camera, line, color, onClose, onDrive }) 
   const v = new THREE.Vector3();
   return {
     get isOpen() { return open; },
-    show(title) { open = true; q('.nm').textContent = title; q('.bd').textContent = line; pop.classList.remove('off'); },
-    close, setDriving, get driving() { return driving; },
+    show(title) { open = true; q('.nm').textContent = title; q('.bd').textContent = line; pop.classList.toggle('off', hidden); },
+    close, setDriving, setHidden(h) { hidden = !!h; pop.classList.toggle('off', hidden || !open); if (hidden) leader.style.display = 'none'; }, // hidden while you drive: the stop button lives with the driving controls
+ get driving() { return driving; },
     update(anchor, info) { // anchor: THREE.Vector3 world point above the bus
-      if (!open) return;
+      if (!open || hidden) return;
       q('.n1').textContent = info.big; q('.bl').textContent = info.bigLabel; const st = q('.st'); st.textContent = info.status || ''; st.className = 'st ' + (info.mood || '');
       q('.extra').textContent = info.extra || '';
       v.copy(anchor).project(camera);

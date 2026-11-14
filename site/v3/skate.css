@@ -16,9 +16,15 @@ body.skating #flyspeed, body.skating #weather, body.skating #legend, body.skatin
   border: 2px solid rgba(94, 242, 255, .55); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 #skpad .skring { position: absolute; inset: 30px; border-radius: 50%; border: 1px dashed rgba(94, 242, 255, .35); }
 #skpad .skknob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(94, 242, 255, .5); border: 2px solid #9ff3fb; box-shadow: 0 2px 10px rgba(0, 0, 0, .4); }
-#skbtns { position: absolute; right: max(18px, var(--sar, 0px)); bottom: 0; display: flex; }
+#skbtns { position: absolute; right: max(18px, var(--sar, 0px)); bottom: 0; display: flex; gap: 8px; }
+#skboost { position: absolute; right: max(18px, var(--sar, 0px)); bottom: 56px; width: 72px; height: 72px; border-radius: 50%; pointer-events: auto; touch-action: none; border: 2px solid rgba(255, 190, 80, .8); color: #fff1d6;
+  background: conic-gradient(rgba(255, 170, 40, .75) calc(var(--ch, 1) * 360deg), rgba(10, 16, 30, .55) 0); font: 700 11px/1 system-ui, sans-serif; letter-spacing: .06em; box-shadow: 0 2px 10px rgba(0, 0, 0, .4); -webkit-tap-highlight-color: transparent; }
+#skboost b { display: grid; place-items: center; position: absolute; inset: 8px; border-radius: 50%; background: rgba(10, 16, 30, .78); }
+#skboost.on { box-shadow: 0 0 18px 4px rgba(255, 170, 40, .75); transform: scale(1.05); }
+#skboost.low { opacity: .75; }
 #skbtns button { pointer-events: auto; touch-action: none; height: 40px; padding: 0 14px; border-radius: 20px; border: 1px solid rgba(94, 242, 255, .55); background: rgba(10, 16, 30, .55);
   color: #d6faff; font: 600 13px/1 system-ui, sans-serif; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+#skbtns #skexit { border-color: rgba(255, 138, 128, .8); color: #ffd9d5; }
 #skbtns button:active { background: rgba(94, 242, 255, .3); }
 #skhint { position: absolute; left: 0; right: 0; bottom: 142px; text-align: center; color: rgba(214, 250, 255, .8); font: 500 12px/1.2 system-ui, sans-serif; text-shadow: 0 1px 3px #000; pointer-events: none; }
 @media (hover: hover) and (pointer: fine) { #skpad { width: 112px; height: 112px; } #skhint { bottom: 122px; } }

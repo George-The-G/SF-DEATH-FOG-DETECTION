@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createWorld, createSim, createChaseCam, TUNE } from '../skate.js';
+import { createWorld, createSim, createChaseCam, TUNE, ENTITIES } from '../skate.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const rd = (p) => { const b = fs.readFileSync(path.join(root, p)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
@@ -116,7 +116,7 @@ ok(withRoof.roofBlocked <= without.roofBlocked && withRoof.roofBlocked / withRoo
 ok(withRoof.maxStep < 5, 'follow camera never jumps (under 5 m per frame; the biggest steps are the existing hill-crest lift)');
 
 // 9. bus drive mode: same sim with the bus tuning. Full push + random steering on every route start: never inside a building, speed capped, stays finite
-const BUS = { r: 4.2, vMax: 15, push: 6, vPush: 10, turn: 1.3, brake: 14, grip: 7 };
+const BUS = ENTITIES.bus.tune;
 let busIn = 0, busMax = 0, busBad = 0;
 for (const r of routes) {
   const b = createSim(world, BUS); b.place(r.poly[0][0], r.poly[0][2], Math.atan2(r.poly[1][2] - r.poly[0][2], r.poly[1][0] - r.poly[0][0]), 6);
@@ -127,5 +127,22 @@ for (const r of routes) {
   }
 }
 ok(busBad === 0 && busIn === 0, `driven bus never ends up inside a building or goes non-finite over ${routes.length} routes`);
-ok(busMax <= BUS.vMax + 0.5, `driven bus respects its own top speed (${busMax.toFixed(1)} m/s) and the skater tuning is untouched (${TUNE.vMax})`);
+ok(busMax <= BUS.vMax * BUS.boost.vmult + 0.5, `driven bus respects its own top speed (with boost) (${busMax.toFixed(1)} m/s) and the skater tuning is untouched (${TUNE.vMax})`);
+// 10. boost: faster, drains, locks out when empty, refills; bus keeps right of centre
+{
+  const r0 = routes[0], h = Math.atan2(r0.poly[1][2] - r0.poly[0][2], r0.poly[1][0] - r0.poly[0][0]);
+  const run = (boost, sec) => { const b = createSim(world, ENTITIES.bus.tune); b.place(r0.poly[0][0], r0.poly[0][2], h, 6); let mx = 0; for (let i = 0; i < 60 * sec; i++) { b.step(1 / 60, { steer: 0, push: 1, brake: 0, boost: boost ? 1 : 0 }, null); mx = Math.max(mx, b.speed); } return { b, mx }; };
+  const plain = run(false, 6), boosted = run(true, 2.2);
+  ok(boosted.mx > plain.mx + 1.5, `boost is faster (${boosted.mx.toFixed(1)} vs ${plain.mx.toFixed(1)} m/s)`);
+  const b2 = createSim(world, ENTITIES.bus.tune); b2.place(r0.poly[0][0], r0.poly[0][2], h, 6); let used = 0; for (let i = 0; i < 60 * 6; i++) { b2.step(1 / 60, { steer: 0, push: 1, brake: 0, boost: 1 }, null); if (b2.boosting) used++; }
+  ok(used / 60 < ENTITIES.bus.tune.boost.dur + 1.5 && b2.charge < 1, `holding boost runs dry (${(used / 60).toFixed(1)} s of 6 s) instead of firing forever`);
+  for (let i = 0; i < 60 * 12; i++) b2.step(1 / 60, { steer: 0, push: 0, brake: 0, boost: 0 }, null);
+  ok(b2.charge > 0.99, 'boost refills when released');
+  // lane: coast down a street, offset to the right of the centre line should settle near the configured lane
+  const L = createSim(world, ENTITIES.bus.tune); L.place(r0.poly[0][0], r0.poly[0][2], h, 8); let es = [];
+  for (let i = 0; i < 60 * 20; i++) { L.step(1 / 60, { steer: 0, push: 0.5, brake: 0 }, null); const q = world.road(L.x, L.z, Math.cos(L.h), Math.sin(L.h)); if (i > 60 * 8 && q.found) es.push(q.e); }
+  const em = es.reduce((a, v) => a + v, 0) / (es.length || 1);
+  console.log(`bus lane: mean offset right of centre ${em.toFixed(2)} m over ${es.length} samples`);
+  ok(es.length > 60 && em > 0.8 && em < 5, 'bus holds a right-hand lane (offset between 0.8 and 5 m right of centre)');
+}
 console.log(fails ? `${fails} FAILED` : 'all passed'); process.exit(fails ? 1 : 0);
