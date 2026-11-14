@@ -33,3 +33,15 @@ So going live is one line in `bus_config.json` (`"api"`), nothing else changes. 
 
 ## Tests
 `node tests_js/test_worker.mjs` (mocked 511, no network) and `node tests_js/test_bus.mjs`.
+
+## GPS log and reverse replay (beta, optional)
+The beta page (`?beta=1&buses=1`) lets you play the simulation clock backward and scrub, and buses move back along where they really were. That needs a log of every GPS report, kept by this Worker in a free Cloudflare **D1** database. Without it the page still works: it logs the reports it sees while open and fills the rest from the schedule.
+1. `npx wrangler d1 create bus-log` (prints a `database_id`), then `npx wrangler d1 execute bus-log --remote --file=schema.sql`.
+2. In `wrangler.toml`, uncomment the `[[d1_databases]]` block and paste the id. `npx wrangler deploy`.
+3. The Worker now stores each new 511 position once (key = vehicle id + recorded time) and `GET /api/history?line=19&since=<epoch>&bbox=lat0,lon0,lat1,lon1` returns the last 78 h as `{vehicles:[{id, f:[[t,lat,lon,bearing],...]}]}`. Same origin rule as `/api/buses`. Rows older than `LOG_DAYS` (default 7) are deleted once an hour.
+4. Gaps: the Worker calls 511 only when someone has the page open (cached 60 s), so quiet hours have no GPS and the page uses the schedule there. For a gapless log, set `LOG_CRON = "1"` and uncomment the `[triggers]` cron. Each run is one 511 call, so `*/2` uses 30 of your 60 calls per hour; the page's own requests reuse the cache. Ask 511 for a higher limit first if you want `* * * * *`.
+
+**Size and limits (estimates until we see real 511 data).** Unfiltered, the two lines have roughly 15 to 20 buses reporting about once a minute: around 25,000 rows a day, about 1.5 MB a day, so about 10 MB for 7 days (D1 free tier: 5 GB storage, 100,000 row writes a day; we use about a quarter of the writes). The page asks only for a box around each district, so one 78 h download is on the order of a few hundred KB compressed. GitHub alone cannot do this: Actions runs at best every 5 minutes (often late), so a per-minute log needs the Worker.
+
+## Scheduled trips (estimates for the future and for gaps)
+`python3 tools/make_bus_schedule.py --gtfs <Muni GTFS zip or URL>` writes `site/v3/data/bus_schedule.json` (scheduled passing times near each district, 14 days by default, a few hundred KB). Commit it to refresh. The page loads it if present; without it buses are GPS only.

@@ -12,3 +12,13 @@ VEH_TTL = "60"                    # seconds between 511 position calls (511 defa
 ARR_TTL = "180"                   # seconds between 511 arrival calls
 # stopCode = the 511/Muni stop code of the bottom stop in the direction of the shuttle (README, "Find the stop codes").
 DISTRICTS = '[{"id":"potrero","line":"19","stopCode":""},{"id":"sunset","line":"66","stopCode":""}]'
+
+# --- GPS log (optional, see README "GPS log and reverse replay"). Uncomment after `wrangler d1 create bus-log` and paste the id.
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "bus-log"
+# database_id = "PASTE-ID-HERE"
+# LOG_DAYS = "7"      # (add under [vars]) days of GPS kept
+# LOG_CRON = "1"      # (add under [vars]) log even when nobody has the page open; also uncomment the next two lines. Uses 511 quota.
+# [triggers]
+# crons = ["*/2 * * * *"]

@@ -1,1 +1,2 @@
 Run with node 18+, no dependencies: `node tests_js/test_bus.mjs` (coordinates, smoothing filter, stale and dwell behaviour) and `node tests_js/test_worker.mjs` (the Cloudflare Worker with a mocked 511).
+`node tests_js/test_bustimeline.mjs` (bus positions as a function of simulation time: forward = backward, stops, gaps filled by the schedule and replaced by GPS) and `node tests_js/test_buslog.mjs` (the Worker's D1 log and /api/history with a mock database). Python: `python3 -m pytest tests/test_bus_schedule.py` (schedule builder).

@@ -113,7 +113,7 @@ let BUSES = null;
   let on = BETA && QP.get('buses') === '1';
   if (!on && QP.get('buses') !== '0') { try { on = !!(await getJSON('data/bus_config.json')).api; } catch (e) { on = false; } }
   if (!on) return;
-  return import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, controls, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getTerrain: () => terrainH, getCol: () => buildingsMesh && buildingsMesh.userData.col, getG: () => G, getDist: () => camera.position.distanceTo(controls.target), QP, toast }))
+  return import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, controls, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getTerrain: () => terrainH, getCol: () => buildingsMesh && buildingsMesh.userData.col, getG: () => G, getDist: () => camera.position.distanceTo(controls.target), QP, toast, replay: BETA }))
     .then((b) => { BUSES = b; });
 })().catch((e) => console.warn('buses unavailable', e));
 function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) fog.setLight(SKY.light); } }
@@ -593,7 +593,22 @@ if (FOGV) { // volumetric fog looks right at a lower density: slider 5 to 60 per
 
 /* ------------------------------------------------------------------ replay data */
 let index = null, base = '', night = null, streets = null, weather = null, fogGrid = null;
-let tNow = 0, playing = false, speed = 1, lastTs = 0;
+let tNow = 0, playing = false, speed = 1, lastTs = 0, dirSign = 1;
+/* Playback speed. Public page: speed = frames per second (1x, 4x, 16x; the live data has one frame per hour, so that is 3600x, 14400x, 57600x real time).
+   Beta: speed = a multiple of REAL time (x1 = the simulated clock runs at the same rate as the wall clock), and the page opens playing at x1 at the current time. */
+const BETA_SPEEDS = [1, 60, 900, 14400]; // x14400 = the public page's 4x (1 h of data per 0.25 s)
+const simRate = () => (BETA ? speed / (night.step_min * 60) : speed) * dirSign; // frames per real second
+const simEpoch = () => (Date.parse(night.start_iso) + tNow * night.step_min * 60000) / 1000; // epoch seconds of the simulated clock
+if (BETA) {
+  const sp = document.getElementById('speed');
+  if (sp) {
+    sp.innerHTML = BETA_SPEEDS.map((v, i) => `<button type="button" data-s="${v}"${i ? '' : ' class="on"'}>x${v}</button>`).join('');
+    sp.setAttribute('aria-label', 'Speed, times real time');
+    const rv = document.createElement('div'); rv.className = 'seg'; rv.style.marginTop = '6px';
+    rv.innerHTML = '<button type="button" id="rev" aria-pressed="false" style="min-width:0;width:100%">Play backward</button>'; sp.parentNode.appendChild(rv);
+    rv.querySelector('#rev').addEventListener('click', (e) => { dirSign = -dirSign; const b = e.currentTarget; b.classList.toggle('on', dirSign < 0); b.setAttribute('aria-pressed', String(dirSign < 0)); lastTs = 0; });
+  }
+}
 
 async function loadIndex() {
   let lastErr;
@@ -732,8 +747,11 @@ function compass(d) { return d == null ? '' : ['N', 'NE', 'E', 'SE', 'S', 'SW', 
 
 /* ------------------------------------------------------------------ controls */
 function setPlaying(p) { playing = p; $('play').classList.toggle('playing', p); $('play').querySelector('.ic').innerHTML = p ? ICON_FOG_PAUSE : ICON_FOG_PLAY; $('play').setAttribute('aria-label', p ? 'Pause' : 'Play'); lastTs = 0; }
-$('play').onclick = () => { if (night && tNow >= (RNG ? RNG.hi : night.n_frames - 1) - 0.001) tNow = RNG ? RNG.lo : 0; setPlaying(!playing); };
-$('slider').addEventListener('input', (e) => { tNow = parseFloat(e.target.value); applyTime(true); });
+$('play').onclick = () => {
+  if (night && !playing) { const lo = RNG ? RNG.lo : 0, hi = RNG ? RNG.hi : night.n_frames - 1; if (dirSign > 0 && tNow >= hi - 0.001) tNow = lo; else if (dirSign < 0 && tNow <= lo + 0.001) tNow = hi; }
+  setPlaying(!playing);
+};
+$('slider').addEventListener('input', (e) => { if (LV) LV.rtPending = false; tNow = parseFloat(e.target.value); applyTime(true); });
 $('speed').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return; speed = +b.dataset.s;
   [...$('speed').children].forEach((c) => c.classList.toggle('on', c === b));
@@ -843,8 +861,9 @@ function frame(ts) {
   requestAnimationFrame(frame);
   if (playing && night) {
     if (lastTs) {
-      tNow += Math.min(0.1, (ts - lastTs) / 1000) * speed;
-      if (RNG) { if (tNow >= RNG.hi) { if (RNG.hi < LV.hiWant) { tNow = RNG.hi; setPlaying(false); } else tNow = RNG.lo + Math.min(tNow - RNG.hi, RNG.hi - RNG.lo); } } // live: loops inside the chosen range (stops if the next days are still loading)
+      tNow += Math.min(BETA ? (speed === 1 ? 1e9 : 1) : 0.1, (ts - lastTs) / 1000) * (night ? simRate() : speed); // beta x1 is real time: no cap, so the clock stays with the wall clock even on a slow phone or after a hidden tab
+      if (dirSign < 0) { const lo = RNG ? RNG.lo : 0; if (tNow <= lo) { tNow = lo; setPlaying(false); } } // playing backward stops at the start of the window
+      else if (RNG) { if (tNow >= RNG.hi) { if (RNG.hi < LV.hiWant) { tNow = RNG.hi; setPlaying(false); } else tNow = RNG.lo + Math.min(tNow - RNG.hi, RNG.hi - RNG.lo); } } // live: loops inside the chosen range (stops if the next days are still loading)
       else if (tNow >= night.n_frames - 1) { tNow = night.n_frames - 1; setPlaying(false); }
     }
     lastTs = ts; applyTime(false);
@@ -877,7 +896,7 @@ function frame(ts) {
   }
   if (BX) BX.render(ts);
   if (SKY) SKY.update(ts);
-  if (BUSES) BUSES.update();
+  if (BUSES) BUSES.update(BETA && night ? { t: simEpoch(), speed: playing ? speed : 0 } : undefined); // beta: buses follow the simulation clock (replay), public: wall clock
   if (FOGV) fog.renderFrame(renderer, scene, camera); else renderer.render(scene, camera);
 }
 
@@ -1020,9 +1039,17 @@ async function bootLive() {
   liveBar(idx, st);
   await initBeta();
   applyRange();
+  if (BETA) { LV.rtPending = true; LV.rtT0 = t0; liveRealTime(); } // beta opens at the real current time and plays at real time (x1) ...
   applyTime(true); ui2Track();
   overlay.classList.add('hide'); $('status').textContent = '';
   liveRest(idx, d0, f0, nF, ST); // background: days 1-2 (not awaited)
+}
+function liveRealTime() { // beta: jump to the wall-clock time and play at x1; waits until the days that contain 'now' are loaded (then the range allows it)
+  if (!LV || !LV.rtPending || !RNG) return;
+  const f = (Date.now() - LV.rtT0) / (LV.idx.step_min * 60000);
+  if (f > RNG.hi + 1e-6 && RNG.hi < LV.hiWant) return; // later days still loading: try again when they arrive
+  LV.rtPending = false; tNow = clamp(f, RNG.lo, RNG.hi); speed = 1; dirSign = 1; setPlaying(true);
+  const sp = document.getElementById('speed'); if (sp) [...sp.children].forEach((c, i) => c.classList.toggle('on', i === 0));
 }
 async function liveRest(idx, d0, f0, nF, ST) {
   try {
@@ -1034,7 +1061,7 @@ async function liveRest(idx, d0, f0, nF, ST) {
     const cf = await composeFog(idx);
     liveSetData(full, nF); night.n_frames = nF;
     fogGrid = cf.grid; await fog.build(cf.url, fogGrid); fog.setVisible($('fogtoggle').checked);
-    applyRange(); LV.el.load.textContent = ''; LV.el.ld.hidden = true; ui2Track(); applyTime(true); ui2Refresh(true);
+    applyRange(); if (BETA) liveRealTime(); LV.el.load.textContent = ''; LV.el.ld.hidden = true; ui2Track(); applyTime(true); ui2Refresh(true);
     window.__liveFull = true;
   } catch (e) { console.warn(e); LV.el.load.textContent = 'later days unavailable'; LV.el.ld.hidden = true; }
 }
@@ -1217,4 +1244,4 @@ async function initBeta() {
   }
 })();
 
-window.__dbg = { get skater() { return skater; }, skate: () => (SK && SK.sim ? { x: +SK.sim.x.toFixed(1), z: +SK.sim.z.toFixed(1), y: +SK.sim.y.toFixed(1), speed: +SK.sim.speed.toFixed(1), onRoad: SK.sim.onRoad, wall: SK.sim.wall, k: SK.sim.k, active: SK.active, buildMs: SK.world && SK.world.buildMs } : null), stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get rib2() { return rib2; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
+window.__dbg = { get buses() { return BUSES; }, get simEpoch() { return night ? simEpoch() : null; }, get skater() { return skater; }, skate: () => (SK && SK.sim ? { x: +SK.sim.x.toFixed(1), z: +SK.sim.z.toFixed(1), y: +SK.sim.y.toFixed(1), speed: +SK.sim.speed.toFixed(1), onRoad: SK.sim.onRoad, wall: SK.sim.wall, k: SK.sim.k, active: SK.active, buildMs: SK.world && SK.world.buildMs } : null), stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get rib2() { return rib2; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };

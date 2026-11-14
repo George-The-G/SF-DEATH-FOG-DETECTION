@@ -46,17 +46,47 @@ async function getUp(deps, env, path, params) {
 async function cached(deps, name, ttl, produce) {
   const key = new Request('https://bus-proxy.invalid/' + name), now = deps.now();
   const hit = await deps.cache.match(key); let old = null;
-  if (hit) { try { old = await hit.json(); } catch { old = null; } if (old && now - old.at < ttl) return { v: old.v, at: old.at, stale: false }; }
+  if (hit) { try { old = await hit.json(); } catch { old = null; } if (old && now - old.at < ttl) return { v: old.v, at: old.at, stale: false, fresh: false }; }
   try {
     const v = await produce(); await deps.cache.put(key, new Response(JSON.stringify({ at: now, v }), { headers: { 'Cache-Control': 'max-age=900' } }));
-    return { v, at: now, stale: false };
+    return { v, at: now, stale: false, fresh: true };
   } catch (e) {
-    if (old && now - old.at < ttl + 180) return { v: old.v, at: old.at, stale: true };
+    if (old && now - old.at < ttl + 180) return { v: old.v, at: old.at, stale: true, fresh: false };
     throw e;
   }
 }
 const inflight = new Map(); // one 511 call per kind at a time inside this instance
 const once = (k, f) => { if (!inflight.has(k)) inflight.set(k, f().finally(() => inflight.delete(k))); return inflight.get(k); };
+
+/* The GPS log (Cloudflare D1, table `fixes`, see schema.sql): every position 511 reports for the two lines is stored once (id + recorded time
+   is the key, so the same report read twice is stored once) and kept LOG_DAYS days (default 7). The page reads it back with /api/history to
+   replay buses in reverse. Without a D1 binding (env.DB) nothing is logged and /api/history answers 503. A logging failure never fails a request. */
+const LOG_DAYS = (env) => Math.max(1, Math.min(30, Number(env.LOG_DAYS) || 7));
+async function logFixes(deps, env, vehicles) {
+  if (!deps.db || !vehicles.length) return;
+  try {
+    await deps.db.insert(vehicles.map((v) => ({ id: String(v.id), line: String(v.line), t: Math.round(v.t), lat: Math.round(v.lat * 1e5) / 1e5, lon: Math.round(v.lon * 1e5) / 1e5, brg: Math.round(v.bearing || 0) })));
+    const now = deps.now(); if (Math.floor(now / 60) % 60 === 0) await deps.db.prune(Math.floor(now - LOG_DAYS(env) * 86400)); // once an hour
+  } catch (e) { console.log('log error', redact(e.message, env.API_KEY_511 || '')); }
+}
+async function getVehicles(deps, env, districts, agency, ttl) { // shared by the page's request and the cron; logs when 511 was actually called
+  const v = await cached(deps, 'veh', ttl, () => once('veh', async () => parseVehicles(await getUp(deps, env, 'VehicleMonitoring', { agency }), districts)));
+  if (v.fresh) await logFixes(deps, env, v.v);
+  return v;
+}
+async function history(request, env, deps, cors) {
+  const url = new URL(request.url), H = { ...cors, 'Content-Type': 'application/json' };
+  if (!deps.db) return new Response(JSON.stringify({ ok: false, error: 'log not configured' }), { status: 503, headers: H });
+  const line = url.searchParams.get('line') || '', now = deps.now(), keep = LOG_DAYS(env) * 86400;
+  const since = Math.max(now - keep, Math.min(now, Number(url.searchParams.get('since')) || now - 78 * 3600)), bb = (url.searchParams.get('bbox') || '').split(',').map(Number);
+  if (!/^[0-9A-Za-z-]{1,8}$/.test(line)) return new Response(JSON.stringify({ ok: false, error: 'bad line' }), { status: 400, headers: H });
+  const bbox = bb.length === 4 && bb.every(Number.isFinite) ? bb : [36, -124, 39, -121]; // lat0, lon0, lat1, lon1 (a box around the district)
+  try {
+    const rows = await deps.db.query({ line, since: Math.floor(since), lat0: Math.min(bbox[0], bbox[2]), lat1: Math.max(bbox[0], bbox[2]), lon0: Math.min(bbox[1], bbox[3]), lon1: Math.max(bbox[1], bbox[3]) });
+    const by = new Map(); for (const r of rows) { if (!by.has(r.id)) by.set(r.id, []); by.get(r.id).push([r.t, r.lat, r.lon, r.brg]); }
+    return new Response(JSON.stringify({ ok: true, line, since: Math.floor(since), now, vehicles: [...by].map(([id, f]) => ({ id, f })) }), { headers: H });
+  } catch (e) { return new Response(JSON.stringify({ ok: false, error: 'log unavailable' }), { status: 502, headers: H }); }
+}
 
 export async function handle(request, env, deps) {
   const url = new URL(request.url), origin = request.headers.get('Origin') || '';
@@ -106,14 +136,15 @@ export async function handle(request, env, deps) {
       return new Response(JSON.stringify({ configured: true, origins: allowed.length, districts: ds.map((d) => d.line), ...h.v }), { headers: H });
     } catch (e) { return new Response(JSON.stringify({ configured: true, upstream: redact(e.message, env.API_KEY_511) }), { status: 502, headers: H }); }
   }
-  if (url.pathname !== '/api/buses') return new Response('not found', { status: 404 });
+  if (url.pathname !== '/api/buses' && url.pathname !== '/api/history') return new Response('not found', { status: 404 });
   if (!allowed.includes(origin)) return new Response('forbidden', { status: 403, headers: cors });
+  if (url.pathname === '/api/history') return history(request, env, deps, cors);
   if (!env.API_KEY_511) return new Response(JSON.stringify({ ok: false, error: 'not configured' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
   let districts; try { districts = JSON.parse(env.DISTRICTS || '[]'); } catch { districts = []; }
   const agency = env.AGENCY || 'SF', vttl = Number(env.VEH_TTL) || 60, attl = Number(env.ARR_TTL) || 180, now = deps.now();
   const body = { ok: false, ts: now, stale: false, vehicles: [], arrivals: {} };
   try {
-    const v = await cached(deps, 'veh', vttl, () => once('veh', async () => parseVehicles(await getUp(deps, env, 'VehicleMonitoring', { agency }), districts)));
+    const v = await getVehicles(deps, env, districts, agency, vttl);
     body.vehicles = v.v; body.stale = v.stale; body.ok = true;
   } catch (e) { body.error = 'vehicles unavailable'; console.log('veh error', redact(e.message, env.API_KEY_511)); }
   for (const d of districts) {
@@ -125,4 +156,18 @@ export async function handle(request, env, deps) {
   }
   return new Response(JSON.stringify(body), { headers: { ...cors, 'Content-Type': 'application/json' } });
 }
-export default { fetch: (request, env, ctx) => handle(request, env, { fetch: (...a) => fetch(...a), cache: caches.default, now: () => Date.now() / 1000 }) };
+const d1 = (DB) => (DB ? {
+  async insert(rows) { const st = DB.prepare('INSERT OR IGNORE INTO fixes (id, line, t, lat, lon, brg) VALUES (?, ?, ?, ?, ?, ?)'); await DB.batch(rows.map((r) => st.bind(r.id, r.line, r.t, r.lat, r.lon, r.brg))); },
+  async query(q) { const r = await DB.prepare('SELECT id, t, lat, lon, brg FROM fixes WHERE line = ? AND t >= ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ? ORDER BY id, t LIMIT 60000').bind(q.line, q.since, q.lat0, q.lat1, q.lon0, q.lon1).all(); return r.results || []; },
+  async prune(before) { await DB.prepare('DELETE FROM fixes WHERE t < ?').bind(before).run(); },
+} : null);
+const mkDeps = (env) => ({ fetch: (...a) => fetch(...a), cache: caches.default, now: () => Date.now() / 1000, db: d1(env.DB) });
+export default {
+  fetch: (request, env) => handle(request, env, mkDeps(env)),
+  /* optional cron (wrangler.toml [triggers], off by default): fetch and log positions even when nobody has the page open. Uses 511 quota. */
+  async scheduled(event, env) {
+    if (!env.API_KEY_511 || env.LOG_CRON !== '1') return;
+    let districts; try { districts = JSON.parse(env.DISTRICTS || '[]'); } catch { return; }
+    try { await getVehicles(mkDeps(env), env, districts, env.AGENCY || 'SF', Number(env.VEH_TTL) || 60); } catch (e) { console.log('cron error', redact(e.message, env.API_KEY_511)); }
+  },
+};
