@@ -17,6 +17,7 @@ let BX = null; // data layers (beta_ui.js), loaded with import() only when UIX (
 let RNG = null; // ui2 live: visible frame window {lo, hi} of the time bar (null = every frame)
 const LIVE = UI2 && !(QP.get('live') === '0' || QP.has('night') || QP.has('src')); // live data is the default; ?live=0, ?night=<id> or ?src= open the past-night replays
 const BETA = QP.has('beta') && QP.get('beta') !== '0'; // ?beta=1: the beta preview channel (live_beta/, the NEXT settings under test) with a Beta tag; never the default
+const FOGV = QP.get('fog') !== 'sheets'; // volumetric fog (and the sky that lights it) for everyone; ?fog=sheets gets the old sheets back
 /* The data layers UI (beta_ui.js) is on for everyone whose public live output says it was built with the promoted settings (status.json "promoted", written by `build --promoted`).
    If the scheduled job falls back to the old settings (or DEATHFOG_LIVE_PROMOTE is false) that flag is absent and the page is exactly the old public page. ?beta=1 is unchanged. */
 const PROMO_P = BETA ? Promise.resolve(null) : (() => { const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 5000); return fetch('live/status.json', { cache: 'no-store', signal: ac.signal }).then((r) => (r.ok ? r.json() : null)).catch(() => null).finally(() => clearTimeout(tm)); })();
@@ -96,10 +97,10 @@ moon.position.set(-6000, 9000, 5000); scene.add(moon);
 const amb = new THREE.AmbientLight(0x202840, 0.8); scene.add(amb);
 const skater = createSkater({ THREE, reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches }); // shown only during the route flyover
 scene.add(skater.group);
-/* Beta sky and perf HUD (sky.js, loaded only with ?beta=1&sky=1 and/or &hud=1): live sun, moon, stars for the time on screen. The normal page never fetches it. */
+/* Sky (sky.js): live sun, moon, stars for the time on screen; it also lights the volumetric fog. The perf HUD (&hud=1) is beta only. */
 let SKY = null;
-if (BETA && (QP.get('sky') !== '0' || QP.get('hud') === '1')) { // beta default: live sky; ?sky=0 turns it off
-  import('./sky.js').then((m) => m.createSky({ THREE, scene, camera, renderer, starsUrl: 'stars.bin', sky: QP.get('sky') !== '0', hud: QP.get('hud') === '1' }))
+if ((FOGV && QP.get('sky') !== '0') || (BETA && QP.get('hud') === '1')) { // live sky (it also lights the fog); ?sky=0 turns it off
+  import('./sky.js').then((m) => m.createSky({ THREE, scene, camera, renderer, starsUrl: 'stars.bin', sky: QP.get('sky') !== '0', hud: BETA && QP.get('hud') === '1' }))
     .then((s) => { SKY = s; if (FOGV) s.setExtra(() => fog.info()); if (night) skyTime(curF); }).catch((e) => console.warn('sky unavailable', e));
 }
 /* Beta live buses (buses.js, loaded only with ?beta=1&buses=1): the two skate shuttles, bus-stop shelters with pinned arrival popups. The normal page never fetches it. */
@@ -574,7 +575,6 @@ function applyUrlRoute() { // ?route=<id> selects and flies to it, &fly=1 starts
 }
 
 /* ------------------------------------------------------------------ fog layer (see fog.js) */
-const FOGV = BETA && QP.get('fog') !== 'sheets'; // beta default: volumetric fog; ?fog=sheets gets the old sheets back
 const LAB = FOGV; // fog menu (foglab.js): a small cloud button on beta to play with the fog look; its settings stay in this browser only
 let labParams = null; if (LAB) { try { labParams = JSON.parse(localStorage.getItem('foglab.v2') || 'null'); } catch (e) { labParams = null; } }
 const fog = (FOGV ? createFogVol : createFog)({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast, params: labParams || undefined });

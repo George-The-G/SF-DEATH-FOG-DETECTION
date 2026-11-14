@@ -17,6 +17,10 @@ Everything runs on GitHub Actions and GitHub Pages. No server, no paid hosting, 
   when it is more than 90 minutes old). 78 hourly frames: past hours are the forecast model corrected by observations, later hours are forecast.
 * **What is drawn:** about 286,000 street points across the city, coloured 0 (dry) to 100 (wet); a fog layer; terrain and buildings;
   routes in Potrero Hill District and Sunset District with length, drop, climb and wetness along the route.
+* **Fog and sky:** the fog is a voxel volume (one baked volume per forecast hour, ray-marched on the GPU) lit by a live sun, moon and sky.
+  The small cloud button at the bottom right opens the fog menu: density, fog-top shape, wind drift, light, and an Advanced section for performance
+  (skip empty air, still-frame refinement, cheaper drawing while the camera moves). Settings stay in the browser; "Reset to default" restores them.
+  Code: `site/v3/fog2.js` (fog), `fogflow.js` (terrain-aware wind for the drift), `foglab.js` (menu), `sky.js`. `?fog=sheets` and `?sky=0` switch back to the old sheets / no sky.
 * **Past nights:** nine replayed nights stay in the Night list.
 * **Take control (side feature):** during a route flyover, tap Take control to skate the street yourself with an on-screen joystick or WASD.
   Collisions with terrain and buildings, gravity downhill, slick when wet. It is a separate side feature with its own docs and feature list in `docs/skate/`; it does not change any wetness data.
