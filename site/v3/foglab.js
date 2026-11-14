@@ -75,8 +75,9 @@ export function mountFogLab({ fog, densEl, extraControls }) {
   #foglab input[type=range]{width:96px;margin:0}
   #foglab select{font:inherit;background:#1d2533;color:inherit;border:1px solid rgba(255,255,255,.18);border-radius:5px;padding:2px 4px;width:130px}
   #foglab .v{text-align:right;font-variant-numeric:tabular-nums;color:#b9c6d8}
-  #foglab .dens{display:grid;grid-template-columns:1fr 130px;align-items:center;gap:6px;margin:6px 0 2px;font-size:inherit;color:inherit}
-  #foglab .dens input{width:130px;height:auto;margin:0}
+  #foglab .dens{display:grid;grid-template-columns:1fr 96px 34px;align-items:center;gap:6px;margin:6px 0 2px;font-size:inherit;color:inherit;min-width:0}
+  #foglab .dens label{display:block;margin:0}
+  #foglab .dens input{width:96px;min-width:0;height:auto;margin:0;flex:none}
   #foglab .presets{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 2px}
   #foglab .presets button.on{background:#2b6cb0;border-color:#5a9be0}
   #foglab details{margin-top:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:6px}
@@ -98,6 +99,8 @@ export function mountFogLab({ fog, densEl, extraControls }) {
   document.body.appendChild(btn); document.body.appendChild(el);
   if (densEl && densEl.parentElement) { // the density slider lives at the top of this menu now (same element, same listener)
     const row = densEl.parentElement; row.querySelector('label').textContent = 'Fog density'; el.querySelector('.hd').after(row);
+    const dv = document.createElement('span'); dv.className = 'v'; row.appendChild(dv);
+    const showD = () => { dv.textContent = densEl.value + '%'; }; densEl.addEventListener('input', showD); showD(); setInterval(showD, 1000);
   }
   const pr = el.querySelector('.presets'), read = el.querySelector('.read'), inputs = {};
   let benchTxt = '';
@@ -173,7 +176,7 @@ export function mountFogLab({ fog, densEl, extraControls }) {
   el.addEventListener('click', (e) => {
     const t = e.target.closest('[data-a]'); if (!t) return; const a = t.dataset.a;
     if (a === 'close') toggle(false);
-    if (a === 'reset') { set({ ...DEFAULTS }); if (densEl) { densEl.value = 21; densEl.dispatchEvent(new Event('input', { bubbles: true })); } }
+    if (a === 'reset') { set({ ...DEFAULTS }); if (densEl) { densEl.value = 33; densEl.dispatchEvent(new Event('input', { bubbles: true })); } }
     if (a === 'bench' && fog.bench) { // fog drawing alone, GPU-synchronised: full quality, then the moving-camera version
       t.disabled = true; benchTxt = '\nmeasuring...';
       setTimeout(() => {
