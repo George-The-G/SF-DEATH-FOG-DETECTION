@@ -6,8 +6,8 @@ import { DEFAULTS } from './fog2.js';
 const KEY = 'foglab.v1';
 const PRESETS = {
   'Beta today': { ...DEFAULTS, auto: false },
-  'Voxel, flat top': { ...DEFAULTS, mode: 'voxel', follow: 0.15, smooth: 3, topMin: 120, topMax: 320, soft: 0.45, bump: 0.35, detail: 0.6, warp: 1, advect: 0.04, auto: false },
-  'Voxel, follows hills': { ...DEFAULTS, mode: 'voxel', follow: 0.85, smooth: 3, topMin: 90, topMax: 260, soft: 0.45, bump: 0.3, detail: 0.6, warp: 1, advect: 0.04, auto: false },
+  'Voxel, flat top': { ...DEFAULTS, mode: 'voxel', flow: 1, follow: 0.15, smooth: 3, topMin: 120, topMax: 320, soft: 0.45, bump: 0.35, detail: 0.6, warp: 1, advect: 0.04, auto: false },
+  'Voxel, follows hills': { ...DEFAULTS, mode: 'voxel', flow: 1, follow: 0.85, smooth: 3, topMin: 90, topMax: 260, soft: 0.45, bump: 0.3, detail: 0.6, warp: 1, advect: 0.04, auto: false },
   'March, smoothed': { ...DEFAULTS, smooth: 3, follow: 0.5, auto: false },
 };
 
@@ -28,6 +28,8 @@ const CONTROLS = [
   ['detail', 'Fine detail', 'range', 0, 1, 0.05],
   ['warp', 'Billow warp', 'range', 0, 1.5, 0.05],
   ['advect', 'Wind drift (voxel)', 'range', 0, 0.2, 0.01, 'Noise drifts with the mean wind as the time moves; never while paused'],
+  ['flow', 'Detail follows wind field', 'check', null, null, null, 'Fine billows drift along a wind field that bends around hills (solved each data hour)'],
+  ['flowSpeed', 'Detail drift speed', 'range', 0, 0.05, 0.002, 'Fraction of the real wind speed, in simulation time'],
   ['Light'],
   ['sun', 'Sunlight', 'range', 0, 2, 0.05],
   ['night', 'Night brightness', 'range', 0.3, 2.5, 0.05],
@@ -104,7 +106,7 @@ export function mountFogLab({ fog, getSky, densEl }) {
       row.appendChild(inp);
     } else if (kind === 'check') {
       row.className = 'sel'; inp = document.createElement('input'); inp.type = 'checkbox';
-      inp.onchange = () => set({ [k]: (k === 'blur' || k === 'skip' || k === 'motion') ? (inp.checked ? 1 : 0) : inp.checked });
+      inp.onchange = () => set({ [k]: (k === 'blur' || k === 'skip' || k === 'motion' || k === 'flow') ? (inp.checked ? 1 : 0) : inp.checked });
       row.appendChild(inp);
     } else {
       inp = document.createElement('input'); inp.type = 'range'; inp.min = a; inp.max = b; inp.step = step;

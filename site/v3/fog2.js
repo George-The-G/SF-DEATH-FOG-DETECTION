@@ -14,6 +14,7 @@
    Pipeline per frame: scene -> render target with depth texture; fog pass at 50-100% resolution reading that depth; composite to the canvas.
    A frame-time governor steps down tiers 3 -> 2 -> 1 -> 0; tier 0 is the old sheets (fog.js). */
 import { createFog as createSheets } from './fog.js';
+import { solveWind } from './fogflow.js';
 
 const PX_REF = 16; // sprite value that maps to full density after the sqrt stretch (same as fog.js)
 const OCC_CELLS = 4; // occupancy cell = 4 x 4 fog cells (320 m)
@@ -49,6 +50,8 @@ export const DEFAULTS = {
   accum: 6,        // voxel: still-frame refinement passes (0 = off: the fog is drawn every frame)
   motion: 1,       // voxel: half resolution and fewer steps while the camera moves
   motionSteps: 0.6, // voxel: step multiplier while moving
+  flow: 0,         // voxel: fine detail drifts along a terrain-aware wind field (fogflow.js), solved per data hour
+  flowSpeed: 0.01, // voxel: detail drift as a fraction of the real wind speed, in simulation time
 };
 
 const VERT = `varying vec2 vUv; void main(){ vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); }`;
@@ -184,7 +187,17 @@ const BAKE_B = `
    instead of cross-fading. Rays jump over columns the coarse occupancy grid marks empty. */
 const VOX_FS = COMMON_U + `
   uniform sampler3D uVolA, uVolB; uniform sampler2D uOcc; uniform vec2 uOccN, uDrift;
-  uniform float uVHa, uVHb, uMixT, uK, uShadow, uSkip;
+  uniform float uVHa, uVHb, uMixT, uK, uShadow, uSkip, uFlowOn, uFlowT, uWindScale;
+  uniform sampler2D uWind;
+  float detailNoise(vec3 q, vec2 qg){ // fine noise; with the wind field it drifts along the flow (two-phase flow noise, Neyret 2003 / Vlachos 2010)
+    if (uFlowOn < .5) return texture(uNoise, (q + uOff) / 230.).g;
+    vec2 wv = (texture(uWind, qg).rg * 255. - 128.) * uWindScale; vec3 vel = vec3(wv.x, 0., -wv.y);
+    const float PER = 120.;
+    float c0 = floor(uFlowT / PER), c1 = floor(uFlowT / PER + .5), f0 = fract(uFlowT / PER), f1 = fract(uFlowT / PER + .5), w0 = 1. - abs(2. * f0 - 1.), w1 = 1. - w0;
+    float n0 = texture(uNoise, (q - vel * f0 * PER) / 230. + fract(vec3(.7548776, .5698403, .4142136) * c0)).g;
+    float n1 = texture(uNoise, (q - vel * f1 * PER) / 230. + fract(vec3(.7548776, .5698403, .4142136) * (c1 + 37.))).g;
+    return .5 + (w0 * (n0 - .5) + w1 * (n1 - .5)) * inversesqrt(w0 * w0 + w1 * w1);
+  }
   void main(){` + RAY + `
     float sy = max(uSun.y, .15);
     vec2 rxz = vec2(abs(rd.x) < 1e-6 ? 1e-6 : rd.x, abs(rd.z) < 1e-6 ? 1e-6 : rd.z);
@@ -220,7 +233,7 @@ const VOX_FS = COMMON_U + `
       if (d < .002) continue;
       // fine erosion close to the camera only (fades out where steps get long, so it cannot alias into streaks)
       float wD = (1. - smoothstep(50., 300., dt)) * uDetail;
-      if (wD > .01) { float e = texture(uNoise, (vec3(p.x, p.y / uEX * 2.5, p.z) + uOff) / 230.).g; d *= mix(1., .35 + 1.3 * e, wD * .7); }
+      if (wD > .01) { float e = detailNoise(vec3(p.x, p.y / uEX * 2.5, p.z), qg); d *= mix(1., .35 + 1.3 * e, wD * .7); }
       float tr = mix(1., s.g, uShadow);
       float sh = pow(tr, 1. / sy);
       vec3 L = uAmb * (.4 + .6 * sqrt(tr)) + uSunCol * (sh + .2 * sqrt(sh)) * ph * uSunI;
@@ -307,6 +320,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     uDbg: { value: new URLSearchParams(location.search).has('fogdbg') ? 0.6 : 0 }, uNoise: { value: noiseTex }, uSunI: { value: 0 }, uCity: { value: 0 }, uEX: { value: EX },
     uSteps: { value: 8 }, uOct: { value: 2 }, uFollow: { value: 1 }, uSoft: { value: .35 }, uDetail: { value: 1 }, uWarp: { value: 1 }, uDither: { value: 1 },
     uVolA: { value: null }, uVolB: { value: null }, uVHa: { value: 300 }, uVHb: { value: 300 }, uMixT: { value: 0 }, uDrift: { value: V2() },
+    uWind: { value: null }, uWindScale: { value: 0.1 }, uFlowOn: { value: 0 }, uFlowT: { value: 0 },
     uOcc: { value: null }, uOccN: { value: new THREE.Vector2(1, 1) }, uSkip: { value: 1 }, uK: { value: .0231 }, uShadow: { value: 1 },
   };
   const quad = (fs, uni) => { const m = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: VERT, fragmentShader: fs, depthTest: false, depthWrite: false }); const s = new THREE.Scene(), me = new THREE.Mesh(quadGeo, m); me.frustumCulled = false; s.add(me); return s; };
@@ -333,7 +347,22 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   let spritePx = null, spriteW = 0, occTex = null, occKey = '';
   let accN = 0, accCur = 0, lastKey = '', lastMoveT = -1e9, lastFullT = 0, phase = 'off', lastR = null, lastScn = null, lastCam = null;
   const camEls = new Float64Array(32);
-  let stepMin = 60;
+  let stepMin = 60, groundM = null, windTex = null, windKey = '';
+  /* terrain-aware wind for data hour k (fogflow.solveWind, ~20 ms on the CPU, once per hour change) */
+  function updateWind(k) {
+    if (!P.flow || !grid || !groundM || !wx || !wx.windMs) { U.uFlowOn.value = 0; return; }
+    const i = Math.max(0, Math.min(wx.windMs.length - 1, Math.round(hoursOf(k) * 60 / stepMin))), sp = wx.windMs[i], dir = wx.windDir[i];
+    const key = [k, sp, dir, Math.round(topForHour(k))].join();
+    if (key !== windKey && sp != null && dir != null) {
+      windKey = key;
+      const r = solveWind({ w: grid.w, h: grid.h, cellM: grid.cell_m, ground: groundM, topM: topForHour(k), speed: sp, dirFrom: dir });
+      if (!windTex) { windTex = new THREE.DataTexture(new Uint8Array(grid.w * grid.h * 2), grid.w, grid.h, THREE.RGFormat, THREE.UnsignedByteType); windTex.minFilter = windTex.magFilter = THREE.LinearFilter; windTex.flipY = false; }
+      windTex.image.data.set(r.rg); windTex.needsUpdate = true; U.uWind.value = windTex; U.uWindScale.value = r.scale; windMs = r.ms;
+    }
+    U.uFlowOn.value = windTex ? 1 : 0;
+    U.uFlowT.value = U.uFrame.value * (grid.frame_min || 60) * 60 * P.flowSpeed; // simulation seconds, scaled
+  }
+  let windMs = 0;
 
   const scaleNow = () => (P.res > 0 ? P.res : TIERS[tier].scale);
   const vres = () => P.vres || (isTouch ? 1 : 2), vlayers = () => P.vlayers || (isTouch ? 16 : 24);
@@ -497,6 +526,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
         const u8 = new Uint8Array(w * h); for (let k = 0; k < u8.length; k++) u8[k] = Math.round(raw[k] / mx * 255);
         if (htTex) htTex.dispose(); htTex = new THREE.DataTexture(u8, w, h, THREE.RedFormat, THREE.UnsignedByteType); htTex.minFilter = htTex.magFilter = THREE.LinearFilter; htTex.needsUpdate = true; htTex.flipY = false;
         U.uHt.value = htTex; U.uHtMax.value = mx; U.uTex.value = t; grid = g;
+        groundM = new Float32Array(raw.length); for (let k = 0; k < raw.length; k++) groundM[k] = raw[k] / EX; windKey = '';
         U.uTiles.value.set(g.cols, g.rows, g.w, g.h); U.uNT.value = g.cols * g.rows; U.uTexel.value.set(1 / t.image.width, 1 / t.image.height);
         U.uGo.value.set(ox, oz - hm); U.uGs.value.set(wm, hm);
         applyParams();
@@ -537,8 +567,8 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     U.uYmax.value = U.uHtMax.value * P.follow + Math.max(eA.vh, eB.vh) + 2;
     if (P.advect > 0 && wx && wx.wind && grid) { const s = 3600 * (grid.frame_min || 60) / 60 * P.advect; U.uDrift.value.set(wx.wind[0] * s / U.uGs.value.x, wx.wind[1] * s / U.uGs.value.y); }
     else U.uDrift.value.set(0, 0);
-    updateOcc(eA.k, eB.k);
-    return `${eA.k}:${eA.stamp}|${eB.k}:${eB.stamp}|${mixT.toFixed(4)}`;
+    updateOcc(eA.k, eB.k); updateWind(eA.k);
+    return `${U.uFlowOn.value}:${U.uFlowT.value.toFixed(2)}|${eA.k}:${eA.stamp}|${eB.k}:${eB.stamp}|${mixT.toFixed(4)}`;
   }
 
   function renderFrame(renderer, scn, camera) {
@@ -601,7 +631,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     const vox = P.mode === 'voxel', st = stepsFor(vox);
     if (!vox) return `fog march tier ${tier} (${st} steps, ${Math.round(scaleNow() * 100)}% res) top ${Math.round(topM)} m`;
     const [w, h, d] = (volKey || '0x0x0').split('x');
-    return `fog voxel tier ${tier} (${st} steps, ${Math.round(scaleNow() * 100)}% res, ${w}x${h}x${d} voxels) top ${Math.round(topM)} m\n${phase}${phase === 'refining' ? ' ' + accN + '/' + P.accum : ''}; ${bakes} hour bakes, last ${bakeMs.toFixed(1)} ms submit`;
+    return `fog voxel tier ${tier} (${st} steps, ${Math.round(scaleNow() * 100)}% res, ${w}x${h}x${d} voxels) top ${Math.round(topM)} m\n${phase}${phase === 'refining' ? ' ' + accN + '/' + P.accum : ''}; ${bakes} hour bakes, last ${bakeMs.toFixed(1)} ms submit${U.uFlowOn.value ? `; wind field ${windMs.toFixed(0)} ms` : ''}`;
   }
 
   return {
@@ -618,7 +648,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     setWeather(w) {
       if (!w) return;
       if (w.step_min) stepMin = w.step_min;
-      const nw = { top: w.top, at: w.at != null ? w.at : 0, series: w.series || null, windSrc: w.wind_ms || null, wind: wx && wx.windSrc && wx.windSrc === w.wind_ms ? wx.wind : null };
+      const nw = { windMs: w.wind_ms || null, windDir: w.wind_dir || null, top: w.top, at: w.at != null ? w.at : 0, series: w.series || null, windSrc: w.wind_ms || null, wind: wx && wx.windSrc && wx.windSrc === w.wind_ms ? wx.wind : null };
       if (!nw.wind && w.wind_ms && w.wind_dir) { // mean wind vector (towards) in scene axes: x east, z = -north
         let ex = 0, ez = 0, n = 0; w.wind_ms.forEach((s, i) => { const d = w.wind_dir[i]; if (s == null || d == null) return; const r = d * Math.PI / 180; ex += -Math.sin(r) * s; ez += Math.cos(r) * s; n++; });
         nw.wind = n ? [ex / n, ez / n] : null;
