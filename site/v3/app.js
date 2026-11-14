@@ -599,14 +599,38 @@ let tNow = 0, playing = false, speed = 1, lastTs = 0, dirSign = 1;
 const BETA_SPEEDS = [1, 60, 900, 14400]; // x14400 = the public page's 4x (1 h of data per 0.25 s)
 const simRate = () => (BETA ? speed / (night.step_min * 60) : speed) * dirSign; // frames per real second
 const simEpoch = () => (Date.parse(night.start_iso) + tNow * night.step_min * 60000) / 1000; // epoch seconds of the simulated clock
+let spdSync = () => {}, spdUser = false; // spdUser: the person already picked a speed, so the late real-time seek must not reset it
+const speedIdx = () => Math.max(0, BETA_SPEEDS.indexOf(speed));
+function setSpeedIdx(i) { // beta: pick one of the four speeds; the multiplier stays internal, the UI shows chevrons
+  speed = BETA_SPEEDS[i]; lastTs = 0;
+  const sp = document.getElementById('speed'); if (sp) [...sp.children].forEach((c, k) => c.classList.toggle('on', k === i));
+  spdSync(true);
+}
 if (BETA) {
   const sp = document.getElementById('speed');
-  if (sp) {
+  if (sp) { // the old speed control in the settings sheet is replaced by the chevron button (kept hidden so other code can still read it)
     sp.innerHTML = BETA_SPEEDS.map((v, i) => `<button type="button" data-s="${v}"${i ? '' : ' class="on"'}>x${v}</button>`).join('');
-    sp.setAttribute('aria-label', 'Speed, times real time');
-    const rv = document.createElement('div'); rv.className = 'seg'; rv.style.marginTop = '6px';
-    rv.innerHTML = '<button type="button" id="rev" aria-pressed="false" style="min-width:0;width:100%">Play backward</button>'; sp.parentNode.appendChild(rv);
-    rv.querySelector('#rev').addEventListener('click', (e) => { dirSign = -dirSign; const b = e.currentTarget; b.classList.toggle('on', dirSign < 0); b.setAttribute('aria-pressed', String(dirSign < 0)); lastTs = 0; });
+    sp.parentNode.style.display = 'none'; const two = sp.closest('.two'); if (two) two.style.gridTemplateColumns = '1fr';
+  }
+  if (UI2) {
+    document.body.classList.add('bx-sp');
+    const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = new URL('speed_ui.css', import.meta.url).href; document.head.appendChild(l);
+    const NAMES = [['Real time', '1 second per second'], ['Fast', '1 minute per second'], ['Faster', '15 minutes per second'], ['Fastest', '4 hours per second']];
+    const chev = (n) => '<svg viewBox="0 0 34 12" aria-hidden="true">' + [0, 1, 2, 3].map((k) => `<path class="${k < n ? 'f' : ''}" d="M${1 + k * 8.5} 1L${7.5 + k * 8.5} 6L${1 + k * 8.5} 11Z"/>`).join('') + '</svg>';
+    const ctl = document.createElement('div'); ctl.className = 'ctl'; ctl.id = 'ctl';
+    const sb = document.createElement('button'); sb.type = 'button'; sb.id = 'spdbtn'; sb.className = 'pb';
+    $('timebar').insertBefore(ctl, $('play')); ctl.append(sb, $('play'));
+    const toastEl = document.createElement('div'); toastEl.id = 'spdtoast'; toastEl.setAttribute('role', 'status'); document.body.appendChild(toastEl); let tt = 0;
+    spdSync = (say) => {
+      const i = speedIdx(), n = NAMES[i]; sb.innerHTML = chev(i + 1); sb.classList.toggle('dim', !playing);
+      sb.setAttribute('aria-label', `Playback speed: ${n[0]}, ${n[1]}. Tap to change.`);
+      if (say === true) { toastEl.innerHTML = `<span class="c">${chev(i + 1)}</span><b>${n[0]}</b><em>${n[1]}</em>`; toastEl.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => toastEl.classList.remove('on'), 2200); }
+    };
+    sb.onclick = () => { spdUser = true; setSpeedIdx((speedIdx() + 1) % BETA_SPEEDS.length); };
+    spdSync();
+    // settings button: sits left of the fog (cloud) button, at the same height
+    const fb = () => document.getElementById('fogbtn'), gear = () => $('gear');
+    setInterval(() => { const f = fb(), g = gear(); if (f && g) { g.style.bottom = f.style.bottom; g.style.visibility = f.style.visibility; } }, 300);
   }
 }
 
@@ -704,12 +728,17 @@ function wall(iso, addMin) {
   return { time: `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`, day: d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }) + ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) }; // 'Thu Oct 1'
 }
 
+let ckT = 0, ckPend = '', ckTO = 0;
+function setClock(txt, force) { // beta: the clock text is redrawn at most 10 times a second (digits stay readable at speed); the last value always lands
+  if (!BETA || force || performance.now() - ckT >= 100) { ckT = performance.now(); clearTimeout(ckTO); ckTO = 0; $('clock').textContent = txt; return; }
+  ckPend = txt; if (!ckTO) ckTO = setTimeout(() => { ckTO = 0; ckT = performance.now(); $('clock').textContent = ckPend; }, 100);
+}
 let lastFrameKey = -1;
 function applyTime(force) {
   if (!night) return;
   const nf = night.n_frames, f = clamp(tNow, 0, nf - 1), a = Math.floor(f), b = Math.min(a + 1, nf - 1), u = f - a;
   const w = wall(night.start_iso, f * night.step_min);
-  $('clock').textContent = w.time; $('clock-sub').textContent = w.day + ' ' + tzName(night.start_iso); if (UI2) ui2Clock(w, f);
+  setClock(w.time, force); $('clock-sub').textContent = w.day + ' ' + tzName(night.start_iso); if (UI2) ui2Clock(w, f);
   if (document.activeElement !== $('slider') || force) $('slider').value = f;
   const key = Math.round(f * 20);
   curF = f;
@@ -746,7 +775,7 @@ function tzName(iso) { return /-07:00$/.test(iso) ? 'PDT' : /-08:00$/.test(iso) 
 function compass(d) { return d == null ? '' : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(d / 45) % 8]; }
 
 /* ------------------------------------------------------------------ controls */
-function setPlaying(p) { playing = p; $('play').classList.toggle('playing', p); $('play').querySelector('.ic').innerHTML = p ? ICON_FOG_PAUSE : ICON_FOG_PLAY; $('play').setAttribute('aria-label', p ? 'Pause' : 'Play'); lastTs = 0; }
+function setPlaying(p) { playing = p; $('play').classList.toggle('playing', p); $('play').querySelector('.ic').innerHTML = p ? ICON_FOG_PAUSE : ICON_FOG_PLAY; $('play').setAttribute('aria-label', p ? 'Pause' : 'Play'); lastTs = 0; spdSync(); }
 $('play').onclick = () => {
   if (night && !playing) { const lo = RNG ? RNG.lo : 0, hi = RNG ? RNG.hi : night.n_frames - 1; if (dirSign > 0 && tNow >= hi - 0.001) tNow = lo; else if (dirSign < 0 && tNow <= lo + 0.001) tNow = hi; }
   setPlaying(!playing);
@@ -1048,8 +1077,8 @@ function liveRealTime() { // beta: jump to the wall-clock time and play at x1; w
   if (!LV || !LV.rtPending || !RNG) return;
   const f = (Date.now() - LV.rtT0) / (LV.idx.step_min * 60000);
   if (f > RNG.hi + 1e-6 && RNG.hi < LV.hiWant) return; // later days still loading: try again when they arrive
-  LV.rtPending = false; tNow = clamp(f, RNG.lo, RNG.hi); speed = 1; dirSign = 1; setPlaying(true);
-  const sp = document.getElementById('speed'); if (sp) [...sp.children].forEach((c, i) => c.classList.toggle('on', i === 0));
+  LV.rtPending = false; tNow = clamp(f, RNG.lo, RNG.hi); dirSign = 1; setPlaying(true);
+  if (!spdUser) setSpeedIdx(0);
 }
 async function liveRest(idx, d0, f0, nF, ST) {
   try {
@@ -1081,12 +1110,14 @@ function ui2Build() {
   $('fpst').insertAdjacentHTML('beforebegin', '<span id="fptx"><span class="nm" id="fpnm"></span><span class="st" id="fpsub"></span></span>');
   const g = document.createElement('button'); g.id = 'gear'; g.type = 'button'; g.className = 'ib'; g.title = 'Settings'; g.setAttribute('aria-label', 'Settings'); g.innerHTML = UI2_GEAR;
   g.onclick = () => setSheet($('sheet').hidden); $('legend').after(g);
+  if (BETA) document.body.appendChild(g); // beta: the settings button sits beside the fog button (outside the dock, whose blur would make 'fixed' relative to it)
   $('legend').querySelector('.ticks').innerHTML = '<span>dry</span><span>wet</span>';
   const tr = document.createElement('div'); tr.id = 'trk';
   tr.innerHTML = '<div id="trkdays"></div><div class="rail"></div><div class="obs" id="trkobs"></div><div class="played" id="trkplay"></div><i class="now" id="trknow" hidden></i><i class="thumb" id="trkthumb"></i><i class="ld" id="trkld" hidden></i>';
   $('slider').before(tr); tr.appendChild($('slider'));
   const st = document.createElement('div'); st.id = 'st3'; st.innerHTML = '<span class="stl" id="st3l"></span>'; $('timebar').after(st);
   st.appendChild($('poc')); $('poc').innerHTML = '<span class="pill">' + UI2_INFO + '5 m sim · not a forecast</span>';
+  if (BETA) $('weather').after($('poc')); // beta: the info icon sits at the end of the weather row (icon only, see speed_ui.css)
 }
 
 /* time track: observed part solid, forecast part dotted, yellow tick at the data time, played part cyan, day labels at local midnights */

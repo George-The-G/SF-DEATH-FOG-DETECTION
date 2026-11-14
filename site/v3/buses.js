@@ -221,7 +221,7 @@ export async function createBuses({ THREE, scene, camera, controls, canvas, EX, 
 
   /* ---------- replay mode: which buses exist at the simulation time, their popup times, loading the log ---------- */
   const HIDE_ABOVE = 60; // real-time multiple: above this a bus crosses the district in a second or two, so buses are hidden (chip says so)
-  const chip = RP ? (() => { const e = document.createElement('div'); e.textContent = 'Buses hidden at this speed'; e.style.cssText = 'position:fixed;left:8px;bottom:268px;z-index:25;font:12px Inter,system-ui,sans-serif;color:#e8eef4;background:rgba(16,24,34,.92);border:1px solid #2a3745;border-radius:8px;padding:5px 8px;display:none'; document.body.appendChild(e); return e; })() : null;
+  const chip = null; // no on-screen notice: buses simply disappear above x60
   function activate(o, t) { // make o.buses match the tracks that could be on screen at time t (meshes are made when a bus is first drawn)
     const act = o.rp.active(t), ids = new Set();
     for (const [id, tr] of act) { ids.add(id); if (!o.buses.has(id)) o.buses.set(id, { track: tr, mesh: null, off: 0 }); }
