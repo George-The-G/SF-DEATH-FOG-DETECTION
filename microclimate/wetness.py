@@ -81,6 +81,15 @@ LAPSE_DEW = 0.0018     # K/m, dew point below the cloud base
 BASE_DZ_CLIP_M = 400.0 # street height above / below the model terrain is clipped to this in the lapse adjustment
 BASE_OFFSET_CLIP_M = 300.0  # |station-fitted correction of the base formula| is clipped to this
 
+# ---- drizzle (guide 11, switch "drizzle"; needs cloud_base). First guesses, not calibrated. ----
+DRIZZLE_MAX = 0.10       # mm/h from a thick stratus layer
+DRIZZLE_T0, DRIZZLE_T1 = 200.0, 500.0   # m cloud thickness where drizzle starts / reaches DRIZZLE_MAX
+DRIZZLE_OBS_DZ_MM_H = 0.05    # mm/h: at least this when a coastal airport reports drizzle (DZ)
+DRIZZLE_OBS_CLEAR = 0.3  # factor on the model rate when a low ceiling is reported without DZ / RA / BR / FG
+DRIZZLE_EVAP_M = 600.0   # m below the base over which drizzle evaporates down to DRIZZLE_EVAP_MIN of its rate
+DRIZZLE_EVAP_MIN = 0.2
+K_DRIZZLE = 150.0        # old (W units) path: wetting per mm of drizzle
+
 # ---- physics switches (guide 01): named model changes, all OFF unless a caller passes them to simulate(physics=...) ----
 KNOWN_PHYSICS = ("cloud_base", "lag_uniform", "vpd_evap", "total_cloud", "drizzle", "insitu_fog", "sun_clear", "film", "pavement", "grease")
 
@@ -93,6 +102,8 @@ def check_physics(physics):
         raise ValueError(f"unknown physics switch(es) {bad}; known: {list(KNOWN_PHYSICS)}")
     if "pavement" in P and not {"sun_clear", "film"} <= P:   # guide 07 uses the street sunlight S (guide 06) and the water film (guide 05)
         raise ValueError(f"physics switch 'pavement' needs 'sun_clear' and 'film' as well (missing: {sorted({'sun_clear', 'film'} - P)})")
+    if "drizzle" in P and "cloud_base" not in P:   # guide 11 uses the cloud base of guide 08
+        raise ValueError("physics switch 'drizzle' needs 'cloud_base' as well")
     return P
 
 
@@ -273,6 +284,17 @@ def onshore_weight(wdir):
     return np.where((d >= 180.0) & (d <= 360.0), w, 0.0)
 
 
+def drizzle_rate(thick, cloud_low):
+    """Guide 11: model drizzle rate (mm/h) at the coast from the cloud thickness (m) and the low cloud cover (%). Broadcasts."""
+    ramp = np.clip((np.asarray(thick, float) - DRIZZLE_T0) / (DRIZZLE_T1 - DRIZZLE_T0), 0.0, 1.0)
+    return DRIZZLE_MAX * ramp * np.sqrt(np.clip(np.asarray(cloud_low, float) / CLOUD_FOG, 0.0, 1.0))
+
+
+def drizzle_at_street(D, top, base, z, top_ramp):
+    """Guide 11: drizzle rate at each street: only below the fog top (top_ramp = fog_top_ramp(top, z)), less where it evaporates below the base."""
+    return D * top_ramp * np.clip(1.0 - np.maximum(np.asarray(base, float) - np.asarray(z, float), 0.0) / DRIZZLE_EVAP_M, DRIZZLE_EVAP_MIN, 1.0)
+
+
 def fog_inflow(ta, td, cloud_low, wdir, use_gap=True):
     """Advected fog inflow strength s(t) in 0..1 (arrays over time or scalars). use_gap=False (switch cloud_base) drops the T - Td factor:
     the cloud base test per street already counts the gap."""
@@ -347,6 +369,8 @@ def step(W, svf, porous, f, local_fog, lit, dt_h, wind_ratio=1.0, use_sun=True, 
     sun = K_DIFF * sw + (K_SUN * sw * lit if use_sun else 0.0)
     if "sun_clear" in physics and "sw_eff" in f:   # guide 06: drying by the street's own sunlight S (direct on lit streets + diffuse), no separate K_DIFF
         sun = K_SUN * np.maximum(f["sw_eff"], 0.0) / 1000.0
+    if "drizzle" in physics and "drizzle" in f:   # guide 11 (old W path): the larger of rain and drizzle wetting
+        rain = np.maximum(rain, K_DRIZZLE * np.asarray(f["drizzle"], float) * porous)
     out = np.clip(W + (dew + fog + rain - evap - sun) * dt_h, 0.0, 100.0)
     return out.astype(np.float32), dict(dew=dew * dt_h, fog=fog * dt_h, rain=rain * dt_h, evap=evap * dt_h)
 
@@ -507,6 +531,7 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     hor = pts.get("horizon")
     block_dirs = []
     in_cloud = np.zeros(N)
+    drz_tot = np.zeros(N)
     for i in range(n):
         if blk and i % blk == 0:  # time-varying lag: mean flow of this block
             sl = slice(i, min(n, i + blk))
@@ -519,6 +544,11 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
             f["cloud"] = ser["cloud_cover"][i]
         if forcing_fn is not None:
             f = forcing_fn(i, f)
+        if "drizzle" in P and "drizzle" in f:   # guide 11: wetting is the larger of rain and drizzle, never the sum
+            drz_mm = f["drizzle"]
+            if film:
+                f = dict(f, precip=np.maximum(f["precip"], drz_mm))
+            drz_tot += np.asarray(drz_mm) * dt_h
         dw = f.get("dir_w") if E is not None else None   # guide 03: per-point direction weights [D, N] (sum to 1 over D) replace the single citywide blend
         local = lagged(s, i - lag_steps) * (expo if E is None else (Wt[i] @ E if dw is None else (np.asarray(dw) * E).sum(axis=0)))
         if prof:  # street counts as inside the fog only while the (lagged) fog top is above it
@@ -595,6 +625,8 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
         extra.update(ts_u8=ts_out, ts_end=ts_s, tdeep_end=td_s)
     if "cloud_base" in P:
         extra["in_cloud_hours"] = in_cloud
+    if "drizzle" in P:
+        extra["drizzle_total"] = drz_tot
     diag = dict(dirs_used=(None if dirs is None else dirs.tolist()), mean_flow_dir=mdir, sun_az=az, sun_el=el, s=s, lit=lit_all, lag_steps=lag_steps, fog_mode=mode, fog_top=top, tracer=np.asarray(tr, np.float32),
                 out_every=out_every, block_dirs=block_dirs, physics=sorted(P), state_at=state_at, **extra, **{k + "_total": v for k, v in dep.items()})
     return out, diag

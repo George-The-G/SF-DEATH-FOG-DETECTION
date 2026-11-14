@@ -153,7 +153,7 @@ def _vis_mi(v):
 
 
 def metar(hours=48):
-    """-> {icao: list of dict(t, temp, dewp, wdir, wspd_ms, vis_mi, ceil_ft)} (ceil = lowest BKN/OVC/VV base, nan if none)."""
+    """-> {icao: list of dict(t, temp, dewp, wdir, wspd_ms, vis_mi, ceil_ft, wx = present weather string, e.g. '-DZ BR')} (ceil = lowest BKN/OVC/VV base, nan if none)."""
     js = get(C.METAR_URL, dict(ids=",".join(C.METAR_IDS), format="json", hours=hours), "metar").json()
     out = {k: [] for k in C.METAR_IDS}
     for x in js:
@@ -165,7 +165,7 @@ def metar(hours=48):
         spd = g("wspd")
         out.setdefault(x["icaoId"], []).append(dict(t=dt.datetime.fromtimestamp(x["obsTime"], dt.timezone.utc), temp=g("temp"), dewp=g("dewp"),
                                                     wdir=g("wdir") if str(x.get("wdir")).replace(".", "").isdigit() else np.nan,
-                                                    wspd_ms=spd * 0.514444, vis_mi=_vis_mi(x.get("visib")), ceil_ft=ceil))
+                                                    wspd_ms=spd * 0.514444, vis_mi=_vis_mi(x.get("visib")), ceil_ft=ceil, wx=str(x.get("wxString") or "")))
     if not any(out.values()):
         raise FetchError("metar: empty")
     return out

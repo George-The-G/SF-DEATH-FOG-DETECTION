@@ -129,7 +129,7 @@ def gather(st, t0, now, cache):
 
 
 INPUTS_VERSION = 1
-PHYSICS_LABEL = {"sun_clear": "clear-sky sun", "film": "water film", "pavement": "pavement heat", "cloud_base": "cloud base", "lag_uniform": "uniform fog-front speed"}
+PHYSICS_LABEL = {"sun_clear": "clear-sky sun", "film": "water film", "pavement": "pavement heat", "cloud_base": "cloud base", "lag_uniform": "uniform fog-front speed", "drizzle": "drizzle"}
 
 
 def settings(beta=False, physics=None, carry_state=None, promoted=False):

@@ -30,7 +30,7 @@ One guide per piece of work. Nothing here is built.
 | 08 | Cloud base and street-level temperature | Hills in cloud, flats under it | M, built (beta only, switch `cloud_base`) |
 | 09 | Fog-front lag speed | Correct fog arrival time in sheltered streets | S, built (beta only, switch `lag_uniform`) |
 | 10 | Evaporation by vapour pressure; total cloud in cooling | Interim fix until 07 is on | S, built (switches `vpd_evap`, `total_cloud`; legacy path only, no effect while film is on) |
-| 11 | Drizzle | Wetting below thick stratus | S-M |
+| 11 | Drizzle | Wetting below thick stratus | S-M, built (beta only, switch `drizzle`, needs `cloud_base`) |
 | 12 | In-place fog for any wind direction | Bay-side and calm-night fog | M |
 | 13 | Dry-spell and humidity grease factors | Extra slipperiness, unverified | S |
 | 14 | East wind directions in the live pipeline (`14_wind_east.md`, `RUNBOOK_WIND_EAST.md`) | Street wind from 22.5..135 in the station-anchor fit; 157.5 is an accepted gap; no east fog (guide 12) | S, built (beta only) |

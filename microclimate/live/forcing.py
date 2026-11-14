@@ -372,6 +372,7 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
         if CCs is not None:
             out["cloud"] = gat(CCs)
         return out
+    drz = None
     if cb_on:
         zm_pts = interp_at(np.asarray(rrfs["elev"], float), idx, w4)
         zs = zm_pts if z is None else np.asarray(z, float)
@@ -382,8 +383,12 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
             base = (zm_pts + wetness.LCL_M_PER_K * np.maximum(out["temp"] - out["dew"], 0.0) + cb_off[i]).astype(np.float32)
             out["temp"], out["dew"] = fogtop.street_temperature(out["temp"], out["dew"], zs, zm_pts, base, top[i])
             out["cloud_base"] = base
+            if drz is not None:
+                out["drizzle"] = wetness.drizzle_at_street(drz[i], top[i], base, zs, fogtop.fog_top_ramp(top[i], zs)).astype(np.float32)
             return out
         cb_coast = float(np.mean(ser["elevation_m"])) + wetness.LCL_M_PER_K * np.maximum(cT - cTd, 0.0) + cb_off
+        if "drizzle" in info["physics"]:   # guide 11
+            drz = drizzle_series(mt, t_h, nh, g, wetness.drizzle_rate(np.maximum(top - cb_coast, 0.0), cCL), info)
         sun_out = dict(sun_out, cloud_base_coast=cb_coast.astype(np.float32))
     extra = {}
     if anch is not None:
@@ -428,6 +433,29 @@ def base_offset_hourly(mt, t_h, nh, info):
     if not np.isfinite(raw).any():
         info["flags"].append("cloud_base: no airport ceiling, base from T - Td only")
     return off
+
+
+def drizzle_series(mt, t_h, nh, g, D_model, info):
+    """Guide 11: the model drizzle rate D_model (mm/h per step) corrected by the airport reports: an hour with DZ at any station gets at least
+    wetness.DRIZZLE_OBS_DZ_MM_H; an hour with a ceiling at or below C.CEIL_MAX_FT and no DZ / RA / BR / FG scales it by wetness.DRIZZLE_OBS_CLEAR. The correction
+    (observed - model, hourly) fades out into the forecast with C.FOG_E_FOLD_H like the other corrections."""
+    m_h = np.array([D_model[(g > k - 0.5) & (g <= k + 0.5)].mean() if ((g > k - 0.5) & (g <= k + 0.5)).any() else 0.0 for k in range(nh)])
+    target = np.full(nh, np.nan)
+    dz_hours = 0
+    for k in range(nh):
+        rows = [x_ for st in C.METAR_IDS for x_ in ((mt or {}).get(st, []) or []) if abs((x_["t"] - t_h[k]).total_seconds()) <= 1800]
+        if not rows:
+            continue
+        wx = [str(x_.get("wx") or "") for x_ in rows]
+        if any("DZ" in w for w in wx):
+            target[k] = max(m_h[k], wetness.DRIZZLE_OBS_DZ_MM_H)
+            dz_hours += 1
+        elif any(np.isfinite(x_["ceil_ft"]) and x_["ceil_ft"] <= C.CEIL_MAX_FT for x_ in rows) and not any(c in w for w in wx for c in ("RA", "BR", "FG")):
+            target[k] = wetness.DRIZZLE_OBS_CLEAR * m_h[k]
+    corr, _ = fade_series(target - m_h, g, C.FOG_E_FOLD_H, "add", 0.0)
+    D = np.maximum(D_model + corr, 0.0)
+    info["drizzle"] = dict(hours_with_dz=dz_hours, mean_rate=float(D.mean()))
+    return D
 
 
 def pavement_cold_start(T_l, th, hours=24.0):
