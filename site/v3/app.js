@@ -67,7 +67,7 @@ $('retry').onclick = () => location.reload();
 function toast(msg) { // non-fatal notice (reuses the badge)
   const b = $('badge'); b.textContent = msg; b.hidden = false;
 }
-window.addEventListener('error', (e) => { if (overlay.classList.contains('hide')) toast('Something went wrong: ' + (e.message || 'error')); });
+window.addEventListener('error', (e) => { if (/ResizeObserver loop/.test(e.message || '')) { e.stopImmediatePropagation(); return; } /* harmless browser notice: layout settled over two frames */ if (overlay.classList.contains('hide')) toast('Something went wrong: ' + (e.message || 'error')); });
 
 function webglOk() {
   try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch { return false; }
@@ -100,37 +100,13 @@ scene.add(skater.group);
 let SKY = null;
 if (BETA && (QP.get('sky') !== '0' || QP.get('hud') === '1')) { // beta default: live sky; ?sky=0 turns it off
   import('./sky.js').then((m) => m.createSky({ THREE, scene, camera, renderer, starsUrl: 'stars.bin', sky: QP.get('sky') !== '0', hud: QP.get('hud') === '1' }))
-    .then((s) => { SKY = s; if (s.enabled) skyButton(); if (FOGV) s.setExtra(() => fog.info()); if (night) skyTime(curF); }).catch((e) => console.warn('sky unavailable', e));
+    .then((s) => { SKY = s; if (FOGV) s.setExtra(() => fog.info()); if (night) skyTime(curF); }).catch((e) => console.warn('sky unavailable', e));
 }
 /* Beta live buses (buses.js, loaded only with ?beta=1&buses=1): the two skate shuttles, bus-stop shelters with pinned arrival popups. The normal page never fetches it. */
 let BUSES = null;
 if (BETA && QP.get('buses') === '1') {
   import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getDist: () => camera.position.distanceTo(controls.target), QP, toast }))
     .then((b) => { BUSES = b; }).catch((e) => console.warn('buses unavailable', e));
-}
-/* Beta "Sky" button: the orbit camera always looks down at the city, so the sky is only a thin band. This hops to a street-level view that looks at the sun, the moon, then straight up at the stars, then back. */
-function skyButton() {
-  const b = document.createElement('button'); b.type = 'button'; b.id = 'skybtn'; b.textContent = 'Sky'; b.setAttribute('aria-label', 'Look up at the sun, moon and stars');
-  b.style.cssText = 'position:fixed;left:max(8px,env(safe-area-inset-left,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 172px);z-index:25;min-height:36px;padding:6px 14px;border-radius:10px;border:1px solid rgba(140,170,210,.22);background:rgba(9,15,28,.8);color:#5ef2ff;font:600 13px system-ui,sans-serif;backdrop-filter:blur(10px);cursor:pointer';
-  document.body.appendChild(b);
-  let step = -1;
-  const dir = (alt, az) => { const e = alt * Math.PI / 180, z = az * Math.PI / 180; return new THREE.Vector3(Math.sin(z) * Math.cos(e), Math.sin(e), -Math.cos(z) * Math.cos(e)); };
-  b.onclick = () => {
-    const E = SKY && SKY.info; if (!E) return;
-    const views = [];
-    if (E.sun.alt > -1) views.push(['Sun', E.sun.alt, E.sun.az]);
-    if (E.moon.alt > 0) views.push(['Moon', E.moon.alt, E.moon.az]);
-    views.push(['Stars', 75, (E.sun.az + 180) % 360]);
-    step = (step + 1) % (views.length + 1);
-    if (step === views.length) { // back to the city view
-      controls.maxPolarAngle = 1.48; controls.minDistance = 60; camera.position.copy(CITY.pos); controls.target.copy(CITY.target); controls.update(); b.textContent = 'Sky'; return;
-    }
-    const [name, alt, az] = views[step], d = dir(Math.min(alt, 80), az);
-    controls.maxPolarAngle = 3.0; controls.minDistance = 1;
-    camera.position.set(CITY.target.x, 800 * EX, CITY.target.z); /* above the fog slab, so looking up is not through fog */ controls.target.copy(camera.position).addScaledVector(d, 60); controls.update();
-    if (QP.has('skydbg')) console.log('skydbg', JSON.stringify([name, alt, az, d, camera.position, controls.target, controls.maxPolarAngle]));
-    b.textContent = (step + 1 < views.length ? 'Next: ' + views[step + 1][0] : 'Back to city');
-  };
 }
 function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) fog.setLight(SKY.light); } }
 
@@ -148,7 +124,7 @@ function setBandVars() { // heights of the glass stacks, used to place popovers 
   const r = document.documentElement.style;
   r.setProperty('--ctl-h', $('controls').offsetHeight + 'px'); r.setProperty('--top-h', $('top').offsetHeight + 'px');
 }
-addEventListener('resize', resize); { const ro = new ResizeObserver(setBandVars); ro.observe($('controls')); ro.observe($('top')); } resize();
+addEventListener('resize', resize); { const ro = new ResizeObserver(() => requestAnimationFrame(setBandVars)); ro.observe($('controls')); ro.observe($('top')); } resize();
 
 /* ------------------------------------------------------------------ terrain height lookup */
 function buildHeightGrid(geom, step) {
@@ -208,6 +184,7 @@ function buildBuildings(buf) {
   const pnv = take(Uint8Array, np), pb = take(Uint16Array, np), ph = take(Uint16Array, np), pv = take(Uint16Array, nvt * 2);
 
   const lo = new THREE.Color(0x56647f), hi = new THREE.Color(0xaabcdf), col = new THREE.Color();
+  const colData = { nb, np, xyQ, hQ, wdQ, cx, cn, bw, bd, ba, pnv, pv }; // read by skate.js for building walls (beta Take control)
   const tint = (h, k) => { // taller = lighter, plus a little per-building variation
     const t = Math.pow(clamp((h - 6) / 90, 0, 1), 0.7), j = 0.9 + 0.2 * (((k * 2654435761) >>> 8) % 1000) / 1000;
     return col.copy(lo).lerp(hi, t).multiplyScalar(j);
@@ -268,6 +245,7 @@ function buildBuildings(buf) {
     g.computeVertexNormals();
     group.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x0b1224, side: THREE.DoubleSide })));
   }
+  group.userData.col = colData;
   return group;
 }
 
@@ -461,7 +439,8 @@ const FLY = { back: 150, ahead: 130, up: 62 };
 function flyUI() {
   const on = !!fly; document.body.classList.toggle('flying', on);
   { const fh = $('flyhdr'); fh.setAttribute('aria-label', on ? 'Exit the flyover' : 'Fly the route'); fh.title = fh.getAttribute('aria-label'); } if (on) { closePicker(); if (!SIDE()) setSheet(false); }
-  $('flypill').hidden = !on; $('flypause').hidden = !on;
+  $('flypill').hidden = !on; $('flypause').hidden = !on || !!(fly && fly.control); document.body.classList.toggle('skating', !!(fly && fly.control));
+  { const tk = $('flytake'); if (tk) { tk.hidden = !(UIX && on && !fly.control); if (UIX && on) loadSkateCss(); } }
   if (on) {
     const paused = fly.paused;
     $('flypause').innerHTML = fly.done ? '&#8635;' : paused ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>' : ICON_PAUSE;
@@ -475,7 +454,7 @@ function startFly() {
   fly = { R, u: 0, paused: false, done: false, last: 0, cam: camera.position.clone(), tgt: controls.target.clone(), txt: '' };
   flyUI();
 }
-function stopFly() { skater.setVisible(false); if (!fly) return; fly = null; controls.enabled = true; controls.update(); flyUI(); }
+function stopFly() { skater.setVisible(false); if (SK) SK.stop(); if (!fly) return; fly = null; controls.enabled = true; controls.update(); flyUI(); }
 function routeBins(R) {
   if (R.bins) return R.bins;
   const ri = R.def.index, p = R.def.poly, s = R.def.s, bins = new Map();
@@ -514,6 +493,7 @@ function flyReadout(s) {
 function flyStep(ts) {
   if (!fly) return;
   const dt = fly.last ? Math.min(0.1, (ts - fly.last) / 1000) : 0; fly.last = ts;
+  if (fly.control) { skateStep(dt); return; }
   const R = fly.R, dur = clamp(R.len / 80, 15, 25);
   if (!fly.paused) { fly.u = Math.min(1, fly.u + dt * flySpeed / dur); if (fly.u >= 1) { fly.done = true; fly.paused = true; flyUI(); } }
   $('flyfill').style.width = (fly.u * 100).toFixed(1) + '%';
@@ -526,7 +506,36 @@ function flyStep(ts) {
   camera.position.copy(fly.cam); controls.target.copy(fly.tgt);
   flyReadout(s); if (UI2) ui2Fly(s);
   placeSkater(R, s, dt, c);
+  { const tk = $('flytake'); if (tk && !tk.hidden && !tk.dataset.busy) { const d = !skater.group.visible; if (tk.disabled !== d) tk.disabled = d; } } // Take control needs the skater on screen
 }
+/* ---- Take control (everyone with the data layers UI: BETA or the promoted public page): skate.js is fetched only now. The flyover skater's spot and heading hand over to the skate simulation. */
+let SK = null, SKP = null, skCss = false, skRead = '';
+function loadSkateCss() { if (skCss) return; skCss = true; const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'skate.css'; document.head.appendChild(l); }
+async function takeControl() {
+  if (!fly || fly.control || !skater.group.visible) return;
+  const tk = $('flytake'); tk.disabled = true; tk.dataset.busy = '1';
+  try {
+    const m = await (SKP || (SKP = import('./skate.js')));
+    if (!fly) return;
+    if (!SK) SK = m.createSkate({ THREE, camera, controls, renderer, terrainH, EX, getG: () => G, getCol: () => buildingsMesh && buildingsMesh.userData.col, skater, isTouch, toast, readout: skateReadout });
+    if (!SK.start(skater.group.position, _sf, null)) { toast('Skating needs street data: try again in a moment'); tk.disabled = false; delete tk.dataset.busy; return; }
+    fly.control = true; fly.paused = true; skRead = ''; $('flyfill').style.width = '0%'; flyUI();
+    $('fpnm').textContent = 'Free skate'; fly.nm = 'Free skate';
+  } catch (e) { console.warn('skate unavailable', e); toast('Skating could not load'); SKP = null; }
+  tk.disabled = false; delete tk.dataset.busy;
+}
+function skateStep(dt) {
+  ensureWet();
+  SK.update(dt, (k) => (k >= 0 && wetNow[k] >= 0 ? wetNow[k] : null));
+}
+function skateReadout(sim) {
+  const k = sim.k, st = k >= 0 ? (G.names[G.st[k]] || '') : '', w = k >= 0 && wetNow[k] >= 0 ? Math.round(wetNow[k]) : null, mph = Math.round(sim.speed * 2.237);
+  const txt = `${st}|${w}|${mph}`; if (txt === skRead) return; skRead = txt;
+  $('fpst').textContent = st; $('fpsub').textContent = `${mph} mph` + (w == null ? '' : ` · wet ${w}`);
+  $('fpw').innerHTML = w == null ? '' : `<span class="sw" style="background:${rgbCss(rampColor(w))}"></span><b>${w}</b>`;
+}
+$('flytake').onclick = takeControl;
+
 /* The skateboarder rides the street ahead of the chase camera. Its arc position is chosen so that the board sits just above the
    glass control stack at the bottom of the screen (bisection on the projected height), its size is a fixed share of the screen height
    (so it reads from 390x844 to 1440x900), and it wobbles with the interpolated wetness at that point of the route. */
@@ -566,9 +575,13 @@ function applyUrlRoute() { // ?route=<id> selects and flies to it, &fly=1 starts
 
 /* ------------------------------------------------------------------ fog layer (see fog.js) */
 const FOGV = BETA && QP.get('fog') !== 'sheets'; // beta default: volumetric fog; ?fog=sheets gets the old sheets back
-const fog = (FOGV ? createFogVol : createFog)({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast });
-if (FOGV) { // volumetric fog looks right at a lower density: slider 5 to 60 percent, starting at 45 (the sheets keep 30 to 200 at 100)
-  const fd = document.getElementById('fogdens'); if (fd) { fd.min = 5; fd.max = 60; fd.value = 45; } fog.setDensity(0.45);
+const LAB = FOGV; // fog menu (foglab.js): a small cloud button on beta to play with the fog look; its settings stay in this browser only
+let labParams = null; if (LAB) { try { labParams = JSON.parse(localStorage.getItem('foglab.v2') || 'null'); } catch (e) { labParams = null; } }
+const fog = (FOGV ? createFogVol : createFog)({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast, params: labParams || undefined });
+if (LAB) window.__fogLab = { fog, renderer, scene, camera }; // benchmark handle (tools/fogbench.cjs)
+if (LAB) import('./foglab.js').then((m) => m.mountFogLab({ fog, densEl: document.getElementById('fogdens') })).catch((e) => console.warn('fog menu unavailable', e));
+if (FOGV) { // volumetric fog looks right at a lower density: slider 5 to 60 percent, starting at 21 (the sheets keep 30 to 200 at 100)
+  const fd = document.getElementById('fogdens'); if (fd) { fd.min = 5; fd.max = 60; fd.value = 21; } fog.setDensity(0.21);
 }
 
 /* ------------------------------------------------------------------ replay data */
@@ -695,7 +708,7 @@ function applyTime(force) {
       $('wx-temp').textContent = gF(weather.temp_c) + ' °F'; $('wx-dew').textContent = gF(weather.dewpoint_c) + ' °F';
       $('wx-wind').textContent = (weather.wind_ms && weather.wind_ms[i] != null ? (weather.wind_ms[i] * 2.23694).toFixed(0) : '--') + ' mph ' + (weather.wind_dir ? compass(weather.wind_dir[i]) : '');
       $('wx-cloud').textContent = g(weather.cloud_low_pct, 0) + ' %';
-      if (FOGV) fog.setWeather({ top: weather.fog_top_m ? weather.fog_top_m[i] : null });
+      if (FOGV) fog.setWeather({ top: weather.fog_top_m ? weather.fog_top_m[i] : null, series: weather.fog_top_m, at: f, step_min: night.step_min, wind_ms: weather.wind_ms, wind_dir: weather.wind_dir });
       const s = weather.sun_el ? weather.sun_el[i] : null; $('wx-sun').textContent = s == null ? '--' : (s > 0 ? 'up ' : 'down ') + minus(s.toFixed(0)) + '°';
       const t = $('wx-temp').textContent.replace(' ', ''), dp = $('wx-dew').textContent.replace(' °F', '°F'), wd = $('wx-wind').textContent.trim() + ($('wx-note').hidden ? '' : '*');
       if (LV && LV.el) liveWx(i);
@@ -769,6 +782,7 @@ let down = null;
 let pressTimer = 0, pressFired = 0;
 const cancelPress = () => { clearTimeout(pressTimer); pressTimer = 0; };
 canvas.addEventListener('pointerdown', (e) => {
+  if (fly && fly.control) return; // skating: the map is not a button, the joystick and keys steer
   if (fly) stopFly(); down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (e.pointerType === 'touch' || longPress()) hideTip();
   cancelPress();
   if (longPress() && e.isPrimary && (e.pointerType !== 'mouse' || e.button === 0)) { // press and hold: the card appears under the finger if it has not moved
@@ -805,6 +819,18 @@ canvas.addEventListener('pointermove', (e) => {
 });
 canvas.addEventListener('pointerleave', () => { if (!isTouch) hideTip(); });
 
+/* Camera floor guard: orbit, camera flights and the fly-along can never put the camera under the ground (or inside a hill).
+   Highest of the terrain under the camera and four points CAM_PROBE m around it (the 60 m terrain triangles differ a little from the bilinear lookup),
+   never below sea level, plus CAM_CLEAR m (the near plane is 8 m). OrbitControls re-reads camera.position every frame, so the user just feels the ground
+   stop them. ?noclamp=1 switches it off for debugging. */
+const CAM_CLEAR = 14, CAM_PROBE = 30, NOCLAMP = QP.get('noclamp') === '1';
+function keepCameraAboveGround() {
+  if (!terrainH || NOCLAMP) return;
+  const p = camera.position, t = terrainH, d = CAM_PROBE;
+  const g = Math.max(0, t.at(p.x, p.z), t.at(p.x + d, p.z), t.at(p.x - d, p.z), t.at(p.x, p.z + d), t.at(p.x, p.z - d)) + CAM_CLEAR;
+  if (p.y < g) { p.y = g; camera.lookAt(controls.target); camera.updateMatrixWorld(); }
+}
+
 /* ------------------------------------------------------------------ main loop */
 function frame(ts) {
   requestAnimationFrame(frame);
@@ -823,6 +849,7 @@ function frame(ts) {
   }
   flyStep(ts);
   controls.update();
+  keepCameraAboveGround();
   const dist = camera.position.distanceTo(controls.target);
   fog.update(camera, dist, ts / 1000);
   if (pointMat && !useRib) pointMat.uniforms.uScale.value = clamp(dist / 450, 1, 12);
@@ -1183,4 +1210,4 @@ async function initBeta() {
   }
 })();
 
-window.__dbg = { get skater() { return skater; }, stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get rib2() { return rib2; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
+window.__dbg = { get skater() { return skater; }, skate: () => (SK && SK.sim ? { x: +SK.sim.x.toFixed(1), z: +SK.sim.z.toFixed(1), y: +SK.sim.y.toFixed(1), speed: +SK.sim.speed.toFixed(1), onRoad: SK.sim.onRoad, wall: SK.sim.wall, k: SK.sim.k, active: SK.active, buildMs: SK.world && SK.world.buildMs } : null), stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get rib2() { return rib2; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
