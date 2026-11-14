@@ -18,6 +18,8 @@ Everything runs on GitHub Actions and GitHub Pages. No server, no paid hosting, 
 * **What is drawn:** about 286,000 street points across the city, coloured 0 (dry) to 100 (wet); a fog layer; terrain and buildings;
   routes in Potrero Hill District and Sunset District with length, drop, climb and wetness along the route.
 * **Past nights:** nine replayed nights stay in the Night list.
+* **Take control (side feature):** during a route flyover, tap Take control to skate the street yourself with an on-screen joystick or WASD.
+  Collisions with terrain and buildings, gravity downhill, slick when wet. It is a separate side feature with its own docs and feature list in `docs/skate/`; it does not change any wetness data.
 
 How the wetness index is made, every 10 minutes for every street point:
 
