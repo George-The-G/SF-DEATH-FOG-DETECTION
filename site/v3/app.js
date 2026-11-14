@@ -775,6 +775,18 @@ canvas.addEventListener('pointermove', (e) => {
 });
 canvas.addEventListener('pointerleave', () => { if (!isTouch) hideTip(); });
 
+/* Camera floor guard: orbit, camera flights and the fly-along can never put the camera under the ground (or inside a hill).
+   Highest of the terrain under the camera and four points CAM_PROBE m around it (the 60 m terrain triangles differ a little from the bilinear lookup),
+   never below sea level, plus CAM_CLEAR m (the near plane is 8 m). OrbitControls re-reads camera.position every frame, so the user just feels the ground
+   stop them. ?noclamp=1 switches it off for debugging. */
+const CAM_CLEAR = 14, CAM_PROBE = 30, NOCLAMP = QP.get('noclamp') === '1';
+function keepCameraAboveGround() {
+  if (!terrainH || NOCLAMP) return;
+  const p = camera.position, t = terrainH, d = CAM_PROBE;
+  const g = Math.max(0, t.at(p.x, p.z), t.at(p.x + d, p.z), t.at(p.x - d, p.z), t.at(p.x, p.z + d), t.at(p.x, p.z - d)) + CAM_CLEAR;
+  if (p.y < g) { p.y = g; camera.lookAt(controls.target); camera.updateMatrixWorld(); }
+}
+
 /* ------------------------------------------------------------------ main loop */
 function frame(ts) {
   requestAnimationFrame(frame);
@@ -793,6 +805,7 @@ function frame(ts) {
   }
   flyStep(ts);
   controls.update();
+  keepCameraAboveGround();
   const dist = camera.position.distanceTo(controls.target);
   fog.update(camera, dist, ts / 1000);
   if (pointMat && !useRib) pointMat.uniforms.uScale.value = clamp(dist / 450, 1, 12);
