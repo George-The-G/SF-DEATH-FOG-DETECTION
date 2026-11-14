@@ -106,15 +106,16 @@ export function mountFogLab({ fog, densEl, extraControls }) {
   let benchTxt = '';
 
   // keep the button just above the bottom card (its height changes with layout and phone size)
-  const foot = document.querySelector('footer');
-  function place() {
-    const top = foot ? foot.getBoundingClientRect().top : innerHeight - 12;
+  const foot = document.querySelector('footer'), dock = document.getElementById('dock');
+  function place() { // beta playback UI (body.bx-sp): follow the whole dock, so rows added above the bar (stations, cloud match) push the buttons up
+    const anchor = document.body.classList.contains('bx-sp') && dock ? dock : foot;
+    const top = anchor ? anchor.getBoundingClientRect().top : innerHeight - 12;
     const bottom = Math.max(12, innerHeight - top + 10);
     btn.style.bottom = bottom + 'px'; el.style.bottom = (bottom + 44) + 'px'; el.style.maxHeight = Math.max(160, innerHeight - bottom - 64) + 'px';
   }
   btn.style.visibility = fog.ready ? '' : 'hidden';
   const waitReady = setInterval(() => { if (fog.ready) { btn.style.visibility = ''; clearInterval(waitReady); } }, 500);
-  place(); addEventListener('resize', place); if (foot && window.ResizeObserver) new ResizeObserver(place).observe(foot); setInterval(place, 1500);
+  place(); addEventListener('resize', place); if (window.ResizeObserver) { const ro = new ResizeObserver(place); if (foot) ro.observe(foot); if (dock) ro.observe(dock); } setInterval(place, 1500);
 
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(fog.params)); } catch (e) { /* storage blocked: settings last until reload */ } };
   const fmt = (v, step) => (step >= 1 ? String(Math.round(v)) : (+v).toFixed(step < 0.01 ? 3 : step < 0.1 ? 2 : 1));

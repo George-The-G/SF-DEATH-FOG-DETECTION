@@ -1280,6 +1280,7 @@ function ui2Build() {
   $('slider').before(tr); tr.appendChild($('slider'));
   const st = document.createElement('div'); st.id = 'st3'; st.innerHTML = '<span class="stl" id="st3l"></span>'; $('timebar').after(st);
   st.appendChild($('poc')); $('poc').innerHTML = '<span class="pill">' + UI2_INFO + '5 m sim · not a forecast</span>';
+  if (BETA) $('dock').appendChild($('legend')); // beta: the dry/wet tab sits on the top edge of the whole dock, whatever rows are stacked inside it
   if (BETA) $('weather').after($('poc')); // beta: the info icon sits at the end of the weather row (icon only, see speed_ui.css)
 }
 
