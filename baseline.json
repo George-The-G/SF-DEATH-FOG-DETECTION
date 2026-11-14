@@ -1,0 +1,1028 @@
+{
+ "generated_utc": "2026-11-11T21:23:16Z",
+ "start": "2026-10-12",
+ "end": "2026-11-10",
+ "days": 30,
+ "detector": "death_fog_v1",
+ "thresholds": {
+  "watch": 40,
+  "likely": 60,
+  "strong": 80,
+  "spread_hit_c": 2.0,
+  "spread_watch_c": 4.0,
+  "rh_min": 90,
+  "wind_max_mph": 8,
+  "rain_mm": 0.2,
+  "swing_min_c": 8,
+  "cool_rate_c_3h": 3,
+  "solar_max_wm2": 20
+ },
+ "model": "Open-Meteo historical forecast (past model runs, best match)",
+ "zones": {
+  "potrero_hill": {
+   "label": "Potrero Hill",
+   "susceptibility": 1.0,
+   "hours": 720,
+   "pct_of_hours": {
+    "none": 43.1,
+    "watch": 25.4,
+    "likely": 18.1,
+    "strong": 13.5
+   },
+   "episodes": 33,
+   "episodes_per_week": 7.7,
+   "typical_start_hour_local": 22,
+   "trigger_hit_pct_of_hours": {
+    "calm": 86.7,
+    "no_sun": 58.8,
+    "saturation_near": 37.8,
+    "swing": 29.0,
+    "cooling": 12.1,
+    "saturation": 6.4
+   },
+   "episode_list": [
+    {
+     "start_utc": "2026-10-12T13:00:00Z",
+     "start_local": "Mon 6:00 AM",
+     "hours": 4,
+     "peak_score": 65,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-13T02:00:00Z",
+     "start_local": "Mon 7:00 PM",
+     "hours": 3,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-13T08:00:00Z",
+     "start_local": "Tue 1:00 AM",
+     "hours": 8,
+     "peak_score": 100,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-14T05:00:00Z",
+     "start_local": "Tue 10:00 PM",
+     "hours": 11,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "cooling"
+     ]
+    },
+    {
+     "start_utc": "2026-10-15T04:00:00Z",
+     "start_local": "Wed 9:00 PM",
+     "hours": 11,
+     "peak_score": 70,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "cooling"
+     ]
+    },
+    {
+     "start_utc": "2026-10-15T16:00:00Z",
+     "start_local": "Thu 9:00 AM",
+     "hours": 1,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "swing"
+     ]
+    },
+    {
+     "start_utc": "2026-10-16T03:00:00Z",
+     "start_local": "Thu 8:00 PM",
+     "hours": 14,
+     "peak_score": 70,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "cooling"
+     ]
+    },
+    {
+     "start_utc": "2026-10-17T03:00:00Z",
+     "start_local": "Fri 8:00 PM",
+     "hours": 12,
+     "peak_score": 70,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "cooling"
+     ]
+    },
+    {
+     "start_utc": "2026-10-18T03:00:00Z",
+     "start_local": "Sat 8:00 PM",
+     "hours": 15,
+     "peak_score": 80,
+     "why": [
+      "swing",
+      "calm",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-22T12:00:00Z",
+     "start_local": "Thu 5:00 AM",
+     "hours": 1,
+     "peak_score": 75,
+     "why": [
+      "saturation",
+      "calm",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-22T18:00:00Z",
+     "start_local": "Thu 11:00 AM",
+     "hours": 4,
+     "peak_score": 60,
+     "why": [
+      "saturation",
+      "calm"
+     ]
+    },
+    {
+     "start_utc": "2026-10-23T15:00:00Z",
+     "start_local": "Fri 8:00 AM",
+     "hours": 4,
+     "peak_score": 75,
+     "why": [
+      "saturation",
+      "calm",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-24T04:00:00Z",
+     "start_local": "Fri 9:00 PM",
+     "hours": 1,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-24T08:00:00Z",
+     "start_local": "Sat 1:00 AM",
+     "hours": 9,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-25T04:00:00Z",
+     "start_local": "Sat 9:00 PM",
+     "hours": 13,
+     "peak_score": 70,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "cooling"
+     ]
+    },
+    {
+     "start_utc": "2026-10-26T05:00:00Z",
+     "start_local": "Sun 10:00 PM",
+     "hours": 12,
+     "peak_score": 80,
+     "why": [
+      "saturation_near",
+      "calm",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-27T15:00:00Z",
+     "start_local": "Tue 8:00 AM",
+     "hours": 1,
+     "peak_score": 80,
+     "why": [
+      "saturation_near",
+      "calm",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-28T07:00:00Z",
+     "start_local": "Wed 12:00 AM",
+     "hours": 9,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-29T07:00:00Z",
+     "start_local": "Thu 12:00 AM",
+     "hours": 10,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-30T10:00:00Z",
+     "start_local": "Fri 3:00 AM",
+     "hours": 7,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "saturation_near",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-31T10:00:00Z",
+     "start_local": "Sat 3:00 AM",
+     "hours": 6,
+     "peak_score": 80,
+     "why": [
+      "saturation_near",
+      "calm",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-02T13:00:00Z",
+     "start_local": "Mon 5:00 AM",
+     "hours": 1,
+     "peak_score": 80,
+     "why": [
+      "saturation_near",
+      "calm",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-02T15:00:00Z",
+     "start_local": "Mon 7:00 AM",
+     "hours": 2,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "saturation_near",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-05T02:00:00Z",
+     "start_local": "Wed 6:00 PM",
+     "hours": 2,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-05T11:00:00Z",
+     "start_local": "Thu 3:00 AM",
+     "hours": 5,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-11-06T07:00:00Z",
+     "start_local": "Thu 11:00 PM",
+     "hours": 12,
+     "peak_score": 100,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-11-07T06:00:00Z",
+     "start_local": "Fri 10:00 PM",
+     "hours": 1,
+     "peak_score": 60,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-07T08:00:00Z",
+     "start_local": "Sat 12:00 AM",
+     "hours": 9,
+     "peak_score": 85,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-11-08T01:00:00Z",
+     "start_local": "Sat 5:00 PM",
+     "hours": 3,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-08T06:00:00Z",
+     "start_local": "Sat 10:00 PM",
+     "hours": 12,
+     "peak_score": 85,
+     "why": [
+      "calm",
+      "swing",
+      "saturation_near",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-09T02:00:00Z",
+     "start_local": "Sun 6:00 PM",
+     "hours": 2,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-09T07:00:00Z",
+     "start_local": "Sun 11:00 PM",
+     "hours": 13,
+     "peak_score": 100,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation"
+     ]
+    },
+    {
+     "start_utc": "2026-11-10T10:00:00Z",
+     "start_local": "Tue 2:00 AM",
+     "hours": 9,
+     "peak_score": 100,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    }
+   ]
+  },
+  "back_side_9": {
+   "label": "Back Side 9 (Sunset)",
+   "susceptibility": 1.0,
+   "hours": 720,
+   "pct_of_hours": {
+    "none": 47.4,
+    "watch": 26.8,
+    "likely": 16.0,
+    "strong": 9.9
+   },
+   "episodes": 45,
+   "episodes_per_week": 10.5,
+   "typical_start_hour_local": 19,
+   "trigger_hit_pct_of_hours": {
+    "calm": 81.1,
+    "no_sun": 58.9,
+    "saturation_near": 41.5,
+    "swing": 18.9,
+    "saturation": 13.2,
+    "cooling": 7.6
+   },
+   "episode_list": [
+    {
+     "start_utc": "2026-10-12T02:00:00Z",
+     "start_local": "Sun 7:00 PM",
+     "hours": 2,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-13T03:00:00Z",
+     "start_local": "Mon 8:00 PM",
+     "hours": 3,
+     "peak_score": 75,
+     "why": [
+      "calm",
+      "no_sun",
+      "saturation",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-13T09:00:00Z",
+     "start_local": "Tue 2:00 AM",
+     "hours": 6,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-14T05:00:00Z",
+     "start_local": "Tue 10:00 PM",
+     "hours": 11,
+     "peak_score": 90,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-15T02:00:00Z",
+     "start_local": "Wed 7:00 PM",
+     "hours": 3,
+     "peak_score": 85,
+     "why": [
+      "saturation",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-15T07:00:00Z",
+     "start_local": "Thu 12:00 AM",
+     "hours": 9,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-16T02:00:00Z",
+     "start_local": "Thu 7:00 PM",
+     "hours": 8,
+     "peak_score": 70,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "cooling"
+     ]
+    },
+    {
+     "start_utc": "2026-10-16T11:00:00Z",
+     "start_local": "Fri 4:00 AM",
+     "hours": 2,
+     "peak_score": 60,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-17T02:00:00Z",
+     "start_local": "Fri 7:00 PM",
+     "hours": 4,
+     "peak_score": 70,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "cooling"
+     ]
+    },
+    {
+     "start_utc": "2026-10-17T08:00:00Z",
+     "start_local": "Sat 1:00 AM",
+     "hours": 7,
+     "peak_score": 70,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "cooling"
+     ]
+    },
+    {
+     "start_utc": "2026-10-18T02:00:00Z",
+     "start_local": "Sat 7:00 PM",
+     "hours": 23,
+     "peak_score": 100,
+     "why": [
+      "swing",
+      "saturation",
+      "no_sun",
+      "calm"
+     ]
+    },
+    {
+     "start_utc": "2026-10-21T10:00:00Z",
+     "start_local": "Wed 3:00 AM",
+     "hours": 1,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-22T13:00:00Z",
+     "start_local": "Thu 6:00 AM",
+     "hours": 2,
+     "peak_score": 75,
+     "why": [
+      "saturation",
+      "calm",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-22T18:00:00Z",
+     "start_local": "Thu 11:00 AM",
+     "hours": 6,
+     "peak_score": 60,
+     "why": [
+      "saturation",
+      "calm"
+     ]
+    },
+    {
+     "start_utc": "2026-10-23T03:00:00Z",
+     "start_local": "Thu 8:00 PM",
+     "hours": 1,
+     "peak_score": 75,
+     "why": [
+      "saturation",
+      "calm",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-23T15:00:00Z",
+     "start_local": "Fri 8:00 AM",
+     "hours": 4,
+     "peak_score": 75,
+     "why": [
+      "saturation",
+      "calm",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-24T02:00:00Z",
+     "start_local": "Fri 7:00 PM",
+     "hours": 1,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-24T04:00:00Z",
+     "start_local": "Fri 9:00 PM",
+     "hours": 1,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-24T15:00:00Z",
+     "start_local": "Sat 8:00 AM",
+     "hours": 1,
+     "peak_score": 60,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-25T03:00:00Z",
+     "start_local": "Sat 8:00 PM",
+     "hours": 13,
+     "peak_score": 90,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-26T02:00:00Z",
+     "start_local": "Sun 7:00 PM",
+     "hours": 2,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-26T05:00:00Z",
+     "start_local": "Sun 10:00 PM",
+     "hours": 11,
+     "peak_score": 100,
+     "why": [
+      "calm",
+      "no_sun",
+      "swing",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-28T11:00:00Z",
+     "start_local": "Wed 4:00 AM",
+     "hours": 5,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-29T10:00:00Z",
+     "start_local": "Thu 3:00 AM",
+     "hours": 3,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-10-29T14:00:00Z",
+     "start_local": "Thu 7:00 AM",
+     "hours": 2,
+     "peak_score": 80,
+     "why": [
+      "saturation_near",
+      "calm",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-30T02:00:00Z",
+     "start_local": "Thu 7:00 PM",
+     "hours": 2,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-30T12:00:00Z",
+     "start_local": "Fri 5:00 AM",
+     "hours": 1,
+     "peak_score": 80,
+     "why": [
+      "saturation_near",
+      "calm",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-10-30T15:00:00Z",
+     "start_local": "Fri 8:00 AM",
+     "hours": 2,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "saturation_near",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-01T16:00:00Z",
+     "start_local": "Sun 8:00 AM",
+     "hours": 1,
+     "peak_score": 60,
+     "why": [
+      "saturation",
+      "calm"
+     ]
+    },
+    {
+     "start_utc": "2026-11-02T16:00:00Z",
+     "start_local": "Mon 8:00 AM",
+     "hours": 1,
+     "peak_score": 60,
+     "why": [
+      "saturation",
+      "calm"
+     ]
+    },
+    {
+     "start_utc": "2026-11-03T03:00:00Z",
+     "start_local": "Mon 7:00 PM",
+     "hours": 1,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-04T11:00:00Z",
+     "start_local": "Wed 3:00 AM",
+     "hours": 1,
+     "peak_score": 75,
+     "why": [
+      "saturation",
+      "calm",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-04T13:00:00Z",
+     "start_local": "Wed 5:00 AM",
+     "hours": 1,
+     "peak_score": 75,
+     "why": [
+      "saturation",
+      "calm",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-06T07:00:00Z",
+     "start_local": "Thu 11:00 PM",
+     "hours": 12,
+     "peak_score": 85,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-11-07T02:00:00Z",
+     "start_local": "Fri 6:00 PM",
+     "hours": 2,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-07T12:00:00Z",
+     "start_local": "Sat 4:00 AM",
+     "hours": 4,
+     "peak_score": 100,
+     "why": [
+      "calm",
+      "swing",
+      "no_sun",
+      "saturation_near"
+     ]
+    },
+    {
+     "start_utc": "2026-11-08T01:00:00Z",
+     "start_local": "Sat 5:00 PM",
+     "hours": 3,
+     "peak_score": 65,
+     "why": [
+      "saturation_near",
+      "calm",
+      "cooling",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-08T06:00:00Z",
+     "start_local": "Sat 10:00 PM",
+     "hours": 5,
+     "peak_score": 75,
+     "why": [
+      "saturation",
+      "calm",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-08T13:00:00Z",
+     "start_local": "Sun 5:00 AM",
+     "hours": 5,
+     "peak_score": 80,
+     "why": [
+      "calm",
+      "saturation_near",
+      "swing",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-08T19:00:00Z",
+     "start_local": "Sun 11:00 AM",
+     "hours": 1,
+     "peak_score": 60,
+     "why": [
+      "saturation",
+      "calm"
+     ]
+    },
+    {
+     "start_utc": "2026-11-08T23:00:00Z",
+     "start_local": "Sun 3:00 PM",
+     "hours": 1,
+     "peak_score": 60,
+     "why": [
+      "saturation",
+      "calm"
+     ]
+    },
+    {
+     "start_utc": "2026-11-09T08:00:00Z",
+     "start_local": "Mon 12:00 AM",
+     "hours": 1,
+     "peak_score": 75,
+     "why": [
+      "saturation",
+      "calm",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-09T14:00:00Z",
+     "start_local": "Mon 6:00 AM",
+     "hours": 5,
+     "peak_score": 75,
+     "why": [
+      "saturation",
+      "calm",
+      "no_sun"
+     ]
+    },
+    {
+     "start_utc": "2026-11-09T20:00:00Z",
+     "start_local": "Mon 12:00 PM",
+     "hours": 2,
+     "peak_score": 60,
+     "why": [
+      "saturation",
+      "calm"
+     ]
+    },
+    {
+     "start_utc": "2026-11-10T15:00:00Z",
+     "start_local": "Tue 7:00 AM",
+     "hours": 4,
+     "peak_score": 75,
+     "why": [
+      "saturation",
+      "calm",
+      "no_sun"
+     ]
+    }
+   ]
+  },
+  "control_quintara": {
+   "label": "Quintara / Fanning (control, should stay quiet)",
+   "susceptibility": 0.3,
+   "hours": 720,
+   "pct_of_hours": {
+    "none": 100.0,
+    "watch": 0.0,
+    "likely": 0.0,
+    "strong": 0.0
+   },
+   "episodes": 0,
+   "episodes_per_week": 0.0,
+   "typical_start_hour_local": null,
+   "trigger_hit_pct_of_hours": {
+    "calm": 81.1,
+    "no_sun": 58.9,
+    "saturation_near": 40.8,
+    "swing": 19.0,
+    "saturation": 13.2,
+    "cooling": 7.9
+   },
+   "episode_list": []
+  }
+ },
+ "model_vs_airport": {
+  "potrero_hill": {
+   "station": "KSFO",
+   "n": 788,
+   "temp_bias_c": -1.22,
+   "temp_mae_c": 1.62,
+   "dewpoint_bias_c": -1.21,
+   "dewpoint_mae_c": 1.97
+  },
+  "back_side_9": {
+   "station": "KSFO",
+   "n": 788,
+   "temp_bias_c": -2.1,
+   "temp_mae_c": 2.37,
+   "dewpoint_bias_c": -1.14,
+   "dewpoint_mae_c": 2.31
+  },
+  "control_quintara": {
+   "station": "KSFO",
+   "n": 788,
+   "temp_bias_c": -1.4,
+   "temp_mae_c": 1.85,
+   "dewpoint_bias_c": -0.47,
+   "dewpoint_mae_c": 2.11
+  }
+ },
+ "notes": []
+}
