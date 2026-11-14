@@ -974,9 +974,9 @@ function updateBuildingLod(force) {
   let nFar = 0, ch = false;
   for (const t of tiles) {
     const dx = Math.max(t.x0 - c.x, 0, c.x - t.x1), dz = Math.max(t.z0 - c.z, 0, c.z - t.z1), d = Math.hypot(dx, c.y, dz);
-    /* taller buildings keep their walls further out (size grows with the square root of the tallest building in the tile), and so do tiles seen side-on:
+    /* taller buildings keep their walls further out (up to 2.5x, from the tallest building in the tile; only tiles with towers over about 30 m), and so do tiles seen side-on:
        from a steep angle the roofs carry the look, from a low angle the walls are most of what you see (downtown skyline) */
-    const sinE = d > 0 ? c.y / d : 1, side = 1 - sinE * sinE, k = Math.sqrt(Math.max(t.hmax, 16) / 16) * (1 + 1.5 * side), dk = dF * k;
+    const sinE = d > 0 ? c.y / d : 1, side = 1 - sinE * sinE, k = clamp(Math.sqrt(t.hmax / 30), 1, 2.5) * (1 + 1.2 * side * side), dk = dF * k;
     const want = PERF.lod && (t.isFar ? d > dk * 0.9 : d > dk * 1.1);
     if (want !== t.isFar || force) { t.isFar = want; for (const m of t.near) m.visible = !want; for (const m of t.far) m.visible = want; ch = true; }
     if (want) nFar++;
