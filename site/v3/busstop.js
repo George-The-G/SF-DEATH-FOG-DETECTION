@@ -77,7 +77,8 @@ export function createStop({ THREE, scene, canvas, camera, id, line, name, dirTe
       else {
         n1.textContent = list[0] != null ? fmt(list[0] - now) : '--'; n2.textContent = list[1] != null ? fmt(list[1] - now) : '--';
         const age = now - arr.t;
-        if (demo) { st.textContent = 'Mock data, not live'; st.className = 'st demo'; }
+        if (this.status === 'est') { st.textContent = 'Estimated from bus positions and schedule (not 511 predictions)'; st.className = 'st stale'; }
+        else if (demo) { st.textContent = 'Mock data, not live'; st.className = 'st demo'; }
         else { st.textContent = 'Live, updated ' + Math.round(Math.max(0, age)) + ' s ago'; st.className = 'st' + (age > 300 ? ' stale' : ''); }
         if (!list.length) { st.textContent = 'No upcoming buses listed'; st.className = 'st stale'; }
       }
