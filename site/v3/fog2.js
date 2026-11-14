@@ -192,6 +192,9 @@ const VOX_FS = COMMON_U + `
   uniform sampler3D uVolA, uVolB; uniform sampler2D uOcc; uniform vec2 uOccN, uDrift;
   uniform float uVHa, uVHb, uMixT, uK, uShadow, uSkip, uFlowOn, uFlowT, uWindScale, uDriftS;
   uniform sampler2D uWind;
+#ifdef MRT
+  layout(location = 1) out highp vec4 pc_depth;
+#endif
   float detailNoise(vec3 q, vec2 qg){ // fine noise; with the wind field it drifts along the flow (two-phase flow noise, Neyret 2003 / Vlachos 2010)
     if (uFlowOn < .5) return texture(uNoise, (q + uOff) / 230.).g;
     vec2 wv = (texture(uWind, qg).rg * 255. - 128.) * uWindScale; vec3 vel = vec3(wv.x, 0., -wv.y);
@@ -201,11 +204,15 @@ const VOX_FS = COMMON_U + `
     float n1 = texture(uNoise, (q - vel * f1 * PER) / 230. + fract(vec3(.7548776, .5698403, .4142136) * (c1 + 37.))).g;
     return .5 + (w0 * (n0 - .5) + w1 * (n1 - .5)) * inversesqrt(w0 * w0 + w1 * w1);
   }
-  void main(){` + RAY + `
+  void main(){
+#ifdef MRT
+    pc_depth = vec4(1., 0., 0., 1.);
+#endif
+` + RAY + `
     float sy = max(uSun.y, .15);
     vec2 rxz = vec2(abs(rd.x) < 1e-6 ? 1e-6 : rd.x, abs(rd.z) < 1e-6 ? 1e-6 : rd.z);
     vec2 dA0 = -uDrift * uMixT, dB0 = uDrift * (1. - uMixT);
-    float fi = 0.;
+    float fi = 0., WD = 0.;
     for (int it = 0; it < 96; it++) {
       if (fi >= N) break;
       float u0 = (fi + jit) / N, u1 = (fi + 1. + jit) / N;
@@ -246,36 +253,55 @@ const VOX_FS = COMMON_U + `
       L += uMoonCol * phm * max(uMoon.y, 0.) * sqrt(tr);
       L += vec3(1., .55, .22) * uCity * .02 * (1. - va) * (.4 + .6 * d);
       float a = 1. - exp(-d * uK * dt);
-      C += T * a * L; T *= 1. - a;
+      C += T * a * L; WD += T * a * t; T *= 1. - a;
       if (T < .02) break;
     }
     gl_FragColor = vec4(C, 1. - T);
+#ifdef MRT
+    { float fa = 1. - T, td = fa > .02 ? clamp(WD / fa / 40000., 0., .9) : 1., sc = td * 255.; pc_depth = vec4(floor(sc) / 255., fract(sc), 0., 1.); } // opacity-weighted fog depth, packed in 16 bits
+#endif
   }`;
 
 /* running average for still-frame refinement */
 /* 1-in-16 temporal resolve: the pixel traced this frame takes the new value; the other 15 reproject last frame's fog with the camera
    matrices (at the scene depth, or part-way into the fog layer for sky pixels) and are clamped to the new low-res neighbourhood to limit ghosting */
 const TAA_FS = `precision highp float; varying vec2 vUv;
-  uniform sampler2D uSmall, uHist, uDepthR; uniform mat4 uInvProjR, uPrevVP; uniform mat3 uCamRotR; uniform vec3 uCamR;
-  uniform float uNearR, uFarR, uYmaxR; uniform vec2 uSubR, uFullR, uSmallN;
+  layout(location = 1) out highp vec4 pc_depth;
+  uniform sampler2D uSmall, uSmallD, uHist, uHistD, uDepthR; uniform mat4 uInvProjR, uPrevVP; uniform mat3 uCamRotR; uniform vec3 uCamR;
+  uniform float uNearR, uFarR, uYmaxR, uHasD; uniform vec2 uSubR, uFullR, uSmallN;
+  // Catmull-Rom history read (9 bilinear taps -> 5): plain bilinear softens the fog a little more every frame it is reused
+  vec4 histCR(vec2 uv){
+    vec2 sz = uFullR, pos = uv * sz, c = floor(pos - .5) + .5, f = pos - c;
+    vec2 w0 = f * (-.5 + f * (1. - .5 * f)), w1 = 1. + f * f * (-2.5 + 1.5 * f), w2 = f * (.5 + f * (2. - 1.5 * f)), w3 = f * f * (-.5 + .5 * f);
+    vec2 wm = w1 + w2, o = w2 / wm, p0 = (c - 1.) / sz, p3 = (c + 2.) / sz, pm = (c + o) / sz;
+    vec4 r = texture2D(uHist, vec2(pm.x, p0.y)) * wm.x * w0.y + texture2D(uHist, vec2(p0.x, pm.y)) * w0.x * wm.y + texture2D(uHist, pm) * wm.x * wm.y
+           + texture2D(uHist, vec2(p3.x, pm.y)) * w3.x * wm.y + texture2D(uHist, vec2(pm.x, p3.y)) * wm.x * w3.y;
+    return max(r, 0.);
+  }
+  float unpackD(vec4 d){ return d.r + d.g / 255.; }
   void main(){
     vec2 px = floor(vUv * uFullR), blk = floor(px / 4.), inb = px - blk * 4.;
     vec2 suv = (blk + .5) / uSmallN;
-    vec4 cur = texture2D(uSmall, suv), mn = cur, mx = cur;
-    // clamp box from bilinear taps around this pixel's own position, so the clamp doesn't print the 4x4 block grid
-    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec4 q = texture2D(uSmall, vUv + vec2(float(i), float(j)) * .75 / uSmallN); mn = min(mn, q); mx = max(mx, q); }
-    if (inb == uSubR) { gl_FragColor = cur; return; }
+    vec4 cur = texture2D(uSmall, suv);
+    if (inb == uSubR) { gl_FragColor = cur; pc_depth = texture2D(uSmallD, suv); return; }
+    // neighbourhood statistics from bilinear taps around this pixel's own position (no 4x4 block grid in the clamp box)
+    vec4 m1 = vec4(0.), m2 = vec4(0.), mn = vec4(1e3), mx = vec4(-1e3);
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec4 q = texture2D(uSmall, vUv + vec2(float(i), float(j)) * .75 / uSmallN); m1 += q; m2 += q * q; mn = min(mn, q); mx = max(mx, q); }
+    m1 /= 9.; vec4 sig = sqrt(max(m2 / 9. - m1 * m1, 0.)) * 1.5 + .02;
+    vec4 lo = max(mn, m1 - sig) - .015, hi = min(mx, m1 + sig) + .015; // variance clip, never wider than the plain min/max box
     float dpx = texture2D(uDepthR, vUv).r;
     vec4 v = uInvProjR * vec4(vUv * 2. - 1., 1., 1.); vec3 dv = normalize(v.xyz / v.w), rd = normalize(uCamRotR * dv);
-    float t = 1e9;
+    float t = 1e9, tf = -1.;
+    if (uHasD > .5) { float dd = unpackD(texture2D(uHistD, vUv)); if (dd < .98) tf = dd * 40000.; } // last frame's fog depth at this pixel
     if (dpx < .99999) { float vz = (uNearR * uFarR) / ((uFarR - uNearR) * dpx - uFarR); t = -vz / -dv.z; }
-    if (abs(rd.y) > 1e-4) { float a = -uCamR.y / rd.y, b = (uYmaxR - uCamR.y) / rd.y, t0 = max(min(a, b), 0.), t1 = min(max(a, b), t0 + 40000.); if (t1 > t0) t = min(t, t0 + .35 * (t1 - t0)); }
+    if (tf > 0.) t = min(t, tf);
+    else if (abs(rd.y) > 1e-4) { float a = -uCamR.y / rd.y, b = (uYmaxR - uCamR.y) / rd.y, t0 = max(min(a, b), 0.), t1 = min(max(a, b), t0 + 40000.); if (t1 > t0) t = min(t, t0 + .35 * (t1 - t0)); }
     t = min(t, 40000.);
     vec4 c = uPrevVP * vec4(uCamR + rd * t, 1.);
     vec2 puv = c.xy / c.w * .5 + .5;
-    vec4 smooth4 = texture2D(uSmall, vUv); // bilinear low-res fallback
-    if (c.w <= 0. || any(lessThan(puv, vec2(0.))) || any(greaterThan(puv, vec2(1.)))) { gl_FragColor = smooth4; return; }
-    gl_FragColor = clamp(texture2D(uHist, puv), mn - .05, mx + .05);
+    if (c.w <= 0. || any(lessThan(puv, vec2(0.))) || any(greaterThan(puv, vec2(1.)))) { gl_FragColor = texture2D(uSmall, vUv); pc_depth = texture2D(uSmallD, vUv); return; }
+    gl_FragColor = clamp(histCR(puv), lo, hi);
+    pc_depth = uHasD > .5 ? texture2D(uHistD, puv) : vec4(1., 0., 0., 1.);
   }`;
 
 const ACC_FS = `precision highp float; varying vec2 vUv; uniform sampler2D uPrev, uNew; uniform float uW;
@@ -355,12 +381,12 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     uWind: { value: null }, uWindScale: { value: 0.1 }, uDriftS: { value: 0 }, uFlowOn: { value: 0 }, uFlowT: { value: 0 },
     uOcc: { value: null }, uOccN: { value: new THREE.Vector2(1, 1) }, uSkip: { value: 1 }, uK: { value: .0231 }, uShadow: { value: 1 },
   };
-  const quad = (fs, uni) => { const m = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: VERT, fragmentShader: fs, depthTest: false, depthWrite: false }); const s = new THREE.Scene(), me = new THREE.Mesh(quadGeo, m); me.frustumCulled = false; s.add(me); return s; };
-  const marchScene = quad(FOG_FS, U), voxScene = quad(VOX_FS, U);
+  const quad = (fs, uni, defs) => { const m = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: VERT, fragmentShader: fs, depthTest: false, depthWrite: false, defines: defs }); const s = new THREE.Scene(), me = new THREE.Mesh(quadGeo, m); me.frustumCulled = false; s.add(me); return s; };
+  const marchScene = quad(FOG_FS, U), voxScene = quad(VOX_FS, U), voxMRTScene = quad(VOX_FS, U, { MRT: 1 });
   const CU = { uScene: { value: null }, uFog: { value: null }, uDepthC: { value: null }, uFogTexel: { value: V2() }, uNearC: { value: 8 }, uFarC: { value: 90000 }, uBlur: { value: 1 } };
   const compScene = quad(COMP_FS, CU);
   const AU = { uPrev: { value: null }, uNew: { value: null }, uW: { value: 1 } };
-  const TU = { uSmall: { value: null }, uHist: { value: null }, uDepthR: { value: null }, uInvProjR: U.uInvProj, uPrevVP: { value: new THREE.Matrix4() }, uCamRotR: U.uCamRot, uCamR: U.uCam,
+  const TU = { uSmall: { value: null }, uSmallD: { value: null }, uHist: { value: null }, uHistD: { value: null }, uHasD: { value: 0 }, uDepthR: { value: null }, uInvProjR: U.uInvProj, uPrevVP: { value: new THREE.Matrix4() }, uCamRotR: U.uCamRot, uCamR: U.uCam,
     uNearR: U.uNear, uFarR: U.uFar, uYmaxR: U.uYmax, uSubR: { value: V2() }, uFullR: { value: V2() }, uSmallN: { value: V2() } };
   const taaScene = quad(TAA_FS, TU);
   const curVP = new THREE.Matrix4(), lastVP = new THREE.Matrix4();
@@ -375,7 +401,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   let tier = isTouch ? 2 : 3, want = true, ready = false, last = null, lastNow = 0, tex = null, htTex = null, grid = null, lastL = null, wx = null, topM = 200;
   const qs = new URLSearchParams(location.search); if (qs.has('tier')) tier = Math.max(0, Math.min(3, +qs.get('tier') || 0));
   const baseTier = tier || 3;
-  const dts = []; let sceneRT = null, fogRT = null, motionRT = null, smallRT = null, histRT = [null, null], histCur = 0, lastFogTex = null, taaN = 0, accRT = [null, null], rtW = 0, rtH = 0, rtMs = -1, rtScale = -1;
+  const dts = []; let sceneRT = null, fogRT = null, motionRT = null, smallRT = null, histRT = [null, null], histCur = 0, lastFogTex = null, lastFogDepth = null, nextFogDepth = null, taaN = 0, accRT = [null, null], rtW = 0, rtH = 0, rtMs = -1, rtScale = -1;
   const sz = new THREE.Vector2();
 
   // ---- voxel state: hour volume cache, occupancy, refinement
@@ -405,10 +431,11 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   const scaleNow = () => (P.res > 0 ? P.res : TIERS[tier].scale);
   const vres = () => P.vres || (isTouch ? 1 : 2), vlayers = () => P.vlayers || (isTouch ? 16 : 24);
   const rtOpts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false };
+  const mrt = (w, h) => { const r = new THREE.WebGLMultipleRenderTargets(w, h, 2, rtOpts); r.texture[1].minFilter = r.texture[1].magFilter = THREE.NearestFilter; return r; }; // [0] colour + opacity, [1] packed fog depth (nearest: packed values must not blend)
   function disposeRT() {
     if (sceneRT) { sceneRT.dispose(); sceneRT.depthTexture && sceneRT.depthTexture.dispose(); }
     [fogRT, motionRT, accRT[0], accRT[1], smallRT, histRT[0], histRT[1]].forEach((r) => r && r.dispose());
-    sceneRT = fogRT = motionRT = smallRT = null; accRT = [null, null]; histRT = [null, null]; accN = 0; lastFogTex = null;
+    sceneRT = fogRT = motionRT = smallRT = null; accRT = [null, null]; histRT = [null, null]; accN = 0; lastFogTex = null; lastFogDepth = null;
   }
   function ensureRT(renderer) {
     const T = TIERS[tier], sc = scaleNow(); renderer.getDrawingBufferSize(sz);
@@ -421,8 +448,8 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     fogRT = new THREE.WebGLRenderTarget(fw, fh, rtOpts);
     motionRT = new THREE.WebGLRenderTarget(Math.max(2, fw >> 1), Math.max(2, fh >> 1), rtOpts);
     accRT = [new THREE.WebGLRenderTarget(fw, fh, rtOpts), new THREE.WebGLRenderTarget(fw, fh, rtOpts)];
-    smallRT = new THREE.WebGLRenderTarget(Math.ceil(fw / 4), Math.ceil(fh / 4), rtOpts);
-    histRT = [new THREE.WebGLRenderTarget(fw, fh, rtOpts), new THREE.WebGLRenderTarget(fw, fh, rtOpts)];
+    smallRT = mrt(Math.ceil(fw / 4), Math.ceil(fh / 4));
+    histRT = [mrt(fw, fh), mrt(fw, fh)];
     U.uDepth.value = sceneRT.depthTexture; CU.uScene.value = sceneRT.texture; CU.uDepthC.value = sceneRT.depthTexture;
   }
 
@@ -594,7 +621,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   function stepsFor(vox) { const T = TIERS[tier]; return Math.min(48, P.steps > 0 ? P.steps : (vox ? T.vsteps : T.steps)); }
   function fogPass(renderer, target, steps, jit) {
     U.uSteps.value = steps; U.uJit.value = jit;
-    renderer.setRenderTarget(target); renderer.render(P.mode === 'voxel' ? voxScene : marchScene, ortho);
+    renderer.setRenderTarget(target); renderer.render(P.mode === 'voxel' ? (target.isWebGLMultipleRenderTargets ? voxMRTScene : voxScene) : marchScene, ortho);
   }
   /* pick and (if needed) bake the hour volumes for the shown time; sets the voxel uniforms; returns a state signature */
   function prepVoxel(renderer) {
@@ -639,11 +666,11 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
         const [ox, oy] = BAYER[taaN++ & 15];
         U.uSubOn.value = 1; U.uSub.value.set(ox, oy); U.uFull.value.set(fogRT.width, fogRT.height);
         fogPass(renderer, smallRT, stepsFor(true), 0); U.uSubOn.value = 0;
-        let dst = histRT[histCur ^ 1]; if (dst.texture === lastFogTex) { histCur ^= 1; dst = histRT[histCur ^ 1]; }
-        TU.uSmall.value = smallRT.texture; TU.uHist.value = lastFogTex; TU.uDepthR.value = sceneRT.depthTexture; TU.uPrevVP.value.copy(lastVP);
+        let dst = histRT[histCur ^ 1]; if (dst.texture[0] === lastFogTex) { histCur ^= 1; dst = histRT[histCur ^ 1]; }
+        TU.uSmall.value = smallRT.texture[0]; TU.uSmallD.value = smallRT.texture[1]; TU.uHist.value = lastFogTex; TU.uHistD.value = lastFogDepth; TU.uHasD.value = lastFogDepth ? 1 : 0; TU.uDepthR.value = sceneRT.depthTexture; TU.uPrevVP.value.copy(lastVP);
         TU.uSubR.value.set(ox, oy); TU.uFullR.value.set(fogRT.width, fogRT.height); TU.uSmallN.value.set(smallRT.width, smallRT.height);
         renderer.setRenderTarget(dst); renderer.render(taaScene, ortho); histCur ^= 1;
-        CU.uFog.value = dst.texture; CU.uFogTexel.value.set(1 / fogRT.width, 1 / fogRT.height); CU.uBlur.value = blur0 * .5; accN = 0; phase = 'moving (1 in 16)';
+        CU.uFog.value = dst.texture[0]; nextFogDepth = dst.texture[1]; CU.uFogTexel.value.set(1 / fogRT.width, 1 / fogRT.height); CU.uBlur.value = blur0 * .5; accN = 0; phase = 'moving (1 in 16)';
       } else if (P.motion && now - lastMoveT < 150) { // camera moving: half resolution, fewer steps, no refinement
         fogPass(renderer, motionRT, Math.max(6, Math.round(stepsFor(true) * P.motionSteps)), 0);
         CU.uFog.value = motionRT.texture; CU.uFogTexel.value.set(1 / motionRT.width, 1 / motionRT.height); CU.uBlur.value = blur0; accN = 0; phase = 'moving';
@@ -658,7 +685,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
         fogPass(renderer, fogRT, stepsFor(true), 0); CU.uFog.value = fogRT.texture; CU.uFogTexel.value.set(1 / fogRT.width, 1 / fogRT.height); CU.uBlur.value = blur0; phase = 'every frame';
       }
     }
-    if (vox) { lastFogTex = CU.uFog.value; lastVP.copy(curVP); }
+    if (vox) { lastFogTex = CU.uFog.value; lastFogDepth = nextFogDepth; nextFogDepth = null; lastVP.copy(curVP); }
     renderer.setRenderTarget(prev); renderer.render(compScene, ortho);
   }
 
