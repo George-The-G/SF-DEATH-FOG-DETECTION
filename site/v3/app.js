@@ -515,7 +515,6 @@ async function takeControl() {
     if (!SK.start(skater.group.position, _sf, null)) { toast('Skating needs street data: try again in a moment'); tk.disabled = false; delete tk.dataset.busy; return; }
     fly.control = true; fly.paused = true; skRead = ''; $('flyfill').style.width = '0%'; flyUI();
     $('fpnm').textContent = 'Free skate'; fly.nm = 'Free skate';
-    if (!isTouch) toast('W A S D or arrow keys to skate, Esc to exit');
   } catch (e) { console.warn('skate unavailable', e); toast('Skating could not load'); SKP = null; }
   tk.disabled = false; delete tk.dataset.busy;
 }
