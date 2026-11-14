@@ -100,31 +100,7 @@ scene.add(skater.group);
 let SKY = null;
 if (BETA && (QP.get('sky') !== '0' || QP.get('hud') === '1')) { // beta default: live sky; ?sky=0 turns it off
   import('./sky.js').then((m) => m.createSky({ THREE, scene, camera, renderer, starsUrl: 'stars.bin', sky: QP.get('sky') !== '0', hud: QP.get('hud') === '1' }))
-    .then((s) => { SKY = s; if (s.enabled) skyButton(); if (FOGV) s.setExtra(() => fog.info()); if (night) skyTime(curF); }).catch((e) => console.warn('sky unavailable', e));
-}
-/* Beta "Sky" button: the orbit camera always looks down at the city, so the sky is only a thin band. This hops to a street-level view that looks at the sun, the moon, then straight up at the stars, then back. */
-function skyButton() {
-  const b = document.createElement('button'); b.type = 'button'; b.id = 'skybtn'; b.textContent = 'Sky'; b.setAttribute('aria-label', 'Look up at the sun, moon and stars');
-  b.style.cssText = 'position:fixed;left:max(8px,env(safe-area-inset-left,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 172px);z-index:25;min-height:36px;padding:6px 14px;border-radius:10px;border:1px solid rgba(140,170,210,.22);background:rgba(9,15,28,.8);color:#5ef2ff;font:600 13px system-ui,sans-serif;backdrop-filter:blur(10px);cursor:pointer';
-  document.body.appendChild(b);
-  let step = -1;
-  const dir = (alt, az) => { const e = alt * Math.PI / 180, z = az * Math.PI / 180; return new THREE.Vector3(Math.sin(z) * Math.cos(e), Math.sin(e), -Math.cos(z) * Math.cos(e)); };
-  b.onclick = () => {
-    const E = SKY && SKY.info; if (!E) return;
-    const views = [];
-    if (E.sun.alt > -1) views.push(['Sun', E.sun.alt, E.sun.az]);
-    if (E.moon.alt > 0) views.push(['Moon', E.moon.alt, E.moon.az]);
-    views.push(['Stars', 75, (E.sun.az + 180) % 360]);
-    step = (step + 1) % (views.length + 1);
-    if (step === views.length) { // back to the city view
-      controls.maxPolarAngle = 1.48; controls.minDistance = 60; camera.position.copy(CITY.pos); controls.target.copy(CITY.target); controls.update(); b.textContent = 'Sky'; return;
-    }
-    const [name, alt, az] = views[step], d = dir(Math.min(alt, 80), az);
-    controls.maxPolarAngle = 3.0; controls.minDistance = 1;
-    camera.position.set(CITY.target.x, 800 * EX, CITY.target.z); /* above the fog slab, so looking up is not through fog */ controls.target.copy(camera.position).addScaledVector(d, 60); controls.update();
-    if (QP.has('skydbg')) console.log('skydbg', JSON.stringify([name, alt, az, d, camera.position, controls.target, controls.maxPolarAngle]));
-    b.textContent = (step + 1 < views.length ? 'Next: ' + views[step + 1][0] : 'Back to city');
-  };
+    .then((s) => { SKY = s; if (FOGV) s.setExtra(() => fog.info()); if (night) skyTime(curF); }).catch((e) => console.warn('sky unavailable', e));
 }
 function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) fog.setLight(SKY.light); } }
 

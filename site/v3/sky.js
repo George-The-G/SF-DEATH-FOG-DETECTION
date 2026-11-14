@@ -117,10 +117,10 @@ const STAR_VS = `
     vec3 d = uM * position;
     vec4 vv = viewMatrix * vec4(d, 0.);
     gl_Position = projectionMatrix * vec4(vv.xyz, 1.); gl_Position.z = gl_Position.w * .999;
-    float br = clamp(pow(10., -.32 * (aMag - 1.)), .28, 2.);
-    gl_PointSize = uDpr * clamp(1.4 + (4. - aMag) * .55, 1.5, 4.6) * uSize;
-    float ext = .35 + .65 * smoothstep(0., .3, d.y);      // atmospheric extinction near the horizon
-    vA = br * ext * uVis * smoothstep(-.01, .06, d.y);
+    float br = clamp(pow(10., -.32 * (aMag - 1.)), .45, 2.);
+    gl_PointSize = uDpr * clamp(1.8 + (4. - aMag) * .6, 2., 5.) * uSize;
+    float ext = .75 + .25 * smoothstep(0., .25, d.y);      // atmospheric extinction near the horizon
+    vA = br * ext * uVis * smoothstep(-.02, .02, d.y);
     float k = clamp((aBv + .3) / 2., 0., 1.);
     vCol = k < .35 ? mix(vec3(.7, .8, 1.), vec3(1., .97, .92), k / .35) : mix(vec3(1., .97, .92), vec3(1., .68, .42), (k - .35) / .65);
   }`;
