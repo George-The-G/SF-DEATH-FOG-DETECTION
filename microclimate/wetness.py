@@ -47,6 +47,7 @@ K_SUN = 80.0         # per 1000 W/m2 shortwave, direct sun only (sunlit points)
 K_DIFF = 10.0        # per 1000 W/m2 shortwave, everywhere
 LAG_MAX_H = 3.0
 WIND_LAG_MIN = 1.5
+VPD_REF_KPA = 1.40   # switch vpd_evap (guide 10): es at 12 degC, so the vapour-deficit evaporation equals the RH form at 12 degC
 LAG_SPEED_FACTOR = 1.3   # switch lag_uniform (guide 09): fog front speed = 10 m wind x this, the same for every street (first guess: wind at ~80 m over the 10 m wind, onshore flow)
 X_WEST = 540100.0    # grid west edge, m (EPSG:32610)
 DIR_LIBRARY = os.environ.get("DEATHFOG_DIR_LIBRARY", "0") != "0"  # replay writer: validated non-270 fields OFF by default (user decision pending); set DEATHFOG_DIR_LIBRARY=1 to enable. The live path always passes use_dirs=True.
@@ -145,6 +146,12 @@ PAV_SUBSTEP_MIN = 5.0  # minutes per sub-step
 PAV_DTS_MAX = 3.0      # K, largest change of the surface temperature in one sub-step
 TS_U8_OFFSET_C = 10.0  # tsurf file: u8 = round((ts + 10) * 4)
 TS_U8_PER_K = 4.0
+
+
+def sat_vp_kpa(t):
+    """Saturation vapour pressure in kPa, Magnus constants of magnus_rh (guide 10 A)."""
+    t = np.asarray(t, float)
+    return 0.6108 * np.exp(17.625 * t / (t + 243.04))
 
 
 def es_kpa(t):
@@ -326,13 +333,16 @@ def step(W, svf, porous, f, local_fog, lit, dt_h, wind_ratio=1.0, use_sun=True, 
     local_fog [N] = lagged inflow * exposure; lit bool [N] (direct sun). physics: set of switch names (none changes anything yet).
     Returns (W_new, parts)."""
     wind = f["wind"] * wind_ratio
-    dT = DT_MAX * svf * (1 - f["cloud_low"] / 100.0) * np.clip(1 - wind / WIND_CALM, 0, 1)
+    cl = effective_cloud_pct(f) if ("total_cloud" in physics and "cloud" in f) else f["cloud_low"]   # guide 10 B: middle / high cloud also slows the night cooling
+    dT = DT_MAX * svf * (1 - cl / 100.0) * np.clip(1 - wind / WIND_CALM, 0, 1)
     ts = f["temp"] - dT
     dew = K_DEW * np.maximum(0.0, f["dew"] - ts) * porous
     fog = K_FOG * local_fog * (0.5 + wind / 5.0) * fog_gain * porous
     rain = K_RAIN * (1 - np.exp(-np.maximum(f["precip"], 0.0) / RAIN_SAT)) * porous * np.ones_like(W)
     rh = magnus_rh(f["temp"], f["dew"])
     evap = (K_EVAP_BASE + K_EVAP_WIND * wind) * np.maximum(0.0, 1 - rh)
+    if "vpd_evap" in physics:   # guide 10 A: vapour pressure deficit instead of RH, equal to the RH form at 12 degC
+        evap = (K_EVAP_BASE + K_EVAP_WIND * wind) * np.maximum(sat_vp_kpa(f["temp"]) - sat_vp_kpa(f["dew"]), 0.0) / VPD_REF_KPA
     sw = np.maximum(f["sw"], 0.0) / 1000.0
     sun = K_DIFF * sw + (K_SUN * sw * lit if use_sun else 0.0)
     if "sun_clear" in physics and "sw_eff" in f:   # guide 06: drying by the street's own sunlight S (direct on lit streets + diffuse), no separate K_DIFF
@@ -505,7 +515,7 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
             block_dirs.append(mb)
         f = dict(temp=ser["temperature_2m"][i], dew=ser["dew_point_2m"][i], wind=ser["wind_speed_10m"][i],
                  cloud_low=ser["cloud_cover_low"][i], precip=ser["precipitation"][i], sw=ser["shortwave_radiation"][i])
-        if pavm and "cloud_cover" in ser:
+        if (pavm or "total_cloud" in P) and "cloud_cover" in ser:
             f["cloud"] = ser["cloud_cover"][i]
         if forcing_fn is not None:
             f = forcing_fn(i, f)
