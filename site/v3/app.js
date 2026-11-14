@@ -18,6 +18,7 @@ let BX = null; // data layers (beta_ui.js), loaded with import() only when UIX (
 let RNG = null; // ui2 live: visible frame window {lo, hi} of the time bar (null = every frame)
 const LIVE = UI2 && !(QP.get('live') === '0' || QP.has('night') || QP.has('src')); // live data is the default; ?live=0, ?night=<id> or ?src= open the past-night replays
 const BETA = QP.has('beta') && QP.get('beta') !== '0'; // ?beta=1: the beta preview channel (live_beta/, the NEXT settings under test) with a Beta tag; never the default
+const NEWPB = BETA || QP.get('classic') !== '1'; // new playback for everyone: real time by default, chevron speed button, buses on the simulation clock; ?classic=1 brings back the old 1x/4x/16x control
 const FOGV = QP.get('fog') !== 'sheets'; // volumetric fog (and the sky that lights it) for everyone; ?fog=sheets gets the old sheets back
 /* The data layers UI (beta_ui.js) is on for everyone whose public live output says it was built with the promoted settings (status.json "promoted", written by `build --promoted`).
    If the scheduled job falls back to the old settings (or DEATHFOG_LIVE_PROMOTE is false) that flag is absent and the page is exactly the old public page. ?beta=1 is unchanged. */
@@ -143,10 +144,10 @@ if ((FOGV && QP.get('sky') !== '0') || (BETA && QP.get('hud') === '1')) { // liv
    - everyone: as soon as data/bus_config.json has a feed address ("api", our Cloudflare Worker). With no address the public page does not fetch buses.js at all, and ?buses=0 turns it off. */
 let BUSES = null;
 (async () => {
-  let on = BETA && QP.get('buses') === '1';
+  let on = BETA && QP.get('buses') === '1'; // ?beta=1&buses=1 also works without a feed address (demo buses)
   if (!on && QP.get('buses') !== '0') { try { on = !!(await getJSON('data/bus_config.json')).api; } catch (e) { on = false; } }
   if (!on) return;
-  return import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, controls, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getTerrain: () => terrainH, getCol: () => buildingsMesh && buildingsMesh.userData.col, getG: () => G, getDist: () => camera.position.distanceTo(controls.target), QP, toast, replay: BETA }))
+  return import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, controls, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getTerrain: () => terrainH, getCol: () => buildingsMesh && buildingsMesh.userData.col, getG: () => G, getDist: () => camera.position.distanceTo(controls.target), QP, toast, replay: NEWPB }))
     .then((b) => { BUSES = b; });
 })().catch((e) => console.warn('buses unavailable', e));
 function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) fog.setLight(SKY.light); } }
@@ -671,7 +672,7 @@ let tNow = 0, playing = false, speed = 1, lastTs = 0, dirSign = 1;
 /* Playback speed. Public page: speed = frames per second (1x, 4x, 16x; the live data has one frame per hour, so that is 3600x, 14400x, 57600x real time).
    Beta: speed = a multiple of REAL time (x1 = the simulated clock runs at the same rate as the wall clock), and the page opens playing at x1 at the current time. */
 const BETA_SPEEDS = [1, 60, 600, 1800, 7200]; // chevrons filled 0..4: real time, 1 min, 10 min, 30 min, 2 h of simulated time per real second
-const simRate = () => (BETA ? speed / (night.step_min * 60) : speed) * dirSign; // frames per real second
+const simRate = () => (NEWPB ? speed / (night.step_min * 60) : speed) * dirSign; // frames per real second
 const simEpoch = () => (Date.parse(night.start_iso) + tNow * night.step_min * 60000) / 1000; // epoch seconds of the simulated clock
 let spdSync = () => {}, spdUser = false; // spdUser: the person already picked a speed, so the late real-time seek must not reset it
 const speedIdx = () => Math.max(0, BETA_SPEEDS.indexOf(speed));
@@ -680,7 +681,7 @@ function setSpeedIdx(i) { // beta: pick one of the four speeds; the multiplier s
   const sp = document.getElementById('speed'); if (sp) [...sp.children].forEach((c, k) => c.classList.toggle('on', k === i));
   spdSync(true);
 }
-if (BETA) {
+if (NEWPB) {
   const sp = document.getElementById('speed');
   if (sp) { // the old speed control in the settings sheet is replaced by the chevron button (kept hidden so other code can still read it)
     sp.innerHTML = BETA_SPEEDS.map((v, i) => `<button type="button" data-s="${v}"${i ? '' : ' class="on"'}>x${v}</button>`).join('');
@@ -702,9 +703,9 @@ if (BETA) {
     };
     sb.onclick = () => { spdUser = true; setSpeedIdx((speedIdx() + 1) % BETA_SPEEDS.length); };
     spdSync();
-    // settings button: sits left of the fog (cloud) button, at the same height
-    const fb = () => document.getElementById('fogbtn'), gear = () => $('gear');
-    setInterval(() => { const f = fb(), g = gear(); if (f && g) { g.style.bottom = f.style.bottom; g.style.visibility = f.style.visibility; } }, 300);
+    // settings button: above the dock, left of the fog (cloud) button when there is one (right edge otherwise)
+    const placeGear = () => { const g = $('gear'), d = $('dock'); if (!g || !d) return; g.style.bottom = Math.max(12, innerHeight - d.getBoundingClientRect().top + 10) + 'px'; g.style.right = document.getElementById('fogbtn') ? '56px' : '12px'; };
+    setInterval(placeGear, 300); addEventListener('resize', placeGear);
   }
 }
 
@@ -804,7 +805,7 @@ function wall(iso, addMin) {
 
 let ckT = 0, ckPend = '', ckTO = 0;
 function setClock(txt, force) { // beta: the clock text is redrawn at most 10 times a second (digits stay readable at speed); the last value always lands
-  if (!BETA || force || performance.now() - ckT >= 100) { ckT = performance.now(); clearTimeout(ckTO); ckTO = 0; $('clock').textContent = txt; return; }
+  if (!NEWPB || force || performance.now() - ckT >= 100) { ckT = performance.now(); clearTimeout(ckTO); ckTO = 0; $('clock').textContent = txt; return; }
   ckPend = txt; if (!ckTO) ckTO = setTimeout(() => { ckTO = 0; ckT = performance.now(); $('clock').textContent = ckPend; }, 100);
 }
 let lastFrameKey = -1;
@@ -1055,7 +1056,7 @@ function frame(ts) {
   requestAnimationFrame(frame);
   if (playing && night) {
     if (lastTs) {
-      tNow += Math.min(BETA ? (speed === 1 ? 1e9 : 1) : 0.1, (ts - lastTs) / 1000) * (night ? simRate() : speed); // beta x1 is real time: no cap, so the clock stays with the wall clock even on a slow phone or after a hidden tab
+      tNow += Math.min(NEWPB ? (speed === 1 ? 1e9 : 1) : 0.1, (ts - lastTs) / 1000) * (night ? simRate() : speed); // beta x1 is real time: no cap, so the clock stays with the wall clock even on a slow phone or after a hidden tab
       if (dirSign < 0) { const lo = RNG ? RNG.lo : 0; if (tNow <= lo) { tNow = lo; setPlaying(false); } } // playing backward stops at the start of the window
       else if (RNG) { if (tNow >= RNG.hi) { if (RNG.hi < LV.hiWant) { tNow = RNG.hi; setPlaying(false); } else tNow = RNG.lo + Math.min(tNow - RNG.hi, RNG.hi - RNG.lo); } } // live: loops inside the chosen range (stops if the next days are still loading)
       else if (tNow >= night.n_frames - 1) { tNow = night.n_frames - 1; setPlaying(false); }
@@ -1097,7 +1098,7 @@ function frame(ts) {
   }
   if (BX) BX.render(ts);
   if (SKY) SKY.update(ts);
-  if (BUSES) BUSES.update(BETA && night ? { t: simEpoch(), speed: playing ? speed : 0 } : undefined); // beta: buses follow the simulation clock (replay), public: wall clock
+  if (BUSES) BUSES.update(NEWPB && night ? { t: simEpoch(), speed: playing ? speed : 0 } : undefined); // beta: buses follow the simulation clock (replay), public: wall clock
   if (FOGV) fog.renderFrame(renderer, scene, camera, PERFON && PERF.aa ? aaRender : undefined); else if (PERFON && PERF.aa) aaRender(); else renderer.render(scene, camera);
   if (PERFON) { lastRenderT = ts; if (dirty > 0) dirty--; }
 }
@@ -1241,7 +1242,7 @@ async function bootLive() {
   liveBar(idx, st);
   await initBeta(); buildPerfUI();
   applyRange();
-  if (BETA) { LV.rtPending = true; LV.rtT0 = t0; liveRealTime(); } // beta opens at the real current time and plays at real time (x1) ...
+  if (NEWPB) { LV.rtPending = true; LV.rtT0 = t0; liveRealTime(); } // beta opens at the real current time and plays at real time (x1) ...
   applyTime(true); ui2Track();
   overlay.classList.add('hide'); $('status').textContent = '';
   liveRest(idx, d0, f0, nF, ST); // background: days 1-2 (not awaited)
@@ -1263,7 +1264,7 @@ async function liveRest(idx, d0, f0, nF, ST) {
     const cf = await composeFog(idx);
     liveSetData(full, nF); night.n_frames = nF;
     fogGrid = cf.grid; await fog.build(cf.url, fogGrid); fog.setVisible($('fogtoggle').checked);
-    applyRange(); if (BETA) liveRealTime(); LV.el.load.textContent = ''; LV.el.ld.hidden = true; ui2Track(); applyTime(true); ui2Refresh(true);
+    applyRange(); if (NEWPB) liveRealTime(); LV.el.load.textContent = ''; LV.el.ld.hidden = true; ui2Track(); applyTime(true); ui2Refresh(true);
     window.__liveFull = true;
   } catch (e) { console.warn(e); LV.el.load.textContent = 'later days unavailable'; LV.el.ld.hidden = true; }
 }
@@ -1283,15 +1284,15 @@ function ui2Build() {
   $('fpst').insertAdjacentHTML('beforebegin', '<span id="fptx"><span class="nm" id="fpnm"></span><span class="st" id="fpsub"></span></span>');
   const g = document.createElement('button'); g.id = 'gear'; g.type = 'button'; g.className = 'ib'; g.title = 'Settings'; g.setAttribute('aria-label', 'Settings'); g.innerHTML = UI2_GEAR;
   g.onclick = () => setSheet($('sheet').hidden); $('legend').after(g);
-  if (BETA) document.body.appendChild(g); // beta: the settings button sits beside the fog button (outside the dock, whose blur would make 'fixed' relative to it)
+  if (NEWPB) document.body.appendChild(g); // beta: the settings button sits beside the fog button (outside the dock, whose blur would make 'fixed' relative to it)
   $('legend').querySelector('.ticks').innerHTML = '<span>dry</span><span>wet</span>';
   const tr = document.createElement('div'); tr.id = 'trk';
   tr.innerHTML = '<div id="trkdays"></div><div class="rail"></div><div class="obs" id="trkobs"></div><div class="played" id="trkplay"></div><i class="now" id="trknow" hidden></i><i class="thumb" id="trkthumb"></i><i class="ld" id="trkld" hidden></i>';
   $('slider').before(tr); tr.appendChild($('slider'));
   const st = document.createElement('div'); st.id = 'st3'; st.innerHTML = '<span class="stl" id="st3l"></span>'; $('timebar').after(st);
   st.appendChild($('poc')); $('poc').innerHTML = '<span class="pill">' + UI2_INFO + '5 m sim · not a forecast</span>';
-  if (BETA) $('dock').appendChild($('legend')); // beta: the dry/wet tab sits on the top edge of the whole dock, whatever rows are stacked inside it
-  if (BETA) $('weather').after($('poc')); // beta: the info icon sits at the end of the weather row (icon only, see speed_ui.css)
+  if (NEWPB) $('dock').appendChild($('legend')); // beta: the dry/wet tab sits on the top edge of the whole dock, whatever rows are stacked inside it
+  if (NEWPB) $('weather').after($('poc')); // beta: the info icon sits at the end of the weather row (icon only, see speed_ui.css)
 }
 
 /* time track: observed part solid, forecast part dotted, yellow tick at the data time, played part cyan, day labels at local midnights */
