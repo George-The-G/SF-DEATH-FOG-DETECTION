@@ -36,6 +36,18 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const EX = 1.5; // vertical exaggeration (terrain, buildings, streets, fog all share it)
 const isTouch = matchMedia('(pointer: coarse)').matches;
 
+/* ---- performance options (beta only, ?beta=1; the public page keeps today's code path). Settings > Performance. See docs/perf/README.md.
+   lod: far buildings drawn as roofs only. dynres: lower resolution while the camera moves. aa: smooth edges. ondemand: draw only when something changed (?ondemand=0 turns it off).
+   URL overrides: ?lod=0|1 &dynres=0|1 &aa=0|1. Saved choices live in localStorage 'df3.perf'; a choice the user never made stays undefined, so the automatic rules still apply. */
+const PERFON = BETA;
+const FAR_TINT = 0.92; // far roofs are a little darker so the average brightness does not jump when walls disappear (tuned by image diff)
+const PSTORE = 'df3.perf';
+const perfLoad = () => { try { return JSON.parse(localStorage.getItem(PSTORE) || '{}') || {}; } catch (e) { return {}; } };
+const perfSave = (o) => { try { localStorage.setItem(PSTORE, JSON.stringify(o)); } catch (e) { /* not persisted */ } };
+const PERF = { lod: true, dynres: false, aa: true, ondemand: PERFON && QP.get('ondemand') !== '0', stored: PERFON ? perfLoad() : {}, weak: false, scale: 0.7, auto: false };
+let dirty = 2, lastRenderT = 0, frameNo = 0; // render-on-demand: frames still to draw, time of the last draw
+const invalidate = (n = 2) => { if (n > dirty) dirty = n; };
+
 function hexRgb(h) { return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255); }
 function rampColor(v) {
   v = clamp(v, 0, 100);
@@ -83,8 +95,28 @@ function withTimeout(p, ms, what) { return Promise.race([p, new Promise((_, rej)
 
 /* ------------------------------------------------------------------ scene */
 const canvas = $('gl');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isTouch ? 2 : 1.75));
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !PERFON, powerPreference: 'high-performance' }); // beta: edges are smoothed in an own multisampled target (see aaRender), not by the canvas
+const BASE_PR = Math.min(devicePixelRatio || 1, isTouch ? 2 : 1.75);
+renderer.setPixelRatio(BASE_PR);
+/* Older or weaker phones: lower resolution while moving starts on, newer ones start off (and turn on by themselves if their frames are slow, see dynResTick).
+   Heuristic: touch device with little memory, few cores, or a known older GPU family. iOS hides the GPU model, so only memory and cores can tell there. */
+function weakDevice() {
+  if (!isTouch) return false;
+  try {
+    const gl = renderer.getContext(), dbg = gl.getExtension('WEBGL_debug_renderer_info'), g = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
+    const mem = navigator.deviceMemory || 0, cores = navigator.hardwareConcurrency || 0;
+    if (mem && mem <= 3) return true;
+    if (/Mali-(4|T|G[1-5]\d?\b)|Adreno( \(TM\))? ?[2-5]\d\d\b|PowerVR|SGX/i.test(g)) return true;
+    if (cores && cores <= 4) return true;
+  } catch (e) { /* unknown: treat as capable */ }
+  return false;
+}
+if (PERFON) {
+  PERF.weak = weakDevice();
+  const q = (k) => { const v = QP.get(k); return v === '1' ? true : v === '0' ? false : undefined; };
+  const pick = (...a) => a.find((v) => v !== undefined);
+  PERF.lod = pick(q('lod'), PERF.stored.lod, true); PERF.dynres = pick(q('dynres'), PERF.stored.dynres, PERF.weak); PERF.aa = pick(q('aa'), PERF.stored.aa, !PERF.weak);
+}
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#070b14');
 const camera = new THREE.PerspectiveCamera(50, 1, 8, 90000);
@@ -92,6 +124,7 @@ const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
 controls.maxPolarAngle = 1.48; controls.minDistance = 60; controls.maxDistance = 32000;
 controls.screenSpacePanning = false;
+controls.addEventListener('change', () => invalidate());
 
 const hemi = new THREE.HemisphereLight(0x8fa8d8, 0x2a3348, 1.6); scene.add(hemi);
 const moon = new THREE.DirectionalLight(0xc8d4ff, 2.2);
@@ -126,7 +159,7 @@ function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h; camera.fov = w < h ? 62 : 50; camera.updateProjectionMatrix();
-  setBandVars();
+  setBandVars(); invalidate();
 }
 function setBandVars() { // heights of the glass stacks, used to place popovers and keep tooltips clear of them
   const r = document.documentElement.style;
@@ -218,7 +251,16 @@ function buildBuildings(buf) {
     let a = tiles.get(key); if (!a) tiles.set(key, a = []); a.push(k);
   }
   const dummy = new THREE.Object3D();
-  for (const ids of tiles.values()) {
+  // far look (beta, Settings > Performance): roof only. Shares the near mesh's buffers, so it costs no extra memory.
+  const roofGeo = new THREE.BufferGeometry();
+  roofGeo.setAttribute('position', new THREE.Float32BufferAttribute([-.5, 1, .5, .5, 1, .5, .5, 1, -.5, -.5, 1, .5, .5, 1, -.5, -.5, 1, -.5], 3));
+  roofGeo.setAttribute('normal', new THREE.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], 3));
+  const matFar = PERFON ? mat.clone() : null;
+  if (matFar) matFar.color.setScalar(FAR_TINT);
+  const lodTiles = [];
+  const tileOf = new Map(); // tile key -> { ix, iz, far: [meshes shown only far], near: [meshes shown only near] }
+  const tileRec = (key) => { let t = tileOf.get(key); if (!t) { const ix = Math.floor(key / 1000), iz = key - ix * 1000; tileOf.set(key, t = { x0: ix * 1000, x1: ix * 1000 + 1000, z0: -(iz * 1000 + 1000), z1: -iz * 1000, near: [], far: [], isFar: false }); lodTiles.push(t); } return t; };
+  for (const [key, ids] of tiles) {
     const im = new THREE.InstancedMesh(boxGeo, mat, ids.length);
     ids.forEach((k, n) => {
       dummy.position.set(cx[k] * xyQ, bb[k] * hQ, -cn[k] * xyQ);
@@ -228,32 +270,57 @@ function buildBuildings(buf) {
     });
     im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); im.matrixAutoUpdate = false;
     group.add(im);
+    if (PERFON) {
+      const imF = new THREE.InstancedMesh(roofGeo, matFar, ids.length);
+      imF.instanceMatrix = im.instanceMatrix; imF.instanceColor = im.instanceColor;
+      imF.boundingSphere = im.boundingSphere; imF.matrixAutoUpdate = false; imF.visible = false;
+      group.add(imF);
+      const t = tileRec(key); t.near.push(im); t.far.push(imF);
+    }
   }
 
-  // true polygons: walls + flat roof, non-indexed, one mesh
+  // true polygons: walls + flat roof, non-indexed. Beta: one walls mesh and one roof mesh per km tile (culls when zoomed in, far tiles drop the walls). Public: one mesh, as before.
+  const pw = new Map(); // tile key -> { wp, wc, rp, rc }
   const pos = [], colr = [];
   let vi = 0;
   for (let k = 0; k < np; k++) {
     const n = pnv[k], y0 = pb[k] * hQ, y1 = y0 + ph[k] * hQ, c = tint(ph[k] * hQ, nb + k), ring = [];
-    for (let i = 0; i < n; i++) ring.push(new THREE.Vector2(pv[(vi + i) * 2] * xyQ, -pv[(vi + i) * 2 + 1] * xyQ));
+    let sx = 0, sz = 0;
+    for (let i = 0; i < n; i++) { ring.push(new THREE.Vector2(pv[(vi + i) * 2] * xyQ, -pv[(vi + i) * 2 + 1] * xyQ)); sx += pv[(vi + i) * 2]; sz += pv[(vi + i) * 2 + 1]; }
     vi += n;
-    const push = (x, y, z) => { pos.push(x, y, z); colr.push(c.r, c.g, c.b); };
+    let W = null, R = null, Wc = null, Rc = null;
+    if (PERFON) {
+      const key = Math.floor(sx / n * xyQ / 1000) * 1000 + Math.floor(sz / n * xyQ / 1000);
+      let g = pw.get(key); if (!g) pw.set(key, g = { wp: [], wc: [], rp: [], rc: [] });
+      W = g.wp; Wc = g.wc; R = g.rp; Rc = g.rc;
+    } else { W = R = pos; Wc = Rc = colr; }
+    const pushW = (x, y, z) => { W.push(x, y, z); Wc.push(c.r, c.g, c.b); };
+    const pushR = (x, y, z) => { R.push(x, y, z); Rc.push(c.r, c.g, c.b); };
     for (let i = 0; i < n; i++) {
       const a = ring[i], b = ring[(i + 1) % n];
-      push(a.x, y0, a.y); push(b.x, y0, b.y); push(b.x, y1, b.y);
-      push(a.x, y0, a.y); push(b.x, y1, b.y); push(a.x, y1, a.y);
+      pushW(a.x, y0, a.y); pushW(b.x, y0, b.y); pushW(b.x, y1, b.y);
+      pushW(a.x, y0, a.y); pushW(b.x, y1, b.y); pushW(a.x, y1, a.y);
     }
     const tri = THREE.ShapeUtils.triangulateShape(ring, []);
-    for (const t of tri) for (const i of t) push(ring[i].x, y1, ring[i].y);
+    for (const t of tri) for (const i of t) pushR(ring[i].x, y1, ring[i].y);
   }
-  if (pos.length) {
+  const polyMat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x0b1224, side: THREE.DoubleSide });
+  const polyMesh = (p, cl, m) => {
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3));
-    g.computeVertexNormals();
-    group.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x0b1224, side: THREE.DoubleSide })));
-  }
+    g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
+    g.computeVertexNormals(); g.computeBoundingSphere();
+    const me = new THREE.Mesh(g, m); group.add(me); return me;
+  };
+  if (PERFON) {
+    for (const [key, g] of pw) {
+      const t = tileRec(key);
+      if (g.wp.length) t.near.push(polyMesh(g.wp, g.wc, polyMat)); // walls: drawn only near
+      if (g.rp.length) polyMesh(g.rp, g.rc, polyMat); // roofs: always
+    }
+  } else if (pos.length) polyMesh(pos, colr, polyMat);
   group.userData.col = colData;
+  group.userData.lod = lodTiles;
   return group;
 }
 
@@ -838,6 +905,94 @@ function keepCameraAboveGround() {
   if (p.y < g) { p.y = g; camera.lookAt(controls.target); camera.updateMatrixWorld(); }
 }
 
+/* ------------------------------------------------------------------ beta performance (Settings > Performance), see docs/perf/README.md */
+let lastMoveT = 0, camSig = '';
+const keepDrawing = () => playing || flight || fly || BUSES || (FOGV ? (fog.busy ? fog.busy() : false) : false) || (!FOGV && $('fogtoggle').checked);
+const moving = (ts) => { // the camera moved this frame (orbit, damping, flights, fly-along): compared by value, so it does not depend on events
+  const p = camera.position, t = controls.target, sig = p.x.toFixed(1) + p.y.toFixed(1) + p.z.toFixed(1) + t.x.toFixed(1) + t.z.toFixed(1);
+  const m = sig !== camSig || !!flight || (fly && !fly.paused); camSig = sig; if (m) invalidate(2); return m;
+};
+/* Far buildings: a 16 m building under 4 device pixels switches to roofs only. Measured from the full-size buffer, so the lower resolution while moving does not flip it. */
+const LODS = { dFar: 0, nFar: 0, nTiles: 0 };
+function updateBuildingLod(force) {
+  const tiles = buildingsMesh && buildingsMesh.userData.lod; if (!tiles) return;
+  const dF = 16 * innerHeight * BASE_PR / (2 * Math.tan(camera.fov * Math.PI / 360) * 4), c = camera.position;
+  let nFar = 0, ch = false;
+  for (const t of tiles) {
+    const dx = Math.max(t.x0 - c.x, 0, c.x - t.x1), dz = Math.max(t.z0 - c.z, 0, c.z - t.z1), d = Math.hypot(dx, c.y, dz);
+    const want = PERF.lod && (t.isFar ? d > dF * 0.9 : d > dF * 1.1);
+    if (want !== t.isFar || force) { t.isFar = want; for (const m of t.near) m.visible = !want; for (const m of t.far) m.visible = want; ch = true; }
+    if (want) nFar++;
+  }
+  LODS.dFar = dF; LODS.nFar = nFar; LODS.nTiles = tiles.length;
+  if (ch) { invalidate(); perfNote(); }
+}
+/* Lower resolution while moving. Starts on for weak phones; on any device it also turns itself on if frames stay slow while moving (unless the user chose). */
+let slow = [], autoDone = false;
+function dynResTick(ts) {
+  const want = PERF.dynres && ts - lastMoveT < 220 ? PERF.scale : 1;
+  const pr = BASE_PR * (PERF.dynres ? want : 1);
+  if (Math.abs(renderer.getPixelRatio() - pr) > 0.01) { renderer.setPixelRatio(pr); invalidate(3); }
+  if (!autoDone && !PERF.dynres && PERF.stored.dynres === undefined && QP.get('dynres') === null && ts - lastMoveT < 120 && lastRenderT) {
+    const dt = ts - lastRenderT; if (dt > 4 && dt < 250) slow.push(dt);
+    if (slow.length >= 90) {
+      slow.sort((a, b) => a - b);
+      if (slow[45] > 30) { PERF.dynres = true; PERF.auto = true; syncPerfUi(); toast('Frames are slow while moving: lower resolution while moving is now on (Settings > Performance)'); }
+      autoDone = true; slow = [];
+    }
+  }
+}
+/* Smooth edges: the scene goes into a 4x multisampled target and is blitted to the canvas with the sRGB conversion (the same path the fog pass uses). */
+let aaRT = null, aaScene = null, aaCam = null;
+function aaRender() {
+  const gl = renderer.getContext(), sz = renderer.getDrawingBufferSize(new THREE.Vector2());
+  if (!aaRT || aaRT.width !== sz.x || aaRT.height !== sz.y) {
+    if (aaRT) aaRT.dispose();
+    aaRT = new THREE.WebGLRenderTarget(sz.x, sz.y, { samples: Math.min(4, gl.getParameter(gl.MAX_SAMPLES) || 0), type: THREE.UnsignedByteType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: true });
+    if (!aaScene) {
+      aaCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1); aaScene = new THREE.Scene();
+      const m = new THREE.ShaderMaterial({ uniforms: { tex: { value: null } }, depthTest: false, depthWrite: false,
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
+        fragmentShader: 'varying vec2 vUv; uniform sampler2D tex; void main(){ gl_FragColor = linearToOutputTexel(vec4(texture2D(tex, vUv).rgb, 1.)); }' });
+      aaScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), m)); aaScene.userData.m = m;
+    }
+    aaScene.userData.m.uniforms.tex.value = aaRT.texture;
+  }
+  const prev = renderer.getRenderTarget();
+  renderer.setRenderTarget(aaRT); renderer.render(scene, camera);
+  renderer.setRenderTarget(prev); renderer.render(aaScene, aaCam);
+}
+/* Settings > Performance (beta). Three switches; a choice the user makes is remembered in this browser, otherwise the automatic rules above apply. */
+function applyPerf() { if (!PERFON) return; if (FOGV && fog.setMsaa) fog.setMsaa(PERF.aa ? -1 : 0); updateBuildingLod(true); invalidate(4); }
+function perfNote() {
+  const n = $('pf-note'); if (!n) return;
+  const why = PERF.auto ? ' (turned on automatically, frames were slow)' : PERF.weak && PERF.stored.dynres === undefined ? ' (on by default for this device)' : '';
+  n.textContent = (PERF.lod ? `Far buildings simplified beyond ${(LODS.dFar / 1000).toFixed(1)} km, ${LODS.nFar} of ${LODS.nTiles} tiles now` : 'All buildings at full detail') + ' · ' +
+    (PERF.dynres ? `resolution ${Math.round(PERF.scale * 100)}% while moving${why}` : 'full resolution while moving') + ' · edges ' + (PERF.aa ? 'smoothed' : 'not smoothed');
+}
+function syncPerfUi() { for (const k of ['lod', 'dynres', 'aa']) { const e = $('pf-' + k); if (e) e.checked = !!PERF[k]; } perfNote(); }
+function buildPerfUI() {
+  if (!PERFON || $('bx-g-perf')) return;
+  const sheet = $('sheet'); if (!sheet) return;
+  const row = (k, t, s) => `<label class="bx-tall"><input type="checkbox" id="pf-${k}"><span><i class="bx-tt"><b>${t}</b><small>${s}</small></i></span></label>`;
+  const s = document.createElement('section'); s.className = 'bx-grp'; s.id = 'bx-g-perf';
+  s.innerHTML = `<div class="bx-gh">Performance</div><div class="tgs bx-one">
+    ${row('lod', 'Simpler far buildings', 'Distant buildings drawn as roofs only')}
+    ${row('dynres', 'Lower resolution while moving', 'Sharp again when you stop')}
+    ${row('aa', 'Smooth edges', 'Antialiasing; turn off to save battery')}</div><p class="bx-hint" id="pf-note"></p>`;
+  sheet.appendChild(s);
+  s.addEventListener('change', (e) => {
+    const k = e.target && e.target.id && e.target.id.slice(3); if (!['lod', 'dynres', 'aa'].includes(k)) return;
+    PERF[k] = e.target.checked; PERF.stored[k] = e.target.checked; if (k === 'dynres') PERF.auto = false; perfSave(PERF.stored); applyPerf(); perfNote();
+  });
+  syncPerfUi(); applyPerf();
+}
+/* every kind of input and every download can change what is on screen: draw a few frames after each (render-on-demand) */
+if (PERFON) {
+  for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'input', 'change', 'click', 'touchstart', 'touchmove', 'visibilitychange', 'transitionend']) addEventListener(ev, () => invalidate(3), { capture: true, passive: true });
+  const f0 = window.fetch.bind(window); window.fetch = (...a) => f0(...a).finally(() => invalidate(3));
+}
+
 /* ------------------------------------------------------------------ main loop */
 function frame(ts) {
   requestAnimationFrame(frame);
@@ -857,6 +1012,13 @@ function frame(ts) {
   flyStep(ts);
   controls.update();
   keepCameraAboveGround();
+  if (PERFON) { // beta: resolution while moving, far buildings, and (when ondemand) skipping frames where nothing changed
+    frameNo++;
+    if (moving(ts)) lastMoveT = ts;
+    dynResTick(ts);
+    if (PERF.ondemand && !(dirty > 0 || keepDrawing() || ts - lastRenderT > 4000)) return;
+    updateBuildingLod(false);
+  }
   const dist = camera.position.distanceTo(controls.target);
   fog.update(camera, dist, ts / 1000);
   if (pointMat && !useRib) pointMat.uniforms.uScale.value = clamp(dist / 450, 1, 12);
@@ -878,14 +1040,15 @@ function frame(ts) {
   if (BX) BX.render(ts);
   if (SKY) SKY.update(ts);
   if (BUSES) BUSES.update();
-  if (FOGV) fog.renderFrame(renderer, scene, camera); else renderer.render(scene, camera);
+  if (FOGV) fog.renderFrame(renderer, scene, camera, PERFON && PERF.aa ? aaRender : undefined); else if (PERFON && PERF.aa) aaRender(); else renderer.render(scene, camera);
+  if (PERFON) { lastRenderT = ts; if (dirty > 0) dirty--; }
 }
 
 /* ------------------------------------------------------------------ live preview (?live=1), see PLAN_LIVE_DATA.md section 9
    live/index.json + day0..2.u8 (frame-major, columns = data/ribbons.bin samples then live/ribbons_city.bin samples, hourly frames),
    fog0..2.png, status.json. Day 0 is shown first; days 1-2 load in the background and the bar grows when they arrive. */
 let rib2 = null; // city ribbons (live only)
-const loadImg = (u) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('image ' + u)); i.src = u; });
+const loadImg = (u) => new Promise((res, rej) => { const i = new Image(); i.onload = () => { invalidate(3); res(i); }; i.onerror = () => rej(new Error('image ' + u)); i.src = u; });
 const ptFmt = (iso, o) => new Date(iso).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour12: false, ...o });
 let LV = null; // { idx, st, ST, S1, el }
 const LQ = new URLSearchParams(location.search).get('livetest'); // preview testing: 'delayed' | 'forecast'
@@ -1018,7 +1181,7 @@ async function bootLive() {
   LV.anchor = clamp(Math.round((asof - t0) / 3600000), 0, nF - 1); // frame of the data time; used when there is no observed_until_frame
   tNow = clamp(LV.anchor, 0, f0 - 1);
   liveBar(idx, st);
-  await initBeta();
+  await initBeta(); buildPerfUI();
   applyRange();
   applyTime(true); ui2Track();
   overlay.classList.add('hide'); $('status').textContent = '';
@@ -1208,7 +1371,7 @@ async function initBeta() {
     tNow = Math.min(60, idx.nights[firstFog].n_frames - 1);
     initSheet();
     await selectNight(firstFog);
-    await initBeta(); // past night with the beta channel flag: tag and regrouped settings only (no beta data for a replay)
+    await initBeta(); buildPerfUI(); // past night with the beta channel flag: tag and regrouped settings only (no beta data for a replay)
     if (QP.get('liveerr')) toast('Live data is unavailable right now. Showing a past night.');
     applyUrlRoute();
     window.__ready = true;
@@ -1217,4 +1380,4 @@ async function initBeta() {
   }
 })();
 
-window.__dbg = { get skater() { return skater; }, skate: () => (SK && SK.sim ? { x: +SK.sim.x.toFixed(1), z: +SK.sim.z.toFixed(1), y: +SK.sim.y.toFixed(1), speed: +SK.sim.speed.toFixed(1), onRoad: SK.sim.onRoad, wall: SK.sim.wall, k: SK.sim.k, active: SK.active, buildMs: SK.world && SK.world.buildMs } : null), stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get rib2() { return rib2; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
+window.__dbg = { renderer, PERF, LODS, get skater() { return skater; }, skate: () => (SK && SK.sim ? { x: +SK.sim.x.toFixed(1), z: +SK.sim.z.toFixed(1), y: +SK.sim.y.toFixed(1), speed: +SK.sim.speed.toFixed(1), onRoad: SK.sim.onRoad, wall: SK.sim.wall, k: SK.sim.k, active: SK.active, buildMs: SK.world && SK.world.buildMs } : null), stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get rib2() { return rib2; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };

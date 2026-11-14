@@ -437,13 +437,15 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     [fogRT, motionRT, accRT[0], accRT[1], smallRT, histRT[0], histRT[1]].forEach((r) => r && r.dispose());
     sceneRT = fogRT = motionRT = smallRT = null; accRT = [null, null]; histRT = [null, null]; accN = 0; lastFogTex = null; lastFogDepth = null;
   }
+  let msOver = -1; // app.js (beta, Settings > Performance): -1 = tier default, otherwise the sample count wanted for the scene target
+  const msNow = () => (msOver >= 0 ? msOver : TIERS[tier].ms);
   function ensureRT(renderer) {
     const T = TIERS[tier], sc = scaleNow(); renderer.getDrawingBufferSize(sz);
     const w = Math.max(2, sz.x | 0), h = Math.max(2, sz.y | 0);
-    if (sceneRT && w === rtW && h === rtH && T.ms === rtMs && sc === rtScale) return;
-    disposeRT(); rtW = w; rtH = h; rtMs = T.ms; rtScale = sc;
+    if (sceneRT && w === rtW && h === rtH && msNow() === rtMs && sc === rtScale) return;
+    disposeRT(); rtW = w; rtH = h; rtMs = msNow(); rtScale = sc;
     const dt = new THREE.DepthTexture(w, h); dt.format = THREE.DepthFormat; dt.type = THREE.UnsignedIntType;
-    sceneRT = new THREE.WebGLRenderTarget(w, h, { samples: T.ms, depthTexture: dt, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.UnsignedByteType });
+    sceneRT = new THREE.WebGLRenderTarget(w, h, { samples: msNow(), depthTexture: dt, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.UnsignedByteType });
     const fw = Math.max(2, Math.round(w * sc)), fh = Math.max(2, Math.round(h * sc));
     fogRT = new THREE.WebGLRenderTarget(fw, fh, rtOpts);
     motionRT = new THREE.WebGLRenderTarget(Math.max(2, fw >> 1), Math.max(2, fh >> 1), rtOpts);
@@ -643,13 +645,14 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     return `${U.uFlowOn.value}:${U.uFlowT.value.toFixed(2)}|${eA.k}:${eA.stamp}|${eB.k}:${eB.stamp}|${mixT.toFixed(4)}`;
   }
 
-  function renderFrame(renderer, scn, camera) {
+  function renderFrame(renderer, scn, camera, plain) { // plain (optional): how app.js wants the scene drawn when the fog pass is not running (beta: through its own multisampled target)
+    const draw = plain || (() => renderer.render(scn, camera));
     lastR = renderer; lastScn = scn; lastCam = camera;
-    if (tier === 0 || !ready || !want) { phase = 'off'; renderer.render(scn, camera); return; }
+    if (tier === 0 || !ready || !want) { phase = 'off'; draw(); return; }
     const vox = P.mode === 'voxel', prev = renderer.getRenderTarget(), now = performance.now();
     ensureRT(renderer);
     const vsig = vox ? prepVoxel(renderer) : '';
-    if (vox && vsig === null) { renderer.setRenderTarget(prev); renderer.render(scn, camera); phase = 'waiting for data'; return; }
+    if (vox && vsig === null) { renderer.setRenderTarget(prev); draw(); phase = 'waiting for data'; return; }
     setCamUniforms(camera);
     renderer.setRenderTarget(sceneRT); renderer.render(scn, camera);
     if (!vox) { // procedural march: unchanged pipeline (its noise drifts with wall time, so every frame is new)
@@ -720,6 +723,9 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
 
   return {
     build, renderFrame, bench, info,
+    /* hooks for render-on-demand and the Performance settings (app.js): busy = the fog still changes without any input */
+    busy() { if (!want || !ready) return false; if (tier === 0) return true; return phase !== 'still (fog reused)'; },
+    setMsaa(n) { msOver = n; },
     clear() { ready = false; sheets.clear(); },
     get ready() { return ready || sheets.ready; },
     get tier() { return tier; },
