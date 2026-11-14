@@ -372,7 +372,14 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
         if CCs is not None:
             out["cloud"] = gat(CCs)
         return out
-    drz = None
+    drz = EVs = ev_corr = None
+    if "insitu_fog" in info["physics"]:   # guide 12: model fog evidence from RRFS visibility, corrected by airport visibility
+        vis = np.nan_to_num(to_grid(V["visibility"], th, g), nan=20000.0)
+        EVs = np.ascontiguousarray(wetness.vis_evidence(vis).astype(np.float32))
+        vis_h = to_grid(V["visibility"], th, hg)
+        ev_h = wetness.vis_evidence(np.nan_to_num(vis_h, nan=20000.0))
+        ev_corr = insitu_correction(mt, t_h, nh, g, lambda lat, lon: model_at(lat, lon, ev_h), info)
+        info["insitu"]["mean_ev"] = float(np.clip(EVs[west].mean(axis=0) + ev_corr, 0, 1).mean())
     if cb_on:
         zm_pts = interp_at(np.asarray(rrfs["elev"], float), idx, w4)
         zs = zm_pts if z is None else np.asarray(z, float)
@@ -383,6 +390,8 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
             base = (zm_pts + wetness.LCL_M_PER_K * np.maximum(out["temp"] - out["dew"], 0.0) + cb_off[i]).astype(np.float32)
             out["temp"], out["dew"] = fogtop.street_temperature(out["temp"], out["dew"], zs, zm_pts, base, top[i])
             out["cloud_base"] = base
+            if EVs is not None:
+                out["fog_ev"] = np.clip((EVs[idx, i] * w4).sum(axis=1) + ev_corr[i], 0.0, 1.0).astype(np.float32)
             if drz is not None:
                 out["drizzle"] = wetness.drizzle_at_street(drz[i], top[i], base, zs, fogtop.fog_top_ramp(top[i], zs)).astype(np.float32)
             return out
@@ -456,6 +465,26 @@ def drizzle_series(mt, t_h, nh, g, D_model, info):
     D = np.maximum(D_model + corr, 0.0)
     info["drizzle"] = dict(hours_with_dz=dz_hours, mean_rate=float(D.mean()))
     return D
+
+
+def insitu_correction(mt, t_h, nh, g, ev_model_at, info):
+    """Guide 12: citywide additive correction (per step) of the model fog evidence from airport visibility: 0.5 x (observed - model at the stations),
+    ev_obs = clip((3 - vis_mi) / 2, 0, 1) averaged over the stations with data in the hour. ev_model_at(lat, lon) -> hourly model evidence at a site.
+    Faded into the forecast with C.FOG_E_FOLD_H. Fills info['insitu']."""
+    obs_h = np.full(nh, np.nan)
+    mod_h = np.full(nh, np.nan)
+    for k in range(nh):
+        o, m = [], []
+        for st in C.METAR_IDS:
+            rows = [x_ for x_ in ((mt or {}).get(st, []) or []) if abs((x_["t"] - t_h[k]).total_seconds()) <= 1800 and np.isfinite(x_["vis_mi"])]
+            if rows and st in C.METAR_LL:
+                o.append(float(np.clip((3.0 - np.mean([x_["vis_mi"] for x_ in rows])) / 2.0, 0.0, 1.0)))
+                m.append(ev_model_at(*C.METAR_LL[st])[k])
+        if o:
+            obs_h[k], mod_h[k] = np.mean(o), np.mean(m)
+    corr, _ = fade_series(0.5 * (obs_h - mod_h), g, C.FOG_E_FOLD_H, "add", 0.0)
+    info["insitu"] = dict(hours_with_station_vis=int(np.isfinite(obs_h).sum()), mean_ev=None)
+    return corr
 
 
 def pavement_cold_start(T_l, th, hours=24.0):

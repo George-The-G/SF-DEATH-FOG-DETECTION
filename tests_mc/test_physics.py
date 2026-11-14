@@ -44,13 +44,13 @@ class TestSwitches(unittest.TestCase):
 
     def test_known_names(self):
         self.assertEqual(set(wetness.KNOWN_PHYSICS), {"cloud_base", "lag_uniform", "vpd_evap", "total_cloud", "drizzle", "insitu_fog", "sun_clear", "film", "pavement", "grease"})
-        built = {"sun_clear", "film", "cloud_base", "lag_uniform", "vpd_evap", "total_cloud", "drizzle"}                # guides 06 and 05 are built: they change the result (tests_mc/test_sun_clear.py, test_film.py)
+        built = {"sun_clear", "film", "cloud_base", "lag_uniform", "vpd_evap", "total_cloud", "drizzle", "insitu_fog"}                # guides 06 and 05 are built: they change the result (tests_mc/test_sun_clear.py, test_film.py)
         ph = tuple(k for k in wetness.KNOWN_PHYSICS if k not in built and k != "pavement")   # pavement (guide 07) needs sun_clear and film: tests_mc/test_pavement.py
         W, d = case(physics=ph)                      # accepted; the others change nothing yet
         self.assertEqual(d["physics"], sorted(ph))
         self.assertEqual(digest(W, d), PRE_SWITCH_HASH)
         for k in built:
-            Wk, dk = case(physics=(k,) if k != "drizzle" else ("cloud_base", "drizzle"))   # drizzle needs the cloud base (guide 11)
+            Wk, dk = case(physics=(k,) if k not in ("drizzle", "insitu_fog") else ("cloud_base", k))   # drizzle needs the cloud base (guide 11)
             self.assertNotEqual(digest(Wk, dk), PRE_SWITCH_HASH, k)
             self.assertTrue(np.isfinite(Wk).all())
 

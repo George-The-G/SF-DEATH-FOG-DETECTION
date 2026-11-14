@@ -90,6 +90,10 @@ DRIZZLE_EVAP_M = 600.0   # m below the base over which drizzle evaporates down t
 DRIZZLE_EVAP_MIN = 0.2
 K_DRIZZLE = 150.0        # old (W units) path: wetting per mm of drizzle
 
+# ---- in-place fog (guide 12, switch "insitu_fog"; needs cloud_base) ----
+GAP_INSITU = 1.0         # K, T - Td at the street where the air stops counting as saturated (in-place fog needs T - Td below this)
+VIS_FOG_M = (1000.0, 5000.0)   # model visibility: evidence 1 at or below the first, 0 at or above the second (first guess)
+
 # ---- physics switches (guide 01): named model changes, all OFF unless a caller passes them to simulate(physics=...) ----
 KNOWN_PHYSICS = ("cloud_base", "lag_uniform", "vpd_evap", "total_cloud", "drizzle", "insitu_fog", "sun_clear", "film", "pavement", "grease")
 
@@ -102,6 +106,8 @@ def check_physics(physics):
         raise ValueError(f"unknown physics switch(es) {bad}; known: {list(KNOWN_PHYSICS)}")
     if "pavement" in P and not {"sun_clear", "film"} <= P:   # guide 07 uses the street sunlight S (guide 06) and the water film (guide 05)
         raise ValueError(f"physics switch 'pavement' needs 'sun_clear' and 'film' as well (missing: {sorted({'sun_clear', 'film'} - P)})")
+    if "insitu_fog" in P and "cloud_base" not in P:   # guide 12 uses the street-level temperature of guide 08
+        raise ValueError("physics switch 'insitu_fog' needs 'cloud_base' as well")
     if "drizzle" in P and "cloud_base" not in P:   # guide 11 uses the cloud base of guide 08
         raise ValueError("physics switch 'drizzle' needs 'cloud_base' as well")
     return P
@@ -282,6 +288,20 @@ def onshore_weight(wdir):
     d = np.asarray(wdir, float) % 360.0
     w = np.maximum(0.0, np.cos(np.radians(d - 270.0)))
     return np.where((d >= 180.0) & (d <= 360.0), w, 0.0)
+
+
+def insitu_fog(temp, dew, ev, top, z):
+    """Guide 12: in-place fog exposure 0..1 per street, independent of wind direction: saturation at the street (T - Td below GAP_INSITU) x fog
+    evidence ev (0..1, from visibility) x the fog top ramp. Broadcasts."""
+    from . import fogtop
+    sat = np.clip(1.0 - (np.asarray(temp, float) - np.asarray(dew, float)) / GAP_INSITU, 0.0, 1.0)
+    return (sat * np.clip(np.asarray(ev, float), 0.0, 1.0) * fogtop.fog_top_ramp(top, z)).astype(np.float32)
+
+
+def vis_evidence(vis_m):
+    """Guide 12: model fog evidence from visibility in metres (1 at VIS_FOG_M[0] and below, 0 at VIS_FOG_M[1] and above; linear between)."""
+    lo, hi = VIS_FOG_M
+    return np.clip((hi - np.asarray(vis_m, float)) / (hi - lo), 0.0, 1.0)
 
 
 def drizzle_rate(thick, cloud_low):
@@ -532,6 +552,8 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
     block_dirs = []
     in_cloud = np.zeros(N)
     drz_tot = np.zeros(N)
+    ins_num = np.zeros(N)
+    ins_den = np.zeros(N)
     for i in range(n):
         if blk and i % blk == 0:  # time-varying lag: mean flow of this block
             sl = slice(i, min(n, i + blk))
@@ -557,6 +579,12 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
                 wb = fogtop.cloud_base_ramp(f["cloud_base"], pts["z"])
                 local = local * wb
                 in_cloud += wb * dt_h
+            if "insitu_fog" in P and "fog_ev" in f:   # guide 12: fog that forms in place, any wind direction; the stronger of the two sources
+                ins = insitu_fog(f["temp"], f["dew"], f["fog_ev"], top[i], pts["z"])
+                new = np.maximum(local, ins)
+                ins_num += new - local
+                ins_den += new
+                local = new
         lit = np.zeros(N, bool)
         if hor is not None and el[i] > 0:
             from .sun import sunlit
@@ -627,6 +655,8 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
         extra["in_cloud_hours"] = in_cloud
     if "drizzle" in P:
         extra["drizzle_total"] = drz_tot
+    if "insitu_fog" in P:
+        extra["insitu_share"] = np.where(ins_den > 0, ins_num / np.maximum(ins_den, 1e-12), 0.0)
     diag = dict(dirs_used=(None if dirs is None else dirs.tolist()), mean_flow_dir=mdir, sun_az=az, sun_el=el, s=s, lit=lit_all, lag_steps=lag_steps, fog_mode=mode, fog_top=top, tracer=np.asarray(tr, np.float32),
                 out_every=out_every, block_dirs=block_dirs, physics=sorted(P), state_at=state_at, **extra, **{k + "_total": v for k, v in dep.items()})
     return out, diag
