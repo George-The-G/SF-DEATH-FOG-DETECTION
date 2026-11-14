@@ -569,13 +569,13 @@ function applyUrlRoute() { // ?route=<id> selects and flies to it, &fly=1 starts
 
 /* ------------------------------------------------------------------ fog layer (see fog.js) */
 const FOGV = BETA && QP.get('fog') !== 'sheets'; // beta default: volumetric fog; ?fog=sheets gets the old sheets back
-const LAB = FOGV && QP.get('lab') === '1'; // fog lab: ?beta=1&lab=1 adds a panel to compare fog techniques and settings (foglab.js); its settings stay in this browser only
-let labParams = null; if (LAB) { try { labParams = JSON.parse(localStorage.getItem('foglab.v1') || 'null'); } catch (e) { labParams = null; } }
+const LAB = FOGV; // fog menu (foglab.js): a small cloud button on beta to play with the fog look; its settings stay in this browser only
+let labParams = null; if (LAB) { try { labParams = JSON.parse(localStorage.getItem('foglab.v2') || 'null'); } catch (e) { labParams = null; } }
 const fog = (FOGV ? createFogVol : createFog)({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast, params: labParams || undefined });
-if (LAB) window.__fogLab = { fog, renderer, scene, camera }; // lab benchmark handle (tools/fogbench.cjs)
-if (LAB) import('./foglab.js').then((m) => m.mountFogLab({ fog, getSky: () => SKY, densEl: document.getElementById('fogdens') })).catch((e) => console.warn('fog lab unavailable', e));
-if (FOGV) { // volumetric fog looks right at a lower density: slider 5 to 60 percent, starting at 45 (the sheets keep 30 to 200 at 100)
-  const fd = document.getElementById('fogdens'); if (fd) { fd.min = 5; fd.max = 60; fd.value = 45; } fog.setDensity(0.45);
+if (LAB) window.__fogLab = { fog, renderer, scene, camera }; // benchmark handle (tools/fogbench.cjs)
+if (LAB) import('./foglab.js').then((m) => m.mountFogLab({ fog, densEl: document.getElementById('fogdens') })).catch((e) => console.warn('fog menu unavailable', e));
+if (FOGV) { // volumetric fog looks right at a lower density: slider 5 to 60 percent, starting at 21 (the sheets keep 30 to 200 at 100)
+  const fd = document.getElementById('fogdens'); if (fd) { fd.min = 5; fd.max = 60; fd.value = 21; } fog.setDensity(0.21);
 }
 
 /* ------------------------------------------------------------------ replay data */
