@@ -102,6 +102,12 @@ if (BETA && (QP.get('sky') !== '0' || QP.get('hud') === '1')) { // beta default:
   import('./sky.js').then((m) => m.createSky({ THREE, scene, camera, renderer, starsUrl: 'stars.bin', sky: QP.get('sky') !== '0', hud: QP.get('hud') === '1' }))
     .then((s) => { SKY = s; if (FOGV) s.setExtra(() => fog.info()); if (night) skyTime(curF); }).catch((e) => console.warn('sky unavailable', e));
 }
+/* Beta live buses (buses.js, loaded only with ?beta=1&buses=1): the two skate shuttles, bus-stop shelters with pinned arrival popups. The normal page never fetches it. */
+let BUSES = null;
+if (BETA && QP.get('buses') === '1') {
+  import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, controls, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getTerrain: () => terrainH, getCol: () => buildingsMesh && buildingsMesh.userData.col, getG: () => G, getDist: () => camera.position.distanceTo(controls.target), QP, toast }))
+    .then((b) => { BUSES = b; }).catch((e) => console.warn('buses unavailable', e));
+}
 function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) fog.setLight(SKY.light); } }
 
 let meta = null, pts = null, terrainH = null, T = null;
@@ -178,7 +184,7 @@ function buildBuildings(buf) {
   const pnv = take(Uint8Array, np), pb = take(Uint16Array, np), ph = take(Uint16Array, np), pv = take(Uint16Array, nvt * 2);
 
   const lo = new THREE.Color(0x56647f), hi = new THREE.Color(0xaabcdf), col = new THREE.Color();
-  const colData = { nb, np, xyQ, hQ, wdQ, cx, cn, bw, bd, ba, pnv, pv }; // read by skate.js for building walls (beta Take control)
+  const colData = { nb, np, xyQ, hQ, wdQ, cx, cn, bw, bd, ba, pnv, pv, bb, bh, pb, ph }; // read by skate.js for building walls (beta Take control)
   const tint = (h, k) => { // taller = lighter, plus a little per-building variation
     const t = Math.pow(clamp((h - 6) / 90, 0, 1), 0.7), j = 0.9 + 0.2 * (((k * 2654435761) >>> 8) % 1000) / 1000;
     return col.copy(lo).lerp(hi, t).multiplyScalar(j);
@@ -569,13 +575,13 @@ function applyUrlRoute() { // ?route=<id> selects and flies to it, &fly=1 starts
 
 /* ------------------------------------------------------------------ fog layer (see fog.js) */
 const FOGV = BETA && QP.get('fog') !== 'sheets'; // beta default: volumetric fog; ?fog=sheets gets the old sheets back
-const LAB = FOGV && QP.get('lab') === '1'; // fog lab: ?beta=1&lab=1 adds a panel to compare fog techniques and settings (foglab.js); its settings stay in this browser only
-let labParams = null; if (LAB) { try { labParams = JSON.parse(localStorage.getItem('foglab.v1') || 'null'); } catch (e) { labParams = null; } }
+const LAB = FOGV; // fog menu (foglab.js): a small cloud button on beta to play with the fog look; its settings stay in this browser only
+let labParams = null; if (LAB) { try { labParams = JSON.parse(localStorage.getItem('foglab.v2') || 'null'); } catch (e) { labParams = null; } }
 const fog = (FOGV ? createFogVol : createFog)({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast, params: labParams || undefined });
-if (LAB) window.__fogLab = { fog, renderer, scene, camera }; // lab benchmark handle (tools/fogbench.cjs)
-if (LAB) import('./foglab.js').then((m) => m.mountFogLab({ fog, getSky: () => SKY, densEl: document.getElementById('fogdens') })).catch((e) => console.warn('fog lab unavailable', e));
-if (FOGV) { // volumetric fog looks right at a lower density: slider 5 to 60 percent, starting at 45 (the sheets keep 30 to 200 at 100)
-  const fd = document.getElementById('fogdens'); if (fd) { fd.min = 5; fd.max = 60; fd.value = 45; } fog.setDensity(0.45);
+if (LAB) window.__fogLab = { fog, renderer, scene, camera }; // benchmark handle (tools/fogbench.cjs)
+if (LAB) import('./foglab.js').then((m) => m.mountFogLab({ fog, densEl: document.getElementById('fogdens') })).catch((e) => console.warn('fog menu unavailable', e));
+if (FOGV) { // volumetric fog looks right at a lower density: slider 5 to 60 percent, starting at 33 (the sheets keep 30 to 200 at 100)
+  const fd = document.getElementById('fogdens'); if (fd) { fd.min = 5; fd.max = 60; fd.value = 33; } fog.setDensity(0.33);
 }
 
 /* ------------------------------------------------------------------ replay data */
@@ -864,6 +870,7 @@ function frame(ts) {
   }
   if (BX) BX.render(ts);
   if (SKY) SKY.update(ts);
+  if (BUSES) BUSES.update();
   if (FOGV) fog.renderFrame(renderer, scene, camera); else renderer.render(scene, camera);
 }
 

@@ -194,12 +194,39 @@ export function createWorld({ terrainH, EX = 1.5, G, col }) {
     return { x: G.x[bk], z: G.z[bk], tx, tz, k: bk };
   }
 
-  return { road, ground, walls, nearestStreet, EX, terrainH, hasWalls: !!wg, hasStreets: !!sg, q };
+  /* roof height (world y, already stretched by EX) of the tallest building covering (x, z), or -Infinity. Needs bb, bh, pb, ph, hQ in col (older tests omit them: then -Infinity).
+     Used by the chase camera so it never ends up inside, or looks through, a building. */
+  function roof(x, z) {
+    if (!wg || !col.bh) return -Infinity;
+    const ci = Math.floor((x - wg.x0) / CELL), cj = Math.floor((z - wg.z0) / CELL);
+    if (ci < 0 || cj < 0 || ci >= wg.nx || cj >= wg.nz) return -Infinity;
+    const { nb, xyQ, hQ, wdQ, cx, cn, bw, bd, ba, bb, bh, pb, ph, pv } = col, c = cj * wg.nx + ci; let top = -Infinity;
+    for (let p = wg.off[c]; p < wg.off[c + 1]; p++) {
+      const id = wg.items[p];
+      if (id < nb) {
+        const th = ba[id] * Math.PI / 256, co = Math.cos(th), si = Math.sin(th), dx = x - cx[id] * xyQ, dz = z + cn[id] * xyQ;
+        const lx = dx * co - dz * si, lz = dx * si + dz * co;
+        if (Math.abs(lx) <= bw[id] * wdQ / 2 && Math.abs(lz) <= bd[id] * wdQ / 2) top = Math.max(top, (bb[id] + bh[id]) * hQ * EX);
+      } else {
+        const k = id - nb, s0 = wg.polyStart[k], n = wg.polyStart[k + 1] - s0, b = wg.pbox;
+        if (x < b[k * 4] || x > b[k * 4 + 1] || z < b[k * 4 + 2] || z > b[k * 4 + 3]) continue;
+        let inside = false;
+        for (let i = 0, j = n - 1; i < n; j = i++) {
+          const ax = pv[(s0 + j) * 2] * xyQ, az = -pv[(s0 + j) * 2 + 1] * xyQ, bx = pv[(s0 + i) * 2] * xyQ, bz = -pv[(s0 + i) * 2 + 1] * xyQ;
+          if ((az > z) !== (bz > z) && x < (bx - ax) * (z - az) / (bz - az) + ax) inside = !inside;
+        }
+        if (inside) top = Math.max(top, (pb[k] + ph[k]) * hQ * EX);
+      }
+    }
+    return top;
+  }
+
+  return { road, ground, roof, walls, nearestStreet, EX, terrainH, hasWalls: !!wg, hasStreets: !!sg, q };
 }
 
 /* ---------------------------------------------------------------------- 2. simulation */
-export function createSim(world) {
-  const T = TUNE, EX = world.EX;
+export function createSim(world, over) { // over: optional TUNE overrides (the bus uses a bigger collision radius and a lower top speed)
+  const T = over ? { ...TUNE, ...over } : TUNE, EX = world.EX;
   const s = { x: 0, z: 0, h: 0, vx: 0, vz: 0, y: 0, speed: 0, grade: 0, onRoad: false, wall: 0, bump: 0, stuck: 0, fx: 1, fy: 0, fz: 0, k: -1, blocked: false };
   const out = { respawned: false };
 
@@ -291,19 +318,43 @@ export function createSim(world) {
 }
 
 /* ---------------------------------------------------------------------- 3. chase camera */
-export function createChaseCam({ THREE, world }) {
-  const C = TUNE.cam, pos = new THREE.Vector3(), look = new THREE.Vector3(), want = new THREE.Vector3(), lk = new THREE.Vector3();
-  let hdg = 0, started = false;
+export function createChaseCam({ THREE, world, opts = {} }) {
+  const C = { ...TUNE.cam, ...opts }, pos = new THREE.Vector3(), look = new THREE.Vector3(), want = new THREE.Vector3(), lk = new THREE.Vector3();
+  const roofAt = world.roof || (() => -Infinity);
+  let hdg = 0, started = false, bm = 1, um = 1, tb = 1, tu = 1, probeT = 0, yawOff = 0, upOff = 0, zoom = 1, userT = -1e9, clock = 0;
+  const cand = (sim, b, u, out) => { // where the camera would sit for back/up multipliers b, u
+    const yaw = hdg + yawOff, dx = Math.cos(yaw), dz = Math.sin(yaw), back = C.back * zoom * b * (1 + Math.min(0.25, sim.speed / 120));
+    return out.set(sim.x - dx * back, sim.y + (C.up * zoom + upOff) * u, sim.z - dz * back);
+  };
+  /* a clear line from the target to the camera: above the ground and above every roof along the way */
+  const clear = (sim, c) => {
+    for (let i = 1; i <= 14; i++) {
+      const f = i / 14, x = sim.x + (c.x - sim.x) * f, y = sim.y + 4 + (c.y - sim.y - 4) * f, z = sim.z + (c.z - sim.z) * f;
+      if (y < world.ground(x, z) + 5 || y < roofAt(x, z) + 3) return false;
+    }
+    return c.y > roofAt(c.x, c.z) + 6;
+  };
+  const probe = (sim) => { // the smallest change that clears buildings: higher first, then closer in
+    for (const b of [1, 0.75, 0.55]) for (const u of [1, 1.4, 2, 3]) if (clear(sim, cand(sim, b, u, lk))) { tb = b; tu = u; return; }
+    tb = 0.45; tu = 3.5; // boxed in: straight up and close
+  };
   return {
-    /* start from the current flyover camera so the hand-over is a smooth glide */
-    start(camera, target, sim) { pos.copy(camera.position); look.copy(target); hdg = sim.h; started = true; },
+    /* start from the current camera so the hand-over is a smooth glide */
+    start(camera, target, sim) { pos.copy(camera.position); look.copy(target); hdg = sim.h; started = true; bm = tb = um = tu = 1; yawOff = 0; upOff = 0; zoom = 1; probeT = 0; },
+    stop() { started = false; },
+    nudge(dyaw, dup) { yawOff += dyaw; upOff = Math.min(140, Math.max(-30, upOff + dup)); userT = clock; }, // user dragged: free look that drifts back
+    zoomBy(f) { zoom = Math.min(3, Math.max(0.9, zoom * f)); },
     update(sim, camera, controls, dt) {
       if (!started) return;
+      dt = Math.min(dt, 0.1); clock += dt;
       const turn = angDiff(sim.h, hdg); hdg += turn * (1 - Math.exp(-dt * C.follow));
-      const dx = Math.cos(hdg), dz = Math.sin(hdg), back = C.back * (1 + Math.min(0.25, sim.speed / 120));
-      want.set(sim.x - dx * back, sim.y + C.up, sim.z - dz * back);
-      lk.set(sim.x + dx * C.look, sim.y + C.lookUp, sim.z + dz * C.look);
-      // never under the ground, and never with a hill between the skater and the camera: raise the camera until the line to the skater clears the ground
+      if (clock - userT > 3) { yawOff *= Math.exp(-dt / 5); upOff *= Math.exp(-dt / 8); }
+      probeT -= dt; if (probeT <= 0) { probeT = 0.12; probe(sim); }
+      const km = 1 - Math.exp(-dt * 3.5); bm += (tb - bm) * km; um += (tu - um) * km;
+      cand(sim, bm, um, want);
+      const ah = hdg;
+      lk.set(sim.x + Math.cos(ah) * C.look, sim.y + C.lookUp, sim.z + Math.sin(ah) * C.look);
+      // never under the ground, and never with a hill between the target and the camera: raise the camera until the line to the target clears the ground
       let need = world.ground(want.x, want.z) + 16;
       for (const f of [0.25, 0.5, 0.75]) {
         const px = sim.x + (want.x - sim.x) * f, pz = sim.z + (want.z - sim.z) * f;
@@ -312,7 +363,8 @@ export function createChaseCam({ THREE, world }) {
       if (want.y < need) want.y = need;
       const k = 1 - Math.exp(-dt * C.spring);
       pos.lerp(want, k); look.lerp(lk, k);
-      if (pos.y < need - 4) pos.y = need - 4; // spring lag must not dip below the floor either
+      if (pos.y < need - 4) pos.y += (need - 4 - pos.y) * Math.min(1, dt * 10); // spring lag must not dip below the floor either (eased, so a crest ahead does not jerk the camera)
+      const roofFloor = roofAt(pos.x, pos.z) + 5; if (pos.y < roofFloor) pos.y += (roofFloor - pos.y) * Math.min(1, dt * 10); // nor into a roof (eased up, not snapped, when the camera slides over a roof edge)
       camera.position.copy(pos); controls.target.copy(look);
     },
   };
