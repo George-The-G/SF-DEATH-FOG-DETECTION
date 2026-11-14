@@ -19,6 +19,9 @@ def main(argv):
     elif cmd == "meshes":
         from . import meshes
         print(json.dumps(meshes.build(cfg, DATA / "raw", DATA / "grids", Path("site/v3/data")), indent=1))
+    elif cmd == "meshes-lod":  # plan B: hidden-wall mask + block-merged far buildings from buildings.bin: [--tile KEY] [--check]
+        from . import meshes_lod
+        sys.exit(meshes_lod.run(argv[1:]))
     elif cmd == "wind":
         from . import wind
         order = [270, 247.5, 292.5, 225, 315, 202.5, 337.5, 360]
