@@ -102,6 +102,12 @@ if (BETA && (QP.get('sky') !== '0' || QP.get('hud') === '1')) { // beta default:
   import('./sky.js').then((m) => m.createSky({ THREE, scene, camera, renderer, starsUrl: 'stars.bin', sky: QP.get('sky') !== '0', hud: QP.get('hud') === '1' }))
     .then((s) => { SKY = s; if (s.enabled) skyButton(); if (FOGV) s.setExtra(() => fog.info()); if (night) skyTime(curF); }).catch((e) => console.warn('sky unavailable', e));
 }
+/* Beta live buses (buses.js, loaded only with ?beta=1&buses=1): the two skate shuttles, bus-stop shelters with pinned arrival popups. The normal page never fetches it. */
+let BUSES = null;
+if (BETA && QP.get('buses') === '1') {
+  import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getDist: () => camera.position.distanceTo(controls.target), QP, toast }))
+    .then((b) => { BUSES = b; }).catch((e) => console.warn('buses unavailable', e));
+}
 /* Beta "Sky" button: the orbit camera always looks down at the city, so the sky is only a thin band. This hops to a street-level view that looks at the sun, the moon, then straight up at the stars, then back. */
 function skyButton() {
   const b = document.createElement('button'); b.type = 'button'; b.id = 'skybtn'; b.textContent = 'Sky'; b.setAttribute('aria-label', 'Look up at the sun, moon and stars');
@@ -837,6 +843,7 @@ function frame(ts) {
   }
   if (BX) BX.render(ts);
   if (SKY) SKY.update(ts);
+  if (BUSES) BUSES.update();
   if (FOGV) fog.renderFrame(renderer, scene, camera); else renderer.render(scene, camera);
 }
 

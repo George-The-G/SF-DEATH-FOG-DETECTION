@@ -1,0 +1,14 @@
+# Cloudflare Worker config. NO secrets here. The 511 key is a Worker secret named API_KEY_511 (set it with `npx wrangler secret put API_KEY_511`
+# or in the Cloudflare dashboard: Workers > bus-proxy > Settings > Variables and Secrets > Add > Type: Secret).
+name = "bus-proxy"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+[vars]
+AGENCY = "SF"                     # Muni's 511 operator id; confirm with the operators call (README)
+ALLOWED_ORIGINS = "https://george-the-g.github.io"
+VEH_TTL = "60"                    # seconds between 511 position calls (511 default limit: 60 per hour)
+ARR_TTL = "180"                   # seconds between 511 arrival calls
+# stopCode = the 511/Muni stop code of the bottom stop in the direction of the shuttle (README, "Find the stop codes").
+DISTRICTS = '[{"id":"potrero","line":"19","stopCode":""},{"id":"sunset","line":"66","stopCode":""}]'
