@@ -47,6 +47,7 @@ K_SUN = 80.0         # per 1000 W/m2 shortwave, direct sun only (sunlit points)
 K_DIFF = 10.0        # per 1000 W/m2 shortwave, everywhere
 LAG_MAX_H = 3.0
 WIND_LAG_MIN = 1.5
+LAG_SPEED_FACTOR = 1.3   # switch lag_uniform (guide 09): fog front speed = 10 m wind x this, the same for every street (first guess: wind at ~80 m over the 10 m wind, onshore flow)
 X_WEST = 540100.0    # grid west edge, m (EPSG:32610)
 DIR_LIBRARY = os.environ.get("DEATHFOG_DIR_LIBRARY", "0") != "0"  # replay writer: validated non-270 fields OFF by default (user decision pending); set DEATHFOG_DIR_LIBRARY=1 to enable. The live path always passes use_dirs=True.
 USE_REFINED = True   # apply the nested 5 m wind correction (street_features.refine_corr) after normalisation
@@ -421,7 +422,14 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
             E = np.stack([fog_exposure(fogtop.points_tracer(pts, DATA_DIR, d)) for d in dd]).astype(np.float32)
             Wt = dirlib.weights(wdir, dirs)
 
+    uni = "lag_uniform" in P
+
     def lag_for(mdir_, wmean_):
+        if uni:   # guide 09: the front travels with the wind above the roofs, not with each street's sheltered wind
+            wmean_ = max(float(wmean_) * LAG_SPEED_FACTOR, WIND_LAG_MIN)
+            if dirs is not None:
+                return lag_seconds_dir(pts["x"], pts["y"], mdir_, wmean_) / (step_min * 60.0)
+            return lag_seconds(pts["x"], wmean_) / (step_min * 60.0)
         if dirs is not None:
             return lag_seconds_dir(pts["x"], pts["y"], mdir_, wmean_ * wr) / (step_min * 60.0)
         return lag_seconds(pts["x"], wmean_ * wr) / (step_min * 60.0)
