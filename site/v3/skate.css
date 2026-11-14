@@ -1,0 +1,28 @@
+/* Take control (beta): button, joystick and the slim bottom bar while skating. Loaded by app.js only with ?beta=1 during a flyover. */
+.take { position: fixed; z-index: 9; top: calc(var(--top-h, 64px) + var(--sat, 0px) + 14px); right: max(12px, var(--sar, 0px)); height: 44px; padding: 0 18px; border-radius: 999px;
+  border: 1px solid rgba(94, 242, 255, .8); background: rgba(10, 16, 30, .82); color: #d6faff; font: 600 15px/1 system-ui, sans-serif; letter-spacing: .01em;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 0 0 3px rgba(94, 242, 255, .12); cursor: pointer; }
+.take[hidden] { display: none; }
+.take:hover:not(:disabled) { background: rgba(94, 242, 255, .22); }
+.take:active:not(:disabled) { transform: scale(.96); }
+.take:disabled { opacity: .45; cursor: default; }
+
+/* the bottom bar shrinks to the time bar while skating */
+body.skating #flyspeed, body.skating #weather, body.skating #legend, body.skating #sheet, body.skating #lvstack, body.skating #sheettab, body.skating #poc { display: none !important; }
+
+#skctl { position: fixed; z-index: 8; left: 0; right: 0; bottom: calc(var(--ctl-h, 64px) + max(8px, var(--sab, 0px)) + 22px); height: 0; pointer-events: none; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+#skctl[hidden] { display: none; }
+#skpad { position: absolute; left: max(18px, var(--sal, 0px)); bottom: 0; width: 132px; height: 132px; border-radius: 50%; pointer-events: auto; touch-action: none; background: rgba(10, 16, 30, .45);
+  border: 2px solid rgba(94, 242, 255, .55); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+#skpad .skring { position: absolute; inset: 30px; border-radius: 50%; border: 1px dashed rgba(94, 242, 255, .35); }
+#skpad .skknob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(94, 242, 255, .5); border: 2px solid #9ff3fb; box-shadow: 0 2px 10px rgba(0, 0, 0, .4); }
+#skbtns { position: absolute; right: max(18px, var(--sar, 0px)); bottom: 0; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+#skbtns button { pointer-events: auto; touch-action: none; min-width: 112px; height: 56px; padding: 0 16px; border-radius: 28px; border: 2px solid rgba(94, 242, 255, .55); background: rgba(10, 16, 30, .55);
+  color: #d6faff; font: 600 15px/1 system-ui, sans-serif; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+#skbtns #skbrake { border-color: rgba(255, 140, 120, .75); color: #ffd9d2; height: 72px; min-width: 112px; }
+#skbtns button:active { background: rgba(94, 242, 255, .3); }
+#skbtns #skbrake:active { background: rgba(255, 140, 120, .32); }
+#skhint { position: absolute; left: 0; right: 0; bottom: 142px; text-align: center; color: rgba(214, 250, 255, .8); font: 500 12px/1.2 system-ui, sans-serif; text-shadow: 0 1px 3px #000; pointer-events: none; }
+@media (hover: hover) and (pointer: fine) { #skpad { width: 112px; height: 112px; } #skhint { bottom: 122px; } }
+@media (max-height: 460px) { #skpad { width: 104px; height: 104px; } #skhint { display: none; } #skbtns { flex-direction: row; } #skbtns #skbrake { height: 56px; } }
+@media (prefers-reduced-motion: reduce) { .take:active { transform: none; } }

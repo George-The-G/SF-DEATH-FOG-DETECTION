@@ -178,6 +178,7 @@ function buildBuildings(buf) {
   const pnv = take(Uint8Array, np), pb = take(Uint16Array, np), ph = take(Uint16Array, np), pv = take(Uint16Array, nvt * 2);
 
   const lo = new THREE.Color(0x56647f), hi = new THREE.Color(0xaabcdf), col = new THREE.Color();
+  const colData = { nb, np, xyQ, hQ, wdQ, cx, cn, bw, bd, ba, pnv, pv }; // read by skate.js for building walls (beta Take control)
   const tint = (h, k) => { // taller = lighter, plus a little per-building variation
     const t = Math.pow(clamp((h - 6) / 90, 0, 1), 0.7), j = 0.9 + 0.2 * (((k * 2654435761) >>> 8) % 1000) / 1000;
     return col.copy(lo).lerp(hi, t).multiplyScalar(j);
@@ -238,6 +239,7 @@ function buildBuildings(buf) {
     g.computeVertexNormals();
     group.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x0b1224, side: THREE.DoubleSide })));
   }
+  group.userData.col = colData;
   return group;
 }
 
@@ -431,7 +433,8 @@ const FLY = { back: 150, ahead: 130, up: 62 };
 function flyUI() {
   const on = !!fly; document.body.classList.toggle('flying', on);
   { const fh = $('flyhdr'); fh.setAttribute('aria-label', on ? 'Exit the flyover' : 'Fly the route'); fh.title = fh.getAttribute('aria-label'); } if (on) { closePicker(); if (!SIDE()) setSheet(false); }
-  $('flypill').hidden = !on; $('flypause').hidden = !on;
+  $('flypill').hidden = !on; $('flypause').hidden = !on || !!(fly && fly.control); document.body.classList.toggle('skating', !!(fly && fly.control));
+  { const tk = $('flytake'); if (tk) { tk.hidden = !(BETA && on && !fly.control); if (BETA && on) loadSkateCss(); } }
   if (on) {
     const paused = fly.paused;
     $('flypause').innerHTML = fly.done ? '&#8635;' : paused ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>' : ICON_PAUSE;
@@ -445,7 +448,7 @@ function startFly() {
   fly = { R, u: 0, paused: false, done: false, last: 0, cam: camera.position.clone(), tgt: controls.target.clone(), txt: '' };
   flyUI();
 }
-function stopFly() { skater.setVisible(false); if (!fly) return; fly = null; controls.enabled = true; controls.update(); flyUI(); }
+function stopFly() { skater.setVisible(false); if (SK) SK.stop(); if (!fly) return; fly = null; controls.enabled = true; controls.update(); flyUI(); }
 function routeBins(R) {
   if (R.bins) return R.bins;
   const ri = R.def.index, p = R.def.poly, s = R.def.s, bins = new Map();
@@ -484,6 +487,7 @@ function flyReadout(s) {
 function flyStep(ts) {
   if (!fly) return;
   const dt = fly.last ? Math.min(0.1, (ts - fly.last) / 1000) : 0; fly.last = ts;
+  if (fly.control) { skateStep(dt); return; }
   const R = fly.R, dur = clamp(R.len / 80, 15, 25);
   if (!fly.paused) { fly.u = Math.min(1, fly.u + dt * flySpeed / dur); if (fly.u >= 1) { fly.done = true; fly.paused = true; flyUI(); } }
   $('flyfill').style.width = (fly.u * 100).toFixed(1) + '%';
@@ -496,7 +500,37 @@ function flyStep(ts) {
   camera.position.copy(fly.cam); controls.target.copy(fly.tgt);
   flyReadout(s); if (UI2) ui2Fly(s);
   placeSkater(R, s, dt, c);
+  { const tk = $('flytake'); if (tk && !tk.hidden && !tk.dataset.busy) { const d = !skater.group.visible; if (tk.disabled !== d) tk.disabled = d; } } // Take control needs the skater on screen
 }
+/* ---- Take control (beta): skate.js is fetched only now. The flyover skater's spot and heading hand over to the skate simulation. */
+let SK = null, SKP = null, skCss = false, skRead = '';
+function loadSkateCss() { if (skCss) return; skCss = true; const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'skate.css'; document.head.appendChild(l); }
+async function takeControl() {
+  if (!fly || fly.control || !skater.group.visible) return;
+  const tk = $('flytake'); tk.disabled = true; tk.dataset.busy = '1';
+  try {
+    const m = await (SKP || (SKP = import('./skate.js')));
+    if (!fly) return;
+    if (!SK) SK = m.createSkate({ THREE, camera, controls, renderer, terrainH, EX, getG: () => G, getCol: () => buildingsMesh && buildingsMesh.userData.col, skater, isTouch, toast, readout: skateReadout });
+    if (!SK.start(skater.group.position, _sf, null)) { toast('Skating needs street data: try again in a moment'); tk.disabled = false; delete tk.dataset.busy; return; }
+    fly.control = true; fly.paused = true; skRead = ''; $('flyfill').style.width = '0%'; flyUI();
+    $('fpnm').textContent = 'Free skate'; fly.nm = 'Free skate';
+    if (!isTouch) toast('W A S D or arrow keys to skate, Esc to exit');
+  } catch (e) { console.warn('skate unavailable', e); toast('Skating could not load'); SKP = null; }
+  tk.disabled = false; delete tk.dataset.busy;
+}
+function skateStep(dt) {
+  ensureWet();
+  SK.update(dt, (k) => (k >= 0 && wetNow[k] >= 0 ? wetNow[k] : null));
+}
+function skateReadout(sim) {
+  const k = sim.k, st = k >= 0 ? (G.names[G.st[k]] || '') : '', w = k >= 0 && wetNow[k] >= 0 ? Math.round(wetNow[k]) : null, mph = Math.round(sim.speed * 2.237);
+  const txt = `${st}|${w}|${mph}`; if (txt === skRead) return; skRead = txt;
+  $('fpst').textContent = st; $('fpsub').textContent = `${mph} mph` + (w == null ? '' : ` · wet ${w}`);
+  $('fpw').innerHTML = w == null ? '' : `<span class="sw" style="background:${rgbCss(rampColor(w))}"></span><b>${w}</b>`;
+}
+$('flytake').onclick = takeControl;
+
 /* The skateboarder rides the street ahead of the chase camera. Its arc position is chosen so that the board sits just above the
    glass control stack at the bottom of the screen (bisection on the projected height), its size is a fixed share of the screen height
    (so it reads from 390x844 to 1440x900), and it wobbles with the interpolated wetness at that point of the route. */
@@ -742,6 +776,7 @@ let down = null;
 let pressTimer = 0, pressFired = 0;
 const cancelPress = () => { clearTimeout(pressTimer); pressTimer = 0; };
 canvas.addEventListener('pointerdown', (e) => {
+  if (fly && fly.control) return; // skating: the map is not a button, the joystick and keys steer
   if (fly) stopFly(); down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (e.pointerType === 'touch' || longPress()) hideTip();
   cancelPress();
   if (longPress() && e.isPrimary && (e.pointerType !== 'mouse' || e.button === 0)) { // press and hold: the card appears under the finger if it has not moved
@@ -778,6 +813,18 @@ canvas.addEventListener('pointermove', (e) => {
 });
 canvas.addEventListener('pointerleave', () => { if (!isTouch) hideTip(); });
 
+/* Camera floor guard: orbit, camera flights and the fly-along can never put the camera under the ground (or inside a hill).
+   Highest of the terrain under the camera and four points CAM_PROBE m around it (the 60 m terrain triangles differ a little from the bilinear lookup),
+   never below sea level, plus CAM_CLEAR m (the near plane is 8 m). OrbitControls re-reads camera.position every frame, so the user just feels the ground
+   stop them. ?noclamp=1 switches it off for debugging. */
+const CAM_CLEAR = 14, CAM_PROBE = 30, NOCLAMP = QP.get('noclamp') === '1';
+function keepCameraAboveGround() {
+  if (!terrainH || NOCLAMP) return;
+  const p = camera.position, t = terrainH, d = CAM_PROBE;
+  const g = Math.max(0, t.at(p.x, p.z), t.at(p.x + d, p.z), t.at(p.x - d, p.z), t.at(p.x, p.z + d), t.at(p.x, p.z - d)) + CAM_CLEAR;
+  if (p.y < g) { p.y = g; camera.lookAt(controls.target); camera.updateMatrixWorld(); }
+}
+
 /* ------------------------------------------------------------------ main loop */
 function frame(ts) {
   requestAnimationFrame(frame);
@@ -796,6 +843,7 @@ function frame(ts) {
   }
   flyStep(ts);
   controls.update();
+  keepCameraAboveGround();
   const dist = camera.position.distanceTo(controls.target);
   fog.update(camera, dist, ts / 1000);
   if (pointMat && !useRib) pointMat.uniforms.uScale.value = clamp(dist / 450, 1, 12);
@@ -1155,4 +1203,4 @@ async function initBeta() {
   }
 })();
 
-window.__dbg = { get skater() { return skater; }, stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get rib2() { return rib2; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
+window.__dbg = { get skater() { return skater; }, skate: () => (SK && SK.sim ? { x: +SK.sim.x.toFixed(1), z: +SK.sim.z.toFixed(1), y: +SK.sim.y.toFixed(1), speed: +SK.sim.speed.toFixed(1), onRoad: SK.sim.onRoad, wall: SK.sim.wall, k: SK.sim.k, active: SK.active, buildMs: SK.world && SK.world.buildMs } : null), stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get rib2() { return rib2; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
