@@ -1,6 +1,6 @@
 /* Bus proxy (Cloudflare Worker). The ONLY place the 511 key lives (Worker secret API_KEY_511). The beta page asks this Worker for
    the two skate-shuttle lines and never sees the key.
-   - GET /api/health: setup check (status of the 511 call, counts, line ids seen). No key, no positions.
+   - GET /api/health: setup check (+ ?near=lat,lon stop finder, ?line=&near=&to= stop picker) (status of the 511 call, counts, line ids seen). No key, no positions.
    - GET /api/buses returns { ok, ts, stale, vehicles:[{id,district,line,lat,lon,bearing,t}], arrivals:{<district>:{t,next:[epoch s]}} }
    - Results are cached in Cloudflare's cache: vehicles VEH_TTL seconds (default 60), arrivals ARR_TTL (default 180). So 511 is called at
      most about once a minute (and only when someone is looking), however many people view the page. 511's default limit is 60 calls/hour.
@@ -68,6 +68,25 @@ export async function handle(request, env, deps) {
     if (!env.API_KEY_511) return new Response(JSON.stringify({ configured: false, problem: 'secret API_KEY_511 is missing' }), { status: 503, headers: H });
     let ds; try { ds = JSON.parse(env.DISTRICTS || '[]'); } catch { return new Response(JSON.stringify({ configured: true, problem: 'DISTRICTS is not valid JSON' }), { status: 500, headers: H }); }
     const near = (url.searchParams.get('near') || '').split(',').map(Number), rad = Math.min(1000, Number(url.searchParams.get('r')) || 250);
+    const to = (url.searchParams.get('to') || '').split(',').map(Number), line = url.searchParams.get('line');
+    if (line && near.length === 2 && to.length === 2 && near.concat(to).every(Number.isFinite)) { // ?line=19&near=lat,lon&to=lat,lon: stops of the line near the bottom that lead toward the top (the side the shuttle picks up on)
+      try {
+        const op = env.AGENCY || 'SF';
+        const st = await cached(deps, 'stops', 3600, () => once('stops', async () => {
+          const j = await getUp(deps, env, 'stops', { operator_id: op }), pts = arr(j?.Contents?.dataObjects?.ScheduledStopPoint);
+          return pts.map((p) => [String(p.id), String(p.Name || ''), num(p.Location?.Latitude), num(p.Location?.Longitude)]).filter((p) => Number.isFinite(p[2]));
+        }));
+        const pj = await getUp(deps, env, 'patterns', { operator_id: op, line_id: line }), seqs = [];
+        (function walk(o) { if (Array.isArray(o)) { if (o.length && o.every((x) => x && typeof x === 'object' && x.ScheduledStopPointRef != null)) seqs.push(o.slice().sort((a, b) => num(a.Order) - num(b.Order)).map((x) => String(x.ScheduledStopPointRef))); else o.forEach(walk); } else if (o && typeof o === 'object') Object.values(o).forEach(walk); })(pj);
+        const pos = new Map(st.v.map((p) => [p[0], p])), k = Math.cos(near[0] * Math.PI / 180) * 111320, dist = (p, q) => Math.hypot((p[3] - q[1]) * k, (p[2] - q[0]) * 110540);
+        const best = new Map();
+        for (const q of seqs) {
+          const P = q.map((id) => pos.get(id)); let jt = -1, dt = 1e9; P.forEach((p, i) => { if (p) { const d = dist(p, to); if (d < dt) { dt = d; jt = i; } } });
+          P.forEach((p, i) => { if (p && dist(p, near) <= rad && jt > i && dt < 400) { const m = Math.round(dist(p, near)), o = best.get(p[0]); if (!o || m < o.m) best.set(p[0], { stopCode: p[0], name: p[1], m, stopsToTop: jt - i }); } });
+        }
+        return new Response(JSON.stringify({ line, patterns: seqs.length, towardTop: [...best.values()].sort((x, y) => x.m - y.m) }), { headers: H });
+      } catch (e) { return new Response(JSON.stringify({ upstream: redact(e.message, env.API_KEY_511) }), { status: 502, headers: H }); }
+    }
     if (near.length === 2 && near.every(Number.isFinite)) { // stop finder: ?near=lat,lon&r=metres lists Muni stops around a point (to pick stopCode values)
       try {
         const st = await cached(deps, 'stops', 3600, () => once('stops', async () => {
