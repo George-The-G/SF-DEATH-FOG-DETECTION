@@ -11,6 +11,9 @@ A tiny always-on program that sits between the beta map page and 511. It holds y
 5. In the repo, set `"api"` in `site/v3/data/bus_config.json` to `https://bus-proxy.<you>.workers.dev/api/buses` (this is not secret).
 6. Open the beta page with `?beta=1&buses=1`. The banner "DEMO data" disappears and the popup says "Live".
 
+## Setup check
+Open `https://bus-proxy.<you>.workers.dev/api/health` in any browser tab. It shows whether the secret is set, whether 511 answered (`upstream: ok` or `511 HTTP 401`), how many vehicles 511 returned, the line ids it uses and how many matched ours. No key and no positions are shown.
+
 ## First run: check the real answer
 Open the Worker address plus `/api/buses` from the beta page's origin only (other origins get "forbidden" by design). Because the 511 field names here come from 511's documentation and could not be tested from our build environment, if `vehicles` stays empty ask for a check: the fix is in `parseVehicles` / `parseArrivals` in `worker.js` (about 10 lines).
 
