@@ -40,7 +40,6 @@
   </div>
 
   <aside id="sheet" aria-label="Menu" hidden>
-    <div class="grab" aria-hidden="true"></div>
     <div class="two sec">
       <div><h4>Night</h4><select id="night" aria-label="Night"></select></div>
       <div><h4>Speed</h4><div class="seg" id="speed" role="group" aria-label="Speed"><button type="button" data-s="1" class="on">1x</button><button type="button" data-s="4">4x</button><button type="button" data-s="16">16x</button></div></div>
@@ -50,11 +49,11 @@
       <div class="tgs">
         <label><input type="checkbox" id="fogtoggle" checked><span>Fog</span></label>
         <label><input type="checkbox" id="bldtoggle" checked><span>Buildings</span></label>
-        <label class="ribonly"><input type="checkbox" id="sidetoggle" checked><span>Side streets</span></label>
       </div>
       <div class="dens"><label for="fogdens">Fog density</label><input type="range" id="fogdens" min="30" max="200" value="100" aria-label="Fog density"></div>
     </div>
-    <div class="sec"><h4>View</h4><button id="btn-city" type="button" class="chip">Whole city</button></div>
+    <div class="sec ribonly"><h4>Side streets <span class="lg-sub">blocks shown from each route intersection</span></h4>
+      <div class="seg" id="sidesel" role="group" aria-label="Side street blocks"><button type="button" data-d="0">Off</button><button type="button" data-d="1" class="on">1x</button><button type="button" data-d="2">2x</button><button type="button" data-d="3">3x</button></div></div>
     <div class="sec" id="fullleg">
       <h4>Death fog chance <span class="lg-sub">street wetness index</span></h4>
       <div class="ramp"></div>
@@ -62,6 +61,7 @@
       <div class="cats"><span>dry</span><span>damp</span><span>slick</span><span>wet</span><span>icy-fog</span></div>
     </div>
     <p class="pocnote"><span class="poc">Proof of concept</span> 5 m simulation of overnight street wetness. Not a forecast.</p>
+      <div class="grab" aria-hidden="true"></div>
   </aside>
 </main>
 

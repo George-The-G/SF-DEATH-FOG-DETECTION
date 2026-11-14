@@ -296,6 +296,8 @@ function buildRoutes(rj) {
   }
   // picker: grouped by zone, colour swatch per route
   const list = $('rlist'); list.innerHTML = '';
+  { const b = document.createElement('button'); b.type = 'button'; b.className = 'ritem on'; b.dataset.city = '1'; b.setAttribute('role', 'option');
+    b.innerHTML = '<span class="sw" style="background:transparent"></span><span class="rn">Whole city</span><span class="rm">Reset the camera, no route selected</span>'; list.appendChild(b); }
   for (const z of rj.zones) {
     const rs = ROUTES.map((r, i) => [r, i]).filter(([r]) => r.def.zone === z.id);
     if (!rs.length) continue;
@@ -308,9 +310,24 @@ function buildRoutes(rj) {
     }
   }
   ZONES = rj.zones;
-  $('rbtn').disabled = !ROUTES.length;
+  $('rbtn').disabled = !ROUTES.length; clearRoute(false);
 }
 let ZONES = [];
+
+/* no route selected: whole-city state (chip says "Whole city", route outline and beacons off, flyover button disabled) */
+function clearRoute(goCity = true) {
+  stopFly(); selRoute = -1;
+  ROUTES.forEach((r) => { r.hi.visible = false; r.dim.visible = true; });
+  if (rib) rib.setRoute(-1);
+  if (routeBuf) { routeBuf.fill(0); routeAttr.needsUpdate = true; }
+  beacons.forEach((b) => { b.visible = false; }); labelEls.forEach((l) => { l.on = false; l.el.style.display = 'none'; });
+  $('rsw').style.background = 'transparent'; $('rlabel').textContent = 'Whole city';
+  $('rcsw').style.background = 'transparent'; $('rcname').textContent = 'No route selected'; $('rcstats').textContent = '';
+  $('fly').disabled = true; $('flyhdr').disabled = true;
+  [...$('rlist').querySelectorAll('.ritem')].forEach((b) => b.classList.toggle('on', !!b.dataset.city));
+  flyUI(); closePicker();
+  if (goCity) flyTo(CITY.pos, CITY.target, 2200);
+}
 
 function setRouteHighlight(i) {
   const R = ROUTES[i], ri = R.def.index;
@@ -327,11 +344,11 @@ function selectRoute(i, flyCam = true) {
     const p = lift(e.p); beacons[j].position.set(p.x, p.y + 350, p.z); beacons[j].visible = true;
     labelEls[j].p.copy(p).add(new THREE.Vector3(0, 30, 0)); labelEls[j].el.textContent = e.label; labelEls[j].on = true;
   });
-  $('rsw').style.background = R.def.color; $('rlabel').textContent = shortName(R.def, ZONES);
+  $('rsw').style.background = R.def.color; $('rlabel').textContent = shortName(R.def, ZONES); $('fly').disabled = false; $('flyhdr').disabled = false;
   $('rcsw').style.background = R.def.color; $('rcname').textContent = R.def.name;
   $('rcstats').textContent = `${mi(R.len)} mi · drops ${ft(R.def.drop_m)} ft` + (R.def.climb_m >= 3 ? ` · ${ft(R.def.climb_m)} ft of climbing` : '');
   $('routecard').hidden = false;
-  [...$('rlist').querySelectorAll('.ritem')].forEach((b) => b.classList.toggle('on', +b.dataset.i === i));
+  [...$('rlist').querySelectorAll('.ritem')].forEach((b) => b.classList.toggle('on', !b.dataset.city && +b.dataset.i === i));
   flyUI(); closePicker();
   if (flyCam) flyToRoute(R);
 }
@@ -361,6 +378,7 @@ function openPicker(o) { $('rpop').hidden = !o; $('rbtn').setAttribute('aria-exp
 $('rbtn').onclick = () => openPicker($('rpop').hidden);
 $('menubtn').onclick = () => setSheet($('sheet').hidden);
 $('sheettab').onclick = () => setSheet($('sheet').hidden);
+document.querySelector('#sheet .grab').onclick = () => setSheet(false);
 $('legend').onclick = () => { setSheet(true); $('fullleg').scrollIntoView({ block: 'nearest' }); };
 $('wxbtn').onclick = () => { const o = $('wxgrid').hidden; $('wxgrid').hidden = !o; $('wxbtn').setAttribute('aria-expanded', String(o)); };
 function initSheet() { // phone: starts closed; desktop: starts open unless the user collapsed it
@@ -368,7 +386,7 @@ function initSheet() { // phone: starts closed; desktop: starts open unless the 
   if (deskMQ.matches) lsSet(v === '0' ? '0' : '1');
 }
 deskMQ.addEventListener('change', () => { const v = lsGet(); setSheet(deskMQ.matches ? v !== '0' : false); });
-$('rlist').addEventListener('click', (e) => { const b = e.target.closest('.ritem'); if (b) selectRoute(+b.dataset.i, true); });
+$('rlist').addEventListener('click', (e) => { const b = e.target.closest('.ritem'); if (!b) return; if (b.dataset.city) clearRoute(true); else selectRoute(+b.dataset.i, true); });
 document.addEventListener('pointerdown', (e) => {
   if (!e.target.closest('#rpop, #rbtn')) closePicker();
   if (!deskMQ.matches && !e.target.closest('#sheet, #menubtn, #legend')) setSheet(false);
@@ -451,9 +469,10 @@ async function initRoutes() {
 }
 function applyUrlRoute() { // ?route=<id> selects and flies to it, &fly=1 starts the fly-along at once
   if (!ROUTES.length) return;
-  const q = new URLSearchParams(location.search), id = q.get('route'), i = Math.max(0, ROUTES.findIndex((r) => r.def.id === id));
+  const q = new URLSearchParams(location.search), id = q.get('route'), i = ROUTES.findIndex((r) => r.def.id === id);
+  if (i < 0) return; // default: whole city, nothing selected
   selectRoute(i, false);
-  if (id) { flyToRoute(ROUTES[i]); if (flight) flight.dur = 1; }
+  flyToRoute(ROUTES[i]); if (flight) flight.dur = 1;
   if (q.get('fly')) startFly();
 }
 
@@ -487,7 +506,7 @@ async function ensureRibbons(n) {
   const r = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch });
   r.build(buf, m);
   if (rib) rib.dispose();
-  rib = r; ribMeta = m; ribPath = n.ribbons; r.setSideVisible($('sidetoggle').checked);
+  rib = r; ribMeta = m; ribPath = n.ribbons; r.setSideDepth(sideDepth); syncSideSel();
 }
 function setMode(r) {
   useRib = r;
@@ -496,13 +515,13 @@ function setMode(r) {
     rib.setVisible(true);
     const S = rib.samples, x = new Float32Array(S.S), y = new Float32Array(S.S), z = new Float32Array(S.S);
     for (let k = 0; k < S.S; k++) { x[k] = S.pos[k * 3]; y[k] = S.pos[k * 3 + 1]; z[k] = S.pos[k * 3 + 2]; }
-    G = { n: S.S, x, y, z, mask: S.mask, cls: S.cls, st: S.st, side: S.side, names: ribMeta.streets };
+    G = { n: S.S, x, y, z, mask: S.mask, cls: S.cls, depth: S.depth, st: S.st, side: S.side, names: ribMeta.streets };
     wetNow = new Float32Array(S.S).fill(-1);
   } else {
     buildPoints(); pointsMesh.visible = true; if (rib) rib.setVisible(false);
     const N = pts.N, x = new Float32Array(N), z = new Float32Array(N);
     for (let k = 0; k < N; k++) { x[k] = pts.f[k * 4]; z[k] = pts.f[k * 4 + 2]; }
-    G = { n: N, x, y: elevY, z, mask: pts.mask, cls: new Uint8Array(N), st: pts.st, side: pts.side, names: pts.streets };
+    G = { n: N, x, y: elevY, z, mask: pts.mask, cls: new Uint8Array(N), depth: new Uint8Array(N), st: pts.st, side: pts.side, names: pts.streets };
     wetNow = wetAttr.array;
   }
   ROUTES.forEach((R, k) => { R.bins = null; if (!r) { R.hi.visible = k === selRoute; R.dim.visible = k !== selRoute; } });
@@ -601,7 +620,12 @@ $('speed').addEventListener('click', (e) => {
 $('night').addEventListener('change', async (e) => { setPlaying(false); try { await selectNight(+e.target.value); } catch (err) { setStatus('Could not load this night: ' + err.message, true); } });
 $('fogtoggle').addEventListener('change', (e) => fog.setVisible(e.target.checked));
 $('fogdens').addEventListener('input', (e) => fog.setDensity(+e.target.value / 100));
-$('sidetoggle').addEventListener('change', (e) => { if (rib) rib.setSideVisible(e.target.checked); });
+let sideDepth = 1; // street blocks of side street drawn beyond each route intersection: 0 off, 1..3
+function syncSideSel() {
+  const mx = rib ? rib.samples.maxDepth : 1;
+  [...$('sidesel').children].forEach((b) => { const d = +b.dataset.d; b.classList.toggle('on', d === sideDepth); b.disabled = d > mx; });
+}
+$('sidesel').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b || b.disabled) return; sideDepth = +b.dataset.d; if (rib) rib.setSideDepth(sideDepth); syncSideSel(); });
 $('bldtoggle').addEventListener('change', (e) => { if (buildingsMesh) buildingsMesh.visible = e.target.checked; });
 
 /* camera flights */
@@ -609,7 +633,6 @@ let flight = null;
 function flyTo(pos, tgt, dur = 2600) {
   flight = { t0: performance.now(), dur, p0: camera.position.clone(), t0v: controls.target.clone(), p1: pos.clone(), t1: tgt.clone() };
 }
-$('btn-city').onclick = () => flyTo(CITY.pos, CITY.target, 2200);
 const ease = (t) => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
 /* ------------------------------------------------------------------ picking */
@@ -620,9 +643,9 @@ function pick(cx, cy, maxPx) {
   if (camera.position.distanceTo(controls.target) > 9000) return -1;
   camera.updateMatrixWorld(); const m = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements;
   const W = innerWidth, H = innerHeight; let best = -1, bd = maxPx * maxPx;
-  const skipSide = useRib && (!rib.uniforms.uSideVis.value || rib.uniforms.uSideFade.value < 0.3); // hidden side blocks are not pickable
+  const skipSide = useRib && (!rib.uniforms.uSideVis.value || rib.uniforms.uSideFade.value < 0.3), sd = useRib ? rib.uniforms.uSideDepth.value : 3; // hidden side blocks are not pickable
   for (let k = 0; k < G.n; k++) {
-    if (skipSide && G.cls[k]) continue;
+    if (G.cls[k] && (skipSide || G.depth[k] > sd)) continue;
     const x = G.x[k], y = G.y[k], z = G.z[k];
     const w = m[3] * x + m[7] * y + m[11] * z + m[15]; if (w <= 0) continue;
     const sx = ((m[0] * x + m[4] * y + m[8] * z + m[12]) / w * .5 + .5) * W, sy = (1 - ((m[1] * x + m[5] * y + m[9] * z + m[13]) / w * .5 + .5)) * H;
