@@ -1,0 +1,8 @@
+{
+  "note": "Headless SwiftShader counts, 1000x800 viewport, fog off, aa off, last render call. Timings in this environment are not meaningful. Real phone/GPU numbers are still to be taken (see README).",
+  "triangles_calls": {
+    "lod_off": { "city": [2034307, 477], "mid": [1574036, 312], "near": [645023, 118] },
+    "lod_on":  { "city": [584311, 329],  "mid": [622944, 226],  "near": [508981, 98] }
+  },
+  "far_switch_distance_km": { "viewport_1000x800_dpr1": 3.4, "phone_390x844_dpr2": 5.6 }
+}
