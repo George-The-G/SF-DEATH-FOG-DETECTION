@@ -1,0 +1,10 @@
+{
+  "_note": "Closed-beta live bus config. api = URL of the Cloudflare Worker (empty = demo feed). Districts use the skate route's bottom end as the shelter spot until a real stop is set (stop: {lat, lon}). stops = other stops of the line used only for the simulated dwell. Nothing secret belongs in this file.",
+  "api": "",
+  "districts": [
+    { "id": "potrero", "name": "19 Polk", "line": "19", "route": "potrero", "color": "#2fd0e8",
+      "dir": "Uphill: toward De Haro & 20th", "stop": null, "stops": [], "radius_m": 900 },
+    { "id": "sunset", "name": "66 Quintara", "line": "66", "route": "ggh-green", "color": "#3fbf5a",
+      "dir": "Uphill: toward Quintara St", "stop": null, "stops": [], "radius_m": 1200 }
+  ]
+}

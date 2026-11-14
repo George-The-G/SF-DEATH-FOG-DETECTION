@@ -1,0 +1,1 @@
+Run with node 18+, no dependencies: `node tests_js/test_bus.mjs` (coordinates, smoothing filter, stale and dwell behaviour) and `node tests_js/test_worker.mjs` (the Cloudflare Worker with a mocked 511).
