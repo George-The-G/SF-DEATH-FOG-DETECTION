@@ -16,7 +16,8 @@ const VERT = `varying vec2 vUv; void main(){ vUv = position.xy * .5 + .5; gl_Pos
 
 const FOG_FS = `
   precision highp float; varying vec2 vUv;
-  uniform sampler2D uDepth, uTex, uHt;
+  precision highp sampler3D;
+  uniform sampler2D uDepth, uTex, uHt; uniform sampler3D uNoise;
   uniform mat4 uInvProj; uniform mat3 uCamRot; uniform vec3 uCam;
   uniform float uNear, uFar, uTime, uDens, uH, uYmax, uHtMax, uFrame, uNT, uNorthUp, uJit;
   uniform vec4 uTiles; uniform vec2 uTexel, uGo, uGs;
@@ -65,12 +66,15 @@ const FOG_FS = `
       if (d < .003) continue;
       float prof = pow(1. - hh, 1.15) * smoothstep(0., .03, hh + .02);
       vec3 wp = vec3(p.x, p.y / uEX, p.z);
-      float n = .6 * vn3(wp * vec3(1. / 900., 1. / 260., 1. / 900.) + vec3(uTime * .003, 0., uTime * .001)); // only the large shapes drift, slowly; finer octaves are static so nothing shimmers
-      float wsum = .6;
-      if (uOct > 1) { n += .3 * vn3(wp * vec3(1. / 330., 1. / 110., 1. / 330.) + 4.7); wsum += .3; }
-      if (uOct > 2) { n += .15 * vn3(wp / 120. + 9.1); wsum += .15; }
-      n /= wsum;
-      float shape = smoothstep(.05, 1., n + .3 * d); // wide soft edge: thin fog no longer flickers across a hard threshold
+      // baked tileable 3D noise (R low fbm, G detail fbm, B warp). Detail fades out where the step is wider than the detail, so long grazing rays stop aliasing into streaks
+      vec3 drift = vec3(uTime * .003, 0., uTime * .001);
+      vec3 wq = wp;
+      if (uOct > 1) wq.xz += (texture(uNoise, wp * vec3(1. / 3500., 1. / 1200., 1. / 3500.)).b - .5) * 500.; // domain warp: breaks straight lines into billows
+      float nL = texture(uNoise, wq * vec3(1. / 2200., 1. / 700., 1. / 2200.) + drift).r;
+      float n = nL;
+      if (uOct > 1) { float wD = 1. - smoothstep(120., 500., dt); n = mix(nL, .55 * nL + .45 * texture(uNoise, wq * vec3(1. / 520., 1. / 200., 1. / 520.) + 3.1).g, wD * .8); }
+      if (uOct > 2) { float wF = 1. - smoothstep(40., 160., dt); n = mix(n, n * .7 + .3 * texture(uNoise, wq / 150. + 8.2).g, wF * .6); }
+      float shape = smoothstep(.15, .85, n + .3 * d); // wide soft edge: thin fog no longer flickers across a hard threshold
       float dens = d * prof * (.5 + .8 * shape);
       float sig = dens * .0105 / uEX * 2.2 * 1.5;
       float lt = exp(-d * .0105 * 2.2 / uEX * .5 * (uH * (1. - hh)) / max(uSun.y, .18) * .6 * 1.5);
@@ -103,7 +107,32 @@ const COMP_FS = `
     gl_FragColor = linearToOutputTexel(gl_FragColor);
   }`;
 
+
+/* tileable 3D value noise, 64^3 RGBA8: R = low frequency fbm, G = detail fbm, B = independent low-frequency field for the warp. Built once (~100 ms). */
+function makeNoise3D(THREE) {
+  const N = 64, data = new Uint8Array(N * N * N * 4);
+  let seed = 1337; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const lat = (f) => { const a = new Float32Array(f * f * f); for (let i = 0; i < a.length; i++) a[i] = rnd(); return a; };
+  const sm = (t) => t * t * t * (t * (t * 6 - 15) + 10);
+  function vnoise(a, f, x, y, z) { // periodic in [0,1)
+    const px = x * f, py = y * f, pz = z * f, ix = Math.floor(px), iy = Math.floor(py), iz = Math.floor(pz), fx = sm(px - ix), fy = sm(py - iy), fz = sm(pz - iz);
+    const g = (i, j, k) => a[(((k % f) + f) % f * f + ((j % f) + f) % f) * f + (((i % f) + f) % f)];
+    const l = (a0, b0, t) => a0 + (b0 - a0) * t;
+    return l(l(l(g(ix, iy, iz), g(ix + 1, iy, iz), fx), l(g(ix, iy + 1, iz), g(ix + 1, iy + 1, iz), fx), fy), l(l(g(ix, iy, iz + 1), g(ix + 1, iy, iz + 1), fx), l(g(ix, iy + 1, iz + 1), g(ix + 1, iy + 1, iz + 1), fx), fy), fz);
+  }
+  const layers = [[[2, 4, 8], [.55, .3, .15]], [[8, 16, 32], [.55, .3, .15]], [[2, 3, 6], [.6, .3, .1]]].map(([fs, ws]) => ({ fs, ws, l: fs.map(lat) }));
+  for (let z = 0; z < N; z++) for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const o = ((z * N + y) * N + x) * 4;
+    layers.forEach((L, c) => { let v = 0; L.fs.forEach((f, k) => { v += L.ws[k] * vnoise(L.l[k], f, x / N, y / N, z / N); }); data[o + c] = Math.max(0, Math.min(255, Math.round((v - .5) * 2.2 * 255 + 128))); });
+    data[o + 3] = 255;
+  }
+  const t = new THREE.Data3DTexture(data, N, N, N); t.format = THREE.RGBAFormat; t.type = THREE.UnsignedByteType;
+  t.minFilter = t.magFilter = THREE.LinearFilter; t.wrapS = t.wrapT = t.wrapR = THREE.RepeatWrapping; t.generateMipmaps = false; t.needsUpdate = true;
+  return t;
+}
+
 export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, toast, tier0 }) {
+  const noiseTex = makeNoise3D(THREE);
   const sheets = createSheets({ THREE, scene, EX, isTouch, getMeta, getTerrainH, toast });
   const quadGeo = new THREE.BufferGeometry(); quadGeo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
   const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -114,8 +143,9 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     uFrame: { value: 0 }, uNT: { value: 1 }, uNorthUp: { value: 1 }, uJit: { value: 0 }, uTiles: { value: new THREE.Vector4() }, uTexel: { value: new THREE.Vector2() },
     uGo: { value: new THREE.Vector2() }, uGs: { value: new THREE.Vector2(1, 1) },
     uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Vector3() }, uMoon: { value: new THREE.Vector3(0, -1, 0) }, uAmb: { value: new THREE.Vector3(.3, .36, .5) }, uMoonCol: { value: new THREE.Vector3() },
-    uDbg: { value: new URLSearchParams(location.search).has('fogdbg') ? 0.6 : 0 }, uSunI: { value: 0 }, uCity: { value: 0 }, uEX: { value: EX }, uSteps: { value: 8 }, uOct: { value: 2 },
+    uDbg: { value: new URLSearchParams(location.search).has('fogdbg') ? 0.6 : 0 }, uNoise: { value: null }, uSunI: { value: 0 }, uCity: { value: 0 }, uEX: { value: EX }, uSteps: { value: 8 }, uOct: { value: 2 },
   };
+  U.uNoise.value = noiseTex;
   const fogMat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: VERT, fragmentShader: FOG_FS, depthTest: false, depthWrite: false });
   const fogScene = new THREE.Scene(); const fogMesh = new THREE.Mesh(quadGeo, fogMat); fogMesh.frustumCulled = false; fogScene.add(fogMesh);
   const CU = { uScene: { value: null }, uFog: { value: null }, uDepthC: { value: null }, uFogTexel: { value: new THREE.Vector2() }, uNearC: { value: 8 }, uFarC: { value: 90000 }, uBlur: { value: 1 } };
@@ -194,7 +224,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     setLight(L) {
       if (!L) return;
       const lin = (a) => a.map((x) => Math.pow(Math.max(x, 0), 2.2));
-      const hor = lin(L.hor), zen = lin(L.zen), fl = [.15, .2, .31]; // night floor close to the daytime fog colour so night fog stays visible
+      const hor = lin(L.hor), zen = lin(L.zen), fl = [.22, .28, .42]; // night floor close to the daytime fog colour so night fog stays visible
       U.uAmb.value.set(...hor.map((h, i) => Math.max(h * .65 + zen[i] * .35, fl[i]) * 1.3));
       U.uSun.value.set(...L.sunDir); U.uSunCol.value.set(...L.sunCol); U.uSunI.value = Math.max(L.sunDir[1], 0) > 0 ? 1.1 : 0;
       U.uMoon.value.set(...L.moonDir); U.uMoonCol.value.set(.35, .42, .6).multiplyScalar(.28 * L.illum);
