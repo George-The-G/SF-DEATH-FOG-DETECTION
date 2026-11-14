@@ -67,7 +67,7 @@ $('retry').onclick = () => location.reload();
 function toast(msg) { // non-fatal notice (reuses the badge)
   const b = $('badge'); b.textContent = msg; b.hidden = false;
 }
-window.addEventListener('error', (e) => { if (overlay.classList.contains('hide')) toast('Something went wrong: ' + (e.message || 'error')); });
+window.addEventListener('error', (e) => { if (/ResizeObserver loop/.test(e.message || '')) { e.stopImmediatePropagation(); return; } /* harmless browser notice: layout settled over two frames */ if (overlay.classList.contains('hide')) toast('Something went wrong: ' + (e.message || 'error')); });
 
 function webglOk() {
   try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch { return false; }
@@ -118,7 +118,7 @@ function setBandVars() { // heights of the glass stacks, used to place popovers 
   const r = document.documentElement.style;
   r.setProperty('--ctl-h', $('controls').offsetHeight + 'px'); r.setProperty('--top-h', $('top').offsetHeight + 'px');
 }
-addEventListener('resize', resize); { const ro = new ResizeObserver(setBandVars); ro.observe($('controls')); ro.observe($('top')); } resize();
+addEventListener('resize', resize); { const ro = new ResizeObserver(() => requestAnimationFrame(setBandVars)); ro.observe($('controls')); ro.observe($('top')); } resize();
 
 /* ------------------------------------------------------------------ terrain height lookup */
 function buildHeightGrid(geom, step) {
