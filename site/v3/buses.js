@@ -72,7 +72,7 @@ export async function createBuses({ THREE, scene, camera, controls, canvas, EX, 
   const newTrack = (o, p) => (o.path.proj(p.x, p.z).d < 40 ? new PathTrack(o.R.poly, { stopsS: [o.stopS] }) : new BusTrack({ stops: o.stopsXZ }));
 
   /* ---------- feed ---------- */
-  let feed = null, feedOk = false, feedErr = 0, lastOk = 0, timer = 0;
+  let feed = null, feedOk = false, feedErr = 0, lastOk = 0, timer = 0, lastErr = '', schN = 0, histN = '';
   const nowS = () => Date.now() / 1000;
   /* 511's own arrival predictions are kept in o.live; the popup shows them only while the simulation clock is near real time (replay mode) */
   function setArr(o, a, status) { o.live = { a, status }; if (!RP || o.mode !== 'est') o.stop.setArrivals(a, status); }
@@ -106,7 +106,7 @@ export async function createBuses({ THREE, scene, camera, controls, canvas, EX, 
       const f = validateFeed(await source.get(nowS()));
       if (f.ok === false) throw new Error('feed not ok');
       feed = f; ingest(f); feedOk = true; for (const o of D) if (!f.arrivals[o.d.id]) setArr(o, null, 'down');
-    } catch (e) { feedErr++; feedOk = false; if (feedErr === 3 && toast) toast('Live buses unavailable right now'); }
+    } catch (e) { feedErr++; feedOk = false; lastErr = String((e && e.message) || e).slice(0, 80); if (feedErr === 3 && toast) toast('Live buses unavailable right now'); }
     if (!feedOk && (force || nowS() - lastOk > 180 || feedErr >= 3)) for (const o of D) setArr(o, null, 'down');
   }
   poll(); timer = setInterval(() => poll(), POLL_MS);
@@ -233,7 +233,7 @@ export async function createBuses({ THREE, scene, camera, controls, canvas, EX, 
     if (first || (o.stop.isOpen() && performance.now() - o.estAt > 250)) { o.estAt = performance.now(); o.stop.setArrivals({ next: o.rp.arrivalsAt(o.stopS, t, 2), t }, 'est'); }
   }
   if (RP) (async () => {
-    try { const sch = await getJSON('data/bus_schedule.json'); for (const o of D) o.rp.setSchedule(((sch.lines || {})[o.d.line] || {}).trips); } catch (e) { /* no schedule file yet: GPS only */ }
+    try { const sch = await getJSON('data/bus_schedule.json'); for (const o of D) { const tr = ((sch.lines || {})[o.d.line] || {}).trips; schN += (tr || []).length; o.rp.setSchedule(tr); } } catch (e) { /* no schedule file yet: GPS only */ }
     const inR = (o, p) => Math.hypot(p.x - o.sx, p.z - o.sz) <= (o.d.radius_m || 1000);
     if (demo) { // the mock has no log: replay the last 40 minutes of it so there is something to scrub back through
       let tt = 0; const sm = createMockFeed({ ...mockArgs, now: () => tt });
@@ -243,8 +243,8 @@ export async function createBuses({ THREE, scene, camera, controls, canvas, EX, 
         const xs = o.R.poly.map((q) => q[0]), zs = o.R.poly.map((q) => q[2]), m = (o.d.radius_m || 1000), a = sceneToLL(Math.min(...xs) - m, Math.max(...zs) + m), b = sceneToLL(Math.max(...xs) + m, Math.min(...zs) - m);
         const url = api.replace(/\/api\/buses.*$/, '/api/history') + `?line=${encodeURIComponent(o.d.line)}&since=${Math.floor(nowS() - 80 * 3600)}&bbox=${[a.lat, a.lon, b.lat, b.lon].map((x) => x.toFixed(5)).join(',')}`;
         const h = await getJSON(url, { cache: 'no-store' });
-        for (const veh of (h && h.vehicles) || []) for (const [t, lat, lon, brg] of veh.f || []) { const p = llToScene(lat, lon); if (inR(o, p)) logFix(o, String(veh.id), p, { t, bearing: brg }, t); }
-      } catch (e) { console.warn('bus history unavailable', e); }
+        histN += (o.d.line + ':' + (((h && h.vehicles) || []).length) + ' '); for (const veh of (h && h.vehicles) || []) for (const [t, lat, lon, brg] of veh.f || []) { const p = llToScene(lat, lon); if (inR(o, p)) logFix(o, String(veh.id), p, { t, bearing: brg }, t); }
+      } catch (e) { histN += (o.d.line + ':ERR '); console.warn('bus history unavailable', e); }
     }
     for (const o of D) o.rp.sync();
   })();
@@ -283,7 +283,8 @@ export async function createBuses({ THREE, scene, camera, controls, canvas, EX, 
   }
   /* debugging and tests: the buses at simulation time t (epoch s) in replay mode */
   const replayState = (t) => D.map((o) => ({ district: o.d.id, buses: o.rp ? o.rp.active(t).map(([id, tr]) => { const st = tr.step(t); return st ? { id, x: +st.x.toFixed(1), z: +st.z.toFixed(1), est: !!st.est, ghost: !!tr.ghost } : null; }).filter(Boolean) : [] }));
-  return { update, poll, mock, replayState, stops: D.map((o) => o.stop), dispose() { stopDrive(); if (chip) chip.remove(); clearInterval(timer); if (S.card) S.card.dispose(); controls.enabled = true; D.forEach((o) => { o.stop.dispose(); o.buses.forEach((b) => scene.remove(b.mesh)); }); }, get demo() { return demo; } };
+  const debug = () => ({ api: demo ? 'DEMO (no feed address)' : 'set', feedOk, feedErr, lastErr, feedVehicles: feed ? (feed.vehicles || []).length : -1, schedTrips: schN, history: histN.trim() || 'none', districts: D.map((o) => ({ line: o.d.line, buses: o.buses.size, ghosts: o.rp ? o.rp.ghosts.size : -1 })) });
+  return { debug, update, poll, mock, replayState, stops: D.map((o) => o.stop), dispose() { stopDrive(); if (chip) chip.remove(); clearInterval(timer); if (S.card) S.card.dispose(); controls.enabled = true; D.forEach((o) => { o.stop.dispose(); o.buses.forEach((b) => scene.remove(b.mesh)); }); }, get demo() { return demo; } };
 }
 
 /* small beta-only selector to try the mock scenarios (only shown when the mock source is in use) */

@@ -144,12 +144,15 @@ if ((FOGV && QP.get('sky') !== '0') || (BETA && QP.get('hud') === '1')) { // liv
    - everyone: as soon as data/bus_config.json has a feed address ("api", our Cloudflare Worker). With no address the public page does not fetch buses.js at all, and ?buses=0 turns it off. */
 let BUSES = null;
 (async () => {
+  const dbgEl = QP.get('busdebug') === '1' ? Object.assign(document.createElement('div'), { id: 'busdbg' }) : null; // ?busdebug=1: a readout of what the bus code sees, for checking the live feed
+  if (dbgEl) { dbgEl.style.cssText = 'position:fixed;left:8px;top:80px;z-index:60;max-width:340px;font:11px/1.35 ui-monospace,monospace;color:#e8eef4;background:rgba(9,15,28,.92);border:1px solid #2a3745;border-radius:8px;padding:6px 8px;white-space:pre-wrap;pointer-events:none'; document.body.appendChild(dbgEl); dbgEl.textContent = 'buses: reading data/bus_config.json'; }
   let on = BETA && QP.get('buses') === '1'; // ?beta=1&buses=1 also works without a feed address (demo buses)
-  if (!on && QP.get('buses') !== '0') { try { on = !!(await getJSON('data/bus_config.json')).api; } catch (e) { on = false; } }
-  if (!on) return;
+  if (!on && QP.get('buses') !== '0') { try { on = !!(await getJSON('data/bus_config.json')).api; } catch (e) { on = false; if (dbgEl) dbgEl.textContent = 'buses: cannot read data/bus_config.json (' + e.message + ')'; } }
+  if (!on) { if (dbgEl && !/cannot/.test(dbgEl.textContent)) dbgEl.textContent = 'buses: OFF (no feed address in bus_config.json, or ?buses=0)'; return; }
+  if (dbgEl) dbgEl.textContent = 'buses: loading buses.js';
   return import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, controls, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getTerrain: () => terrainH, getCol: () => buildingsMesh && buildingsMesh.userData.col, getG: () => G, getDist: () => camera.position.distanceTo(controls.target), QP, toast, replay: NEWPB }))
-    .then((b) => { BUSES = b; });
-})().catch((e) => console.warn('buses unavailable', e));
+    .then((b) => { BUSES = b; if (dbgEl) { const show = () => { dbgEl.textContent = 'buses: loaded\n' + JSON.stringify(b.debug(), null, 1).replace(/[{}\\"]/g, ''); }; show(); setInterval(show, 1500); } });
+})().catch((e) => { console.warn('buses unavailable', e); const d = document.getElementById('busdbg'); if (d) d.textContent = 'buses: FAILED ' + (e && e.message); });
 function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) fog.setLight(SKY.light); } }
 
 let meta = null, pts = null, terrainH = null, T = null;
