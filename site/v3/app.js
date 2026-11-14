@@ -67,7 +67,7 @@ $('retry').onclick = () => location.reload();
 function toast(msg) { // non-fatal notice (reuses the badge)
   const b = $('badge'); b.textContent = msg; b.hidden = false;
 }
-window.addEventListener('error', (e) => { if (overlay.classList.contains('hide')) toast('Something went wrong: ' + (e.message || 'error')); });
+window.addEventListener('error', (e) => { if (/ResizeObserver loop/.test(e.message || '')) { e.stopImmediatePropagation(); return; } /* harmless browser notice: layout settled over two frames */ if (overlay.classList.contains('hide')) toast('Something went wrong: ' + (e.message || 'error')); });
 
 function webglOk() {
   try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch { return false; }
@@ -118,7 +118,7 @@ function setBandVars() { // heights of the glass stacks, used to place popovers 
   const r = document.documentElement.style;
   r.setProperty('--ctl-h', $('controls').offsetHeight + 'px'); r.setProperty('--top-h', $('top').offsetHeight + 'px');
 }
-addEventListener('resize', resize); { const ro = new ResizeObserver(setBandVars); ro.observe($('controls')); ro.observe($('top')); } resize();
+addEventListener('resize', resize); { const ro = new ResizeObserver(() => requestAnimationFrame(setBandVars)); ro.observe($('controls')); ro.observe($('top')); } resize();
 
 /* ------------------------------------------------------------------ terrain height lookup */
 function buildHeightGrid(geom, step) {
@@ -434,7 +434,7 @@ function flyUI() {
   const on = !!fly; document.body.classList.toggle('flying', on);
   { const fh = $('flyhdr'); fh.setAttribute('aria-label', on ? 'Exit the flyover' : 'Fly the route'); fh.title = fh.getAttribute('aria-label'); } if (on) { closePicker(); if (!SIDE()) setSheet(false); }
   $('flypill').hidden = !on; $('flypause').hidden = !on || !!(fly && fly.control); document.body.classList.toggle('skating', !!(fly && fly.control));
-  { const tk = $('flytake'); if (tk) { tk.hidden = !(BETA && on && !fly.control); if (BETA && on) loadSkateCss(); } }
+  { const tk = $('flytake'); if (tk) { tk.hidden = !(UIX && on && !fly.control); if (UIX && on) loadSkateCss(); } }
   if (on) {
     const paused = fly.paused;
     $('flypause').innerHTML = fly.done ? '&#8635;' : paused ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>' : ICON_PAUSE;
@@ -502,7 +502,7 @@ function flyStep(ts) {
   placeSkater(R, s, dt, c);
   { const tk = $('flytake'); if (tk && !tk.hidden && !tk.dataset.busy) { const d = !skater.group.visible; if (tk.disabled !== d) tk.disabled = d; } } // Take control needs the skater on screen
 }
-/* ---- Take control (beta): skate.js is fetched only now. The flyover skater's spot and heading hand over to the skate simulation. */
+/* ---- Take control (everyone with the data layers UI: BETA or the promoted public page): skate.js is fetched only now. The flyover skater's spot and heading hand over to the skate simulation. */
 let SK = null, SKP = null, skCss = false, skRead = '';
 function loadSkateCss() { if (skCss) return; skCss = true; const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'skate.css'; document.head.appendChild(l); }
 async function takeControl() {
@@ -515,7 +515,6 @@ async function takeControl() {
     if (!SK.start(skater.group.position, _sf, null)) { toast('Skating needs street data: try again in a moment'); tk.disabled = false; delete tk.dataset.busy; return; }
     fly.control = true; fly.paused = true; skRead = ''; $('flyfill').style.width = '0%'; flyUI();
     $('fpnm').textContent = 'Free skate'; fly.nm = 'Free skate';
-    if (!isTouch) toast('W A S D or arrow keys to skate, Esc to exit');
   } catch (e) { console.warn('skate unavailable', e); toast('Skating could not load'); SKP = null; }
   tk.disabled = false; delete tk.dataset.busy;
 }

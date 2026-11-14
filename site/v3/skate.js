@@ -326,7 +326,7 @@ export function createInput({ isTouch, doc = document, win = window, onBack }) {
   const build = () => {
     root = doc.createElement('div'); root.id = 'skctl'; root.hidden = true;
     root.innerHTML = '<div id="skpad" aria-label="Skate joystick: up to push, down to brake, left and right to steer" role="application"><i class="skring"></i><i class="skknob"></i></div>' +
-      '<div id="skbtns"><button id="skbrake" type="button" aria-label="Brake">Brake</button><button id="skhome" type="button" aria-label="Back on the street">Back on street</button></div>' +
+      '<div id="skbtns"><button id="skhome" type="button" aria-label="Back on the street" title="Back on the street (R)">&#8635; Street</button></div>' +
       '<div id="skhint" aria-hidden="true">' + (isTouch ? 'Drag the stick: up to push, down to brake' : 'W A S D or arrow keys · Esc to exit') + '</div>';
     doc.body.appendChild(root);
     const padEl = root.querySelector('#skpad'); knob = root.querySelector('.skknob');
@@ -341,9 +341,6 @@ export function createInput({ isTouch, doc = document, win = window, onBack }) {
     padEl.addEventListener('pointerdown', (e) => { active = e.pointerId; try { padEl.setPointerCapture(e.pointerId); } catch (x) { /* ok */ } move(e); e.preventDefault(); });
     padEl.addEventListener('pointermove', (e) => { if (active === e.pointerId) { move(e); e.preventDefault(); } });
     padEl.addEventListener('pointerup', end); padEl.addEventListener('pointercancel', end); padEl.addEventListener('lostpointercapture', end);
-    const b = root.querySelector('#skbrake');
-    b.addEventListener('pointerdown', (e) => { br.on = true; try { b.setPointerCapture(e.pointerId); } catch (x) { /* ok */ } e.preventDefault(); });
-    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, () => { br.on = false; });
     root.querySelector('#skhome').addEventListener('click', () => onBack && onBack());
     root.addEventListener('contextmenu', (e) => e.preventDefault());
   };
@@ -390,7 +387,7 @@ export function createSkate({ THREE, camera, controls, renderer, terrainH, EX, g
     const t0 = performance.now();
     world = createWorld({ terrainH, EX, G: getG(), col: getCol() });
     sim = createSim(world); cam = createChaseCam({ THREE, world });
-    input = createInput({ isTouch, onBack: () => { if (active && sim.respawn()) toast && toast('Back on the street'); } });
+    input = createInput({ isTouch, onBack: () => { if (active) sim.respawn(); } });
     world.buildMs = Math.round(performance.now() - t0);
   }
 

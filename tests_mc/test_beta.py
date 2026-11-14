@@ -36,8 +36,8 @@ class TestSettings(unittest.TestCase):
 
     def test_public_settings_are_unchanged_and_stage_1_is_the_beta(self):
         self.assertEqual((C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE), ((), False, False))
-        self.assertEqual(C.BETA, dict(physics=("sun_clear", "film", "pavement", "cloud_base"), nudge_anchors=True, carry_state=True, wind_east=True))     # cloud base (guide 08) on top of stage 3;  stage 3 (film + pavement, 2026-11-13) on top of stage 2 and east wind (guide 14)
-        self.assertEqual(wetness.check_physics(C.BETA["physics"]), frozenset({"sun_clear", "film", "pavement", "cloud_base"}))
+        self.assertEqual(C.BETA, dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True))     # cloud base (guide 08) on top of stage 3;  stage 3 (film + pavement, 2026-11-13) on top of stage 2 and east wind (guide 14)
+        self.assertEqual(wetness.check_physics(C.BETA["physics"]), frozenset({"sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"}))
 
     def test_beta_settings_never_reach_the_public_build(self):
         before = build.settings(False)
@@ -47,16 +47,16 @@ class TestSettings(unittest.TestCase):
 
     def test_public_settings_never_reach_the_beta_build(self):
         C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE = ("film",), True, True
-        self.assertEqual(build.settings(True), dict(physics=("sun_clear", "film", "pavement", "cloud_base"), nudge_anchors=True, carry_state=True, wind_east=True))
+        self.assertEqual(build.settings(True), dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True))
         C.BETA.update(nudge_anchors=False)
         self.assertFalse(build.settings(True)["nudge_anchors"])
         self.assertEqual(build.settings(True, physics=("film",))["physics"], ("film",))          # an explicit argument still wins (tests, command line)
 
     def test_label_says_what_the_preview_has(self):
-        self.assertEqual(build.beta_label(build.settings(True)), "clear-sky sun (GOES sunlight), water film, pavement heat, cloud base, station anchors, carried state, east wind (street wind only)")
+        self.assertEqual(build.beta_label(build.settings(True)), "clear-sky sun (GOES sunlight), water film, pavement heat, cloud base, uniform fog-front speed, drizzle, in-place fog, station anchors, carried state, east wind (street wind only)")
         C.SUN_DSR_OLD, C.SUN_DSR = C.SUN_DSR, False
         try:
-            self.assertEqual(build.beta_label(build.settings(True)), "clear-sky sun, water film, pavement heat, cloud base, station anchors, carried state, east wind (street wind only)")
+            self.assertEqual(build.beta_label(build.settings(True)), "clear-sky sun, water film, pavement heat, cloud base, uniform fog-front speed, drizzle, in-place fog, station anchors, carried state, east wind (street wind only)")
         finally:
             C.SUN_DSR = C.SUN_DSR_OLD
             del C.SUN_DSR_OLD
@@ -99,7 +99,7 @@ class TestRunPlumbing(unittest.TestCase):
     def test_beta_build_runs_with_the_beta_settings_and_leaves_nothing_behind(self):
         with tempfile.TemporaryDirectory() as d:
             rec = self.run_(True, d)
-        self.assertEqual(rec["physics"], frozenset({"sun_clear", "film", "pavement", "cloud_base"}))
+        self.assertEqual(rec["physics"], frozenset({"sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"}))
         self.assertTrue(rec["nudge"])
         self.assertEqual(rec["dsr"], {})
         self.assertEqual(rec["dsr_calls"], 1)
