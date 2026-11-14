@@ -663,7 +663,7 @@ let index = null, base = '', night = null, streets = null, weather = null, fogGr
 let tNow = 0, playing = false, speed = 1, lastTs = 0, dirSign = 1;
 /* Playback speed. Public page: speed = frames per second (1x, 4x, 16x; the live data has one frame per hour, so that is 3600x, 14400x, 57600x real time).
    Beta: speed = a multiple of REAL time (x1 = the simulated clock runs at the same rate as the wall clock), and the page opens playing at x1 at the current time. */
-const BETA_SPEEDS = [1, 60, 900, 14400]; // x14400 = the public page's 4x (1 h of data per 0.25 s)
+const BETA_SPEEDS = [1, 60, 600, 1800, 7200]; // chevrons filled 0..4: real time, 1 min, 10 min, 30 min, 2 h of simulated time per real second
 const simRate = () => (BETA ? speed / (night.step_min * 60) : speed) * dirSign; // frames per real second
 const simEpoch = () => (Date.parse(night.start_iso) + tNow * night.step_min * 60000) / 1000; // epoch seconds of the simulated clock
 let spdSync = () => {}, spdUser = false; // spdUser: the person already picked a speed, so the late real-time seek must not reset it
@@ -682,16 +682,16 @@ if (BETA) {
   if (UI2) {
     document.body.classList.add('bx-sp');
     const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = new URL('speed_ui.css', import.meta.url).href; document.head.appendChild(l);
-    const NAMES = [['Real time', '1 second per second'], ['Fast', '1 minute per second'], ['Faster', '15 minutes per second'], ['Fastest', '4 hours per second']];
+    const NAMES = [['Real time', '1 second per second'], ['Fast', '1 minute per second'], ['Faster', '10 minutes per second'], ['Faster still', '30 minutes per second'], ['Fastest', '2 hours per second']];
     const chev = (n) => '<svg viewBox="0 0 34 12" aria-hidden="true">' + [0, 1, 2, 3].map((k) => `<path class="${k < n ? 'f' : ''}" d="M${1 + k * 8.5} 1L${7.5 + k * 8.5} 6L${1 + k * 8.5} 11Z"/>`).join('') + '</svg>';
     const ctl = document.createElement('div'); ctl.className = 'ctl'; ctl.id = 'ctl';
     const sb = document.createElement('button'); sb.type = 'button'; sb.id = 'spdbtn'; sb.className = 'pb';
     $('timebar').insertBefore(ctl, $('play')); ctl.append(sb, $('play'));
     const toastEl = document.createElement('div'); toastEl.id = 'spdtoast'; toastEl.setAttribute('role', 'status'); document.body.appendChild(toastEl); let tt = 0;
     spdSync = (say) => {
-      const i = speedIdx(), n = NAMES[i]; sb.innerHTML = chev(i + 1); sb.classList.toggle('dim', !playing);
+      const i = speedIdx(), n = NAMES[i]; sb.innerHTML = chev(i); sb.classList.toggle('dim', !playing);
       sb.setAttribute('aria-label', `Playback speed: ${n[0]}, ${n[1]}. Tap to change.`);
-      if (say === true) { toastEl.innerHTML = `<span class="c">${chev(i + 1)}</span><b>${n[0]}</b><em>${n[1]}</em>`; toastEl.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => toastEl.classList.remove('on'), 2200); }
+      if (say === true) { toastEl.innerHTML = `<span class="c">${chev(i)}</span><b>${n[0]}</b><em>${n[1]}</em>`; toastEl.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => toastEl.classList.remove('on'), 2200); }
     };
     sb.onclick = () => { spdUser = true; setSpeedIdx((speedIdx() + 1) % BETA_SPEEDS.length); };
     spdSync();
