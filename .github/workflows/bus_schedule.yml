@@ -1,14 +1,15 @@
 name: bus-schedule
 
 # Rebuilds site/v3/data/bus_schedule.json (scheduled passing times of the two shuttle lines, 14 days) from the Muni GTFS feed and commits it to v3-dev.
-# The next collect run publishes it. No 511 key is needed: SFMTA publishes the schedule feed openly.
+# The next collect run publishes it. The schedule comes from the 511.org transit data feed (operator SF) and needs the repository secret API_511_KEY
+# (the same 511 token the bus Worker uses): Settings > Secrets and variables > Actions > New repository secret. gtfs_url overrides the source.
 # Run it by hand from the Actions tab, or let the weekly schedule keep the next ~10 days covered.
 on:
   workflow_dispatch:
     inputs:
       gtfs_url:
-        description: "GTFS zip to read (default: the SFMTA schedule feed)"
-        default: "https://gtfs.sfmta.com/transitdata/google_transit.zip"
+        description: "GTFS zip to read instead of the 511.org feed (optional)"
+        default: ""
   schedule:
     - cron: "17 11 * * 1"       # Mondays, about 3-4 AM Pacific
 
@@ -29,10 +30,18 @@ jobs:
           ref: v3-dev
 
       - name: Download the Muni GTFS zip
+        env:
+          API_511_KEY: ${{ secrets.API_511_KEY }}
+          GTFS_URL: ${{ inputs.gtfs_url }}
         run: |
-          URL="${{ inputs.gtfs_url || 'https://gtfs.sfmta.com/transitdata/google_transit.zip' }}"
-          curl -fsSL --retry 3 -A "deathfog-sf bus schedule (${{ github.server_url }}/${{ github.repository }})" -o "$RUNNER_TEMP/gtfs.zip" "$URL"
+          URL="$GTFS_URL"
+          if [ -z "$URL" ]; then
+            if [ -z "$API_511_KEY" ]; then echo "::error::Add the repository secret API_511_KEY (your 511.org token), or run with gtfs_url"; exit 1; fi
+            URL="https://api.511.org/transit/datafeeds?api_key=${API_511_KEY}&operator_id=SF"
+          fi
+          curl -sS -f -L --connect-timeout 20 --max-time 300 --retry 2 -A "deathfog-sf bus schedule" -o "$RUNNER_TEMP/gtfs.zip" "$URL" || { echo "::error::GTFS download failed (check the key, or pass gtfs_url)"; exit 1; }
           ls -l "$RUNNER_TEMP/gtfs.zip"
+          unzip -l "$RUNNER_TEMP/gtfs.zip" | head -20
 
       - name: Build bus_schedule.json
         run: python3 tools/make_bus_schedule.py --gtfs "$RUNNER_TEMP/gtfs.zip" --days 14
