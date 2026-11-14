@@ -1,5 +1,6 @@
 /* Bus proxy (Cloudflare Worker). The ONLY place the 511 key lives (Worker secret API_KEY_511). The beta page asks this Worker for
    the two skate-shuttle lines and never sees the key.
+   - GET /api/health: setup check (status of the 511 call, counts, line ids seen). No key, no positions.
    - GET /api/buses returns { ok, ts, stale, vehicles:[{id,district,line,lat,lon,bearing,t}], arrivals:{<district>:{t,next:[epoch s]}} }
    - Results are cached in Cloudflare's cache: vehicles VEH_TTL seconds (default 60), arrivals ARR_TTL (default 180). So 511 is called at
      most about once a minute (and only when someone is looking), however many people view the page. 511's default limit is 60 calls/hour.
@@ -62,6 +63,19 @@ export async function handle(request, env, deps) {
   const allowed = String(env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
   const cors = { 'Access-Control-Allow-Origin': allowed.includes(origin) ? origin : 'null', Vary: 'Origin', 'Cache-Control': 'no-store' };
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '600' } });
+  if (url.pathname === '/api/health') { // setup check, open it in a browser tab: no key, no live positions, only what 511 said (status, counts, line ids). Cached 2 min so it adds almost no 511 calls.
+    const H = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+    if (!env.API_KEY_511) return new Response(JSON.stringify({ configured: false, problem: 'secret API_KEY_511 is missing' }), { status: 503, headers: H });
+    let ds; try { ds = JSON.parse(env.DISTRICTS || '[]'); } catch { return new Response(JSON.stringify({ configured: true, problem: 'DISTRICTS is not valid JSON' }), { status: 500, headers: H }); }
+    try {
+      const h = await cached(deps, 'health', 120, () => once('health', async () => {
+        const j = await getUp(deps, env, 'VehicleMonitoring', { agency: env.AGENCY || 'SF' }), acts = arr(j?.Siri?.ServiceDelivery?.VehicleMonitoringDelivery?.VehicleActivity ?? j?.Siri?.ServiceDelivery?.VehicleMonitoringDelivery?.[0]?.VehicleActivity);
+        const lines = [...new Set(acts.map((a) => String(a?.MonitoredVehicleJourney?.LineRef ?? '?')))].sort().slice(0, 40);
+        return { upstream: 'ok', allVehicles: acts.length, topKeys: Object.keys(j || {}).slice(0, 5), lineIdsSeen: lines, matched: parseVehicles(j, ds).length };
+      }));
+      return new Response(JSON.stringify({ configured: true, origins: allowed.length, districts: ds.map((d) => d.line), ...h.v }), { headers: H });
+    } catch (e) { return new Response(JSON.stringify({ configured: true, upstream: redact(e.message, env.API_KEY_511) }), { status: 502, headers: H }); }
+  }
   if (url.pathname !== '/api/buses') return new Response('not found', { status: 404 });
   if (!allowed.includes(origin)) return new Response('forbidden', { status: 403, headers: cors });
   if (!env.API_KEY_511) return new Response(JSON.stringify({ ok: false, error: 'not configured' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
