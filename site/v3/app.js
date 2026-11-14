@@ -37,10 +37,10 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const EX = 1.5; // vertical exaggeration (terrain, buildings, streets, fog all share it)
 const isTouch = matchMedia('(pointer: coarse)').matches;
 
-/* ---- performance options (beta only, ?beta=1; the public page keeps today's code path). Settings > Performance. See docs/perf/README.md.
+/* ---- performance options (everyone; ?perf=0 turns all of it off). Settings > Performance. See docs/perf/README.md.
    lod: far buildings drawn as roofs only. dynres: lower resolution while the camera moves. aa: smooth edges. ondemand: draw only when something changed (?ondemand=0 turns it off).
    URL overrides: ?lod=0|1 &dynres=0|1 &aa=0|1. Saved choices live in localStorage 'df3.perf'; a choice the user never made stays undefined, so the automatic rules still apply. */
-const PERFON = BETA;
+const PERFON = QP.get('perf') !== '0'; // on for everyone since 2026-11-14 (George approved); ?perf=0 gives the old code path for comparison
 const FAR_TINT = 0.92; // far roofs are a little darker so the average brightness does not jump when walls disappear (tuned by image diff)
 const PSTORE = 'df3.perf';
 const perfLoad = () => { try { return JSON.parse(localStorage.getItem(PSTORE) || '{}') || {}; } catch (e) { return {}; } };
@@ -1032,9 +1032,9 @@ function syncPerfUi() { for (const k of ['lod', 'dynres', 'aa']) { const e = $('
 function buildPerfUI() {
   if (!PERFON || $('bx-g-perf')) return;
   const sheet = $('sheet'); if (!sheet) return;
-  const row = (k, t, s) => `<label class="bx-tall"><input type="checkbox" id="pf-${k}"><span><i class="bx-tt"><b>${t}</b><small>${s}</small></i></span></label>`;
+  const row = (k, t, s) => !BX ? `<label><input type="checkbox" id="pf-${k}"><span>${t}</span></label>` : `<label class="bx-tall"><input type="checkbox" id="pf-${k}"><span><i class="bx-tt"><b>${t}</b><small>${s}</small></i></span></label>`;
   const s = document.createElement('section'); s.className = 'bx-grp'; s.id = 'bx-g-perf';
-  s.innerHTML = `<div class="bx-gh">Performance</div><div class="tgs bx-one">
+  s.innerHTML = `${BX ? '<div class="bx-gh">Performance</div>' : '<h4>Performance</h4>'}<div class="tgs${BX ? ' bx-one' : ''}">
     ${row('lod', 'Simpler far buildings', 'Distant buildings drawn as roofs only')}
     ${row('dynres', 'Lower resolution while moving', 'Sharp again when you stop')}
     ${row('aa', 'Smooth edges', 'Antialiasing; turn off to save battery')}</div><p class="bx-hint" id="pf-note"></p>`;
