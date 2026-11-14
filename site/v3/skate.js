@@ -25,6 +25,20 @@ export const TUNE = {
   slopeBlock: 0.45,                                  // off-street, true grade steeper than this uphill is a wall
   cam: { back: 70, up: 28, look: 30, lookUp: 6, follow: 2.2, spring: 4 },
   scale: 7,                                          // toy size of the skater model
+  lane: null,                                        // metres to the right of the street centre line to hold when the stick is centred (null = no lane keeping)
+  boost: { vmult: 1.3, push: 1.8, dur: 1.6, regen: 7, min: 0.25 }, // boost button: top speed x vmult, push x push, lasts dur s from full, refills in regen s, usable again once the charge is back over min
+};
+
+/* Controllable things. Each one is a bundle of sim tuning (anything in TUNE can be overridden), a boost, camera and UI options, so every
+   entity gets the same joystick, boost button and stop button and only the numbers differ. Add an entry here to make something else drivable
+   (a bus, a cable car, ...): the sim, input and UI (createSim, createInput) read only this. Values are "arcade": speeds are toy speeds (m/s). */
+export const ENTITIES = {
+  skater: { id: 'skater', label: 'Skater', exit: null, tune: {}, cam: {}, pitch: false },
+  bus: {
+    id: 'bus', label: 'Bus', exit: 'Stop driving', pitch: true,
+    tune: { r: 4.2, vMax: 17, push: 5.5, vPush: 12, brake: 13, turn: 1.15, grip: 8, lane: 2.6, boost: { vmult: 1.45, push: 2.2, dur: 2.5, regen: 9, min: 0.25 } }, // 17 m/s is about 38 mph, boost about 55 mph
+    cam: { back: 78, up: 46, look: 22, lookUp: 5, follow: 0.8, spring: 3.2 },
+  },
 };
 
 /* ---------------------------------------------------------------------- 1. world */
@@ -227,7 +241,7 @@ export function createWorld({ terrainH, EX = 1.5, G, col }) {
 /* ---------------------------------------------------------------------- 2. simulation */
 export function createSim(world, over) { // over: optional TUNE overrides (the bus uses a bigger collision radius and a lower top speed)
   const T = over ? { ...TUNE, ...over } : TUNE, EX = world.EX;
-  const s = { x: 0, z: 0, h: 0, vx: 0, vz: 0, y: 0, speed: 0, grade: 0, onRoad: false, wall: 0, bump: 0, stuck: 0, fx: 1, fy: 0, fz: 0, k: -1, blocked: false };
+  const s = { charge: 1, boosting: false, lock: false, x: 0, z: 0, h: 0, vx: 0, vz: 0, y: 0, speed: 0, grade: 0, onRoad: false, wall: 0, bump: 0, stuck: 0, fx: 1, fy: 0, fz: 0, k: -1, blocked: false };
   const out = { respawned: false };
 
   s.place = (x, z, h, v = 0) => {
@@ -250,6 +264,12 @@ export function createSim(world, over) { // over: optional TUNE overrides (the b
 
     // steering, slower the faster you go and sloppier when it is wet; a little turn is allowed from standstill
     let along = s.vx * dx + s.vz * dz;
+    // boost: drains while the button is held, refills when it is not; after running dry it needs B.min back before it fires again
+    const B = T.boost, wantBoost = (input.boost || 0) > 0.5;
+    if (s.lock && s.charge > B.min) s.lock = false;
+    if (wantBoost && !s.lock && s.charge > 0) { s.charge = Math.max(0, s.charge - dt / B.dur); s.boosting = true; if (s.charge <= 0) s.lock = true; }
+    else { s.boosting = false; s.charge = Math.min(1, s.charge + dt / B.regen); }
+    const pm = s.boosting ? B.push : 1, vm = s.boosting ? B.vmult : 1;
     const sp = Math.abs(along), steer = clamp(input.steer || 0, -1, 1);
     s.h += steer * T.turn / (1 + sp / 16) * (1 - 0.45 * t) * clamp(sp / 3 + 0.35, 0, 1) * dt;
     // stay-on-street help: when the stick is near centre, ease the heading toward the street direction and the skater toward its centre line
@@ -262,17 +282,22 @@ export function createSim(world, over) { // over: optional TUNE overrides (the b
     // forces along the heading
     along = s.vx * dx + s.vz * dz;
     let lx = s.vx - along * dx, lz = s.vz - along * dz; // sideways part of the velocity
-    let a = (input.push || 0) * T.push * clamp(1 - along / T.vPush, 0, 1.2) - grade * T.gEff;
+    let a = (s.boosting ? Math.max(input.push || 0, 1) : (input.push || 0)) * T.push * pm * clamp(1 - along / (T.vPush * vm), 0, 1.2) - grade * T.gEff;
     const dm = onRoad ? 1 : T.offDrag;
     a -= (T.drag * along + T.roll * Math.sign(along)) * dm;
     if ((input.brake || 0) > 0) a -= input.brake * T.brake * Math.sign(along || 1) * (1 - 0.5 * t);
     const before = along; along += a * dt;
     if ((input.brake || 0) > 0 && before * along < 0) along = 0; // braking stops, it does not reverse
-    along = clamp(along, -8, T.vMax);
+    if (along > T.vMax * vm) along = Math.max(T.vMax * vm, along - 14 * dt); else if (along > T.vMax && !s.boosting) along = Math.max(T.vMax, along - 10 * dt); // boost wears off smoothly
+    along = Math.max(-8, along);
     const g = Math.exp(-T.grip * (1 - 0.75 * t) * dt); lx *= g; lz *= g;
     if (onRoad) { // soft pull toward the centre line (acceleration across the street)
       const pull = clamp(Math.abs(e) - 6.6, 0, 3) * 1.5 * -Math.sign(e); // only near the kerb edge: in the middle of a two-lane street nothing pulls
       lx += -tgz * pull * dt; lz += tgx * pull * dt;
+    }
+    if (onRoad && T.lane != null) { // keep to the right lane when the stick is centred (e = offset to the right of travel)
+      const free = 1 - Math.min(1, Math.abs(steer) * 3), want = clamp((T.lane - e) * 4, -8, 8) * free;
+      lx += -tgz * want * dt; lz += tgx * want * dt;
     }
     s.vx = along * dx + lx; s.vz = along * dz + lz;
 
@@ -371,15 +396,16 @@ export function createChaseCam({ THREE, world, opts = {} }) {
 }
 
 /* ---------------------------------------------------------------------- 4. input and joystick */
-export function createInput({ isTouch, doc = document, win = window, onBack }) {
-  const st = { x: 0, y: 0 }, keys = new Set(), pad = { x: 0, y: 0 }, br = { on: false };
-  let root = null, knob = null, active = null, on = false, R = 52;
+export function createInput({ isTouch, doc = document, win = window, onBack, onExit, entity = ENTITIES.skater }) { // onExit: shows a stop button (and Esc) for things you drive on from outside the flyover
+  const st = { x: 0, y: 0 }, keys = new Set(), pad = { x: 0, y: 0 }, br = { on: false }, bo = { on: false };
+  let root = null, knob = null, boostEl = null, active = null, on = false, R = 52;
 
   const build = () => {
     root = doc.createElement('div'); root.id = 'skctl'; root.hidden = true;
     root.innerHTML = '<div id="skpad" aria-label="Skate joystick: up to push, down to brake, left and right to steer" role="application"><i class="skring"></i><i class="skknob"></i></div>' +
-      '<div id="skbtns"><button id="skhome" type="button" aria-label="Back on the street" title="Back on the street (R)">&#8635; Street</button></div>' +
-      '<div id="skhint" aria-hidden="true">' + (isTouch ? 'Drag the stick: up to push, down to brake' : 'W A S D or arrow keys · Esc to exit') + '</div>';
+      '<button id="skboost" type="button" aria-label="Boost (Shift)" title="Boost (Shift)"><b>BOOST</b></button>' +
+      '<div id="skbtns">' + (onExit ? '<button id="skexit" type="button" aria-label="' + (entity.exit || 'Stop') + ' (Esc)" title="' + (entity.exit || 'Stop') + ' (Esc)">&#10005; ' + (entity.exit || 'Stop') + '</button>' : '') + '<button id="skhome" type="button" aria-label="Back on the street" title="Back on the street (R)">&#8635; Street</button></div>' +
+      '<div id="skhint" aria-hidden="true">' + (isTouch ? 'Drag the stick: up to push, down to brake' : 'W A S D or arrow keys · Shift boost' + (onExit ? ' · Esc to stop' : '')) + '</div>';
     doc.body.appendChild(root);
     const padEl = root.querySelector('#skpad'); knob = root.querySelector('.skknob');
     const move = (e) => {
@@ -394,24 +420,29 @@ export function createInput({ isTouch, doc = document, win = window, onBack }) {
     padEl.addEventListener('pointermove', (e) => { if (active === e.pointerId) { move(e); e.preventDefault(); } });
     padEl.addEventListener('pointerup', end); padEl.addEventListener('pointercancel', end); padEl.addEventListener('lostpointercapture', end);
     root.querySelector('#skhome').addEventListener('click', () => onBack && onBack());
+    if (onExit) root.querySelector('#skexit').addEventListener('click', () => onExit());
+    boostEl = root.querySelector('#skboost');
+    boostEl.addEventListener('pointerdown', (e) => { bo.on = true; try { boostEl.setPointerCapture(e.pointerId); } catch (x) { /* ok */ } e.preventDefault(); });
+    const bend = () => { bo.on = false; }; boostEl.addEventListener('pointerup', bend); boostEl.addEventListener('pointercancel', bend); boostEl.addEventListener('lostpointercapture', bend);
     root.addEventListener('contextmenu', (e) => e.preventDefault());
   };
-  const KEYMAP = { ArrowUp: 'u', w: 'u', W: 'u', ArrowDown: 'd', s: 'd', S: 'd', ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r', ' ': 'd', r: 'home', R: 'home' };
+  const KEYMAP = { ArrowUp: 'u', w: 'u', W: 'u', ArrowDown: 'd', s: 'd', S: 'd', ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r', ' ': 'd', r: 'home', R: 'home', Shift: 'boost', e: 'boost', E: 'boost', Escape: 'exit' };
   const kd = (e) => {
     if (!on || e.ctrlKey || e.metaKey || e.altKey) return; const t = e.target && e.target.tagName; if (t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA') return;
     const k = KEYMAP[e.key]; if (!k) return;
     if (k === 'home') { if (!e.repeat && onBack) onBack(); return; }
+    if (k === 'exit') { if (onExit && !e.repeat) onExit(); return; }
     keys.add(k); e.preventDefault();
   };
   const ku = (e) => { const k = KEYMAP[e.key]; if (k) keys.delete(k); };
-  const blur = () => { keys.clear(); pad.x = pad.y = 0; br.on = false; };
+  const blur = () => { keys.clear(); pad.x = pad.y = 0; br.on = false; bo.on = false; };
   win.addEventListener('keydown', kd); win.addEventListener('keyup', ku); win.addEventListener('blur', blur);
 
   return {
     show(v) { on = v; if (!root && v) build(); if (root) root.hidden = !v; if (!v) blur(); },
     /* read once per frame: {steer, push, brake}, the strongest of stick, keys, gamepad and the brake button */
     read() {
-      let x = pad.x, y = pad.y;
+      let x = pad.x, y = pad.y, gpBoost = false;
       const kx = (keys.has('r') ? 1 : 0) - (keys.has('l') ? 1 : 0), ky = (keys.has('u') ? 1 : 0) - (keys.has('d') ? 1 : 0);
       if (Math.abs(kx) > Math.abs(x)) x = kx; if (Math.abs(ky) > Math.abs(y)) y = ky;
       try {
@@ -420,11 +451,14 @@ export function createInput({ isTouch, doc = document, win = window, onBack }) {
           const gx = Math.abs(gp.axes[0]) > 0.15 ? gp.axes[0] : 0, gy = Math.abs(gp.axes[1]) > 0.15 ? -gp.axes[1] : 0;
           if (Math.abs(gx) > Math.abs(x)) x = gx; if (Math.abs(gy) > Math.abs(y)) y = gy;
           if (gp.buttons[0] && gp.buttons[0].pressed || gp.buttons[7] && gp.buttons[7].pressed) y = Math.max(y, 1);
+          if (gp.buttons[2] && gp.buttons[2].pressed || gp.buttons[5] && gp.buttons[5].pressed) gpBoost = true;
           if (gp.buttons[1] && gp.buttons[1].pressed || gp.buttons[6] && gp.buttons[6].pressed) y = Math.min(y, -1);
         }
       } catch (e) { /* no gamepad API */ }
-      return { steer: clamp(x, -1, 1), push: Math.max(0, y), brake: br.on ? 1 : Math.max(0, -y) };
+      return { steer: clamp(x, -1, 1), push: Math.max(0, y), brake: br.on ? 1 : Math.max(0, -y), boost: bo.on || keys.has('boost') || gpBoost ? 1 : 0 };
     },
+    /* show the boost charge on the button: c 0..1, active = boost firing */
+    setCharge(c, active) { if (boostEl) { boostEl.style.setProperty('--ch', c.toFixed(3)); boostEl.classList.toggle('on', !!active); boostEl.classList.toggle('low', c < 0.25 && !active); } },
     destroy() { win.removeEventListener('keydown', kd); win.removeEventListener('keyup', ku); win.removeEventListener('blur', blur); if (root) root.remove(); root = null; },
   };
 }
@@ -438,8 +472,8 @@ export function createSkate({ THREE, camera, controls, renderer, terrainH, EX, g
     if (world) return;
     const t0 = performance.now();
     world = createWorld({ terrainH, EX, G: getG(), col: getCol() });
-    sim = createSim(world); cam = createChaseCam({ THREE, world });
-    input = createInput({ isTouch, onBack: () => { if (active) sim.respawn(); } });
+    sim = createSim(world, ENTITIES.skater.tune); cam = createChaseCam({ THREE, world, opts: ENTITIES.skater.cam });
+    input = createInput({ isTouch, entity: ENTITIES.skater, onBack: () => { if (active) sim.respawn(); } });
     world.buildMs = Math.round(performance.now() - t0);
   }
 
@@ -462,7 +496,7 @@ export function createSkate({ THREE, camera, controls, renderer, terrainH, EX, g
     update(dt, wetAt) {
       if (!active) return;
       const inp = input.read();
-      sim.step(dt, inp, wetAt ? wetAt(sim.k) : null);
+      sim.step(dt, inp, wetAt ? wetAt(sim.k) : null); input.setCharge(sim.charge, sim.boosting);
       if (sim.bump > 5 && performance.now() - bumpT > 400) { bumpT = performance.now(); try { navigator.vibrate && navigator.vibrate(12); } catch (e) { /* no haptics */ } }
       pos.set(sim.x, sim.y, sim.z); fwd.set(sim.fx, sim.fy, sim.fz);
       skater.update({ pos, forward: fwd, scale: TUNE.scale, w: wetAt ? wetAt(sim.k) : null, dt });

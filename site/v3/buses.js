@@ -8,7 +8,7 @@
 import { llToScene } from './busgeo.js';
 import { BusTrack, PathTrack } from './busfilter.js';
 import { createStop, createBusCard } from './busstop.js';
-import { createWorld, createChaseCam, createSim, createInput } from './skate.js';
+import { createWorld, createChaseCam, createSim, createInput, ENTITIES } from './skate.js';
 import { validateFeed, httpSource } from './busfeed.js';
 import { createMockFeed, SCENARIOS } from './busmock.js';
 
@@ -16,6 +16,7 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const POLL_MS = 30000;
 
 const angDiff = (a, b) => { let d = (a - b) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
+const LANE = ENTITIES.bus.tune.lane; // metres right of the centre line, for display and for driving
 const BUS_SCALE = 1.1; // buses are drawn 10% larger than first built
 
 export async function createBuses({ THREE, scene, camera, controls, canvas, EX, getJSON, ground, getTerrain, getCol, getG, getDist, QP, toast }) {
@@ -102,7 +103,7 @@ export async function createBuses({ THREE, scene, camera, controls, canvas, EX, 
   poll(); timer = setInterval(() => poll(), POLL_MS);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
   if (demo && toast) toast('Beta buses: MOCK data (no live feed connected)');
-  if (demo) mockPanel(mock, poll);
+  let panelEl = null; if (demo) panelEl = mockPanel(mock, poll);
 
   /* ---------- tap a bus: card hovering above it with its time to the bottom stop, camera follows until the card is closed ---------- */
   const S = { o: null, id: null, b: null, card: null, cam: null, world: null, hasB: false, hasG: false, drive: null, t: performance.now() };
@@ -122,31 +123,41 @@ export async function createBuses({ THREE, scene, camera, controls, canvas, EX, 
     S.o = o; S.id = id; S.b = b;
     if (!S.card) S.card = createBusCard({ THREE, camera, line: o.d.line, color: o.color, onClose: stopFollow, onDrive: (on) => (on ? startDrive() : stopDrive()) });
     S.card.show(o.d.name + ' bus');
-    if (!S.cam) { S.cam = createChaseCam({ THREE, world: w, opts: { back: 78, up: 46, look: 22, lookUp: 5, follow: 0.8, spring: 3.2 } }); first || (S.camStarted = false); }
+    if (!S.cam) { S.cam = createChaseCam({ THREE, world: w, opts: ENTITIES.bus.cam }); first || (S.camStarted = false); }
     const st = b.st || { x: b.mesh.position.x, z: b.mesh.position.z, speed: 0 };
     if (first || !S.camStarted) { S.cam.start(camera, controls.target, simOf(b, st)); S.camStarted = true; }
     controls.enabled = false;
   }
   function stopFollow() { stopDrive(); if (S.cam) S.cam.stop(); S.camStarted = false; controls.enabled = true; if (S.b) S.b.mesh.userData.ring.visible = false; S.b = null; }
   /* ---------- drive a bus like the skater: same sim and controls (skate.js), feed positions stop moving the bus until you stop ---------- */
-  const BUS_DRIVE = { r: 4.2, vMax: 15, push: 6, vPush: 10, turn: 1.3, brake: 14, grip: 7 }; // a bigger body, slower and heavier than the skater
   const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  function skateCss() { if (!document.querySelector('link[href$="skate.css"]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'skate.css'; document.head.appendChild(l); } }
   function startDrive() {
     const b = S.b, st = b && b.st; if (!b || !st || S.drive) return;
     if (!ensureWorld()) return;
-    const sim = createSim(S.world, BUS_DRIVE), h = Math.PI / 2 - (b.hs == null ? st.heading : b.hs);
-    sim.place(st.x, st.z, h, Math.min(BUS_DRIVE.vMax, st.speed || 0));
-    const input = createInput({ isTouch: touch, onBack: () => sim.respawn() }); input.show(true);
+    const E = ENTITIES.bus, sim = createSim(S.world, E.tune), h = Math.PI / 2 - (b.hs == null ? st.heading : b.hs);
+    sim.place(st.x, st.z, h, Math.min(E.tune.vMax, st.speed || 0));
+    skateCss();
+    const input = createInput({ isTouch: touch, entity: E, onBack: () => sim.respawn(), onExit: () => stopDrive() }); input.show(true);
     S.drive = { sim, input }; b.driven = true; b.blend = null;
-    if (S.card) S.card.setDriving(true);
+    if (S.card) { S.card.setDriving(true); S.card.setHidden(true); } // the card steps aside; Stop driving is on the controls
+    document.body.classList.add('skating'); if (panelEl) panelEl.style.display = 'none';
   }
   function stopDrive() {
     const d = S.drive; if (!d) return; S.drive = null;
     const b = S.b; d.input.show(false); d.input.destroy();
-    if (b) { b.driven = false; if (b.st && b.st.alpha > 0) b.blend = { x: d.sim.x - b.st.x, z: d.sim.z - b.st.z }; } // glide back to the real position
-    if (S.card && S.card.driving) S.card.setDriving(false);
+    if (b) { b.driven = false; if (b.st && b.st.alpha > 0) b.blend = { x: d.sim.x - (b.st.x - Math.cos(b.hs) * LANE), z: d.sim.z - (b.st.z + Math.sin(b.hs) * LANE) }; } // glide back to the real position
+    if (S.card) { S.card.setHidden(false); if (S.card.driving) S.card.setDriving(false); }
+    document.body.classList.remove('skating'); if (panelEl) panelEl.style.display = '';
   }
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.drive) stopDrive(); });
+  /* pose of a bus mesh at (x, z) facing hs: pitched to the slope under its nose and tail, riding on the higher of the middle and the ends' mean */
+  function pose(b, x, z, hs, k, dt, fallbackY) {
+    const L = 5.5 * k, fx = Math.sin(hs), fz = Math.cos(hs), g = (px, pz) => { const v = ground(px, pz); return v == null ? fallbackY : v; };
+    const g0 = g(x, z), a = g(x + fx * L, z + fz * L), c = g(x - fx * L, z - fz * L), p = Math.atan2(a - c, 2 * L);
+    b.pitch = b.pitch == null ? p : b.pitch + (p - b.pitch) * (1 - Math.exp(-dt * 6));
+    b.mesh.rotation.order = 'YXZ'; b.mesh.rotation.set(-b.pitch, hs, 0); // nose up on the way up the hill
+    b.mesh.position.set(x, Math.max(g0, (a + c) / 2) + .2, z);
+  }
   function busInfo(o, b, now) {
     const t = b.track, st = b.st, age = now - t.lastRep, info = { big: '--', bigLabel: 'To the bottom stop', status: '', mood: 'ok', extra: '' };
     if (b.driven) { info.bigLabel = 'You are driving'; info.status = 'Live position paused while you drive'; info.mood = 'stale'; return info; }
@@ -207,16 +218,17 @@ export async function createBuses({ THREE, scene, camera, controls, canvas, EX, 
         const st = b.track.step(now); b.st = st; // keeps running for a driven bus too, so the real position is known when you stop
         if (b.driven && S.drive) { // the player owns this bus: the feed does not move it
           const d = S.drive; d.sim.step(dt, d.input.read(), null); b.hs = Math.PI / 2 - d.sim.h;
-          b.mesh.visible = true; b.mesh.position.set(d.sim.x, (ground(d.sim.x, d.sim.z) ?? o.stop.group.position.y) + .2, d.sim.z); b.mesh.rotation.y = b.hs; b.mesh.scale.setScalar(BUS_SCALE * Math.max(1, s * 0.9));
+          d.input.setCharge(d.sim.charge, d.sim.boosting);
+          const kk = BUS_SCALE * Math.max(1, s * 0.9); b.mesh.visible = true; b.mesh.scale.setScalar(kk); pose(b, d.sim.x, d.sim.z, b.hs, kk, dt, o.stop.group.position.y);
           for (const m of b.mesh.userData.mats) m.opacity = 1;
           continue;
         }
         if (!st || st.alpha <= 0) { b.mesh.visible = false; if (b !== S.b && st && now - b.track.lastRep > 600) { scene.remove(b.mesh); o.buses.delete(id); } continue; }
         b.hs = b.hs == null ? st.heading : b.hs + angDiff(st.heading, b.hs) * (1 - Math.exp(-dt * 4)); // turn smoothly at corners
-        let bx = st.x, bz = st.z;
+        const kk = BUS_SCALE * Math.max(1, s * 0.9);
+        let bx = st.x - Math.cos(b.hs) * LANE, bz = st.z + Math.sin(b.hs) * LANE; // buses keep to the right of the route line
         if (b.blend) { const k = Math.exp(-dt / 3); b.blend.x *= k; b.blend.z *= k; bx += b.blend.x; bz += b.blend.z; if (Math.hypot(b.blend.x, b.blend.z) < 0.5) b.blend = null; }
-        b.mesh.visible = true; const y = (ground(bx, bz) ?? o.stop.group.position.y) + .2;
-        b.mesh.position.set(bx, y, bz); b.mesh.rotation.y = b.hs; b.mesh.scale.setScalar(BUS_SCALE * Math.max(1, s * 0.9));
+        b.mesh.visible = true; b.mesh.scale.setScalar(kk); pose(b, bx, bz, b.hs, kk, dt, o.stop.group.position.y);
         for (const m of b.mesh.userData.mats) m.opacity = st.alpha;
       }
     }
@@ -235,5 +247,5 @@ function mockPanel(mock, poll) {
   el.style.cssText = 'position:fixed;left:8px;bottom:230px;z-index:25;font:12px Inter,system-ui,sans-serif;color:#e8eef4;background:rgba(16,24,34,.92);border:1px solid #2a3745;border-radius:8px;padding:5px 8px;display:flex;gap:6px;align-items:center';
   el.innerHTML = 'Mock buses <select style="font:inherit;color:inherit;background:#0e141b;border:1px solid #2a3745;border-radius:5px">' + SCENARIOS.map((s) => `<option${s === mock.scenario ? ' selected' : ''}>${s}</option>`).join('') + '</select>';
   el.querySelector('select').addEventListener('change', (e) => { mock.setScenario(e.target.value); poll(true); });
-  document.body.appendChild(el);
+  document.body.appendChild(el); return el;
 }
