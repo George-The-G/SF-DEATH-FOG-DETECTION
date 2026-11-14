@@ -434,7 +434,7 @@ function flyUI() {
   const on = !!fly; document.body.classList.toggle('flying', on);
   { const fh = $('flyhdr'); fh.setAttribute('aria-label', on ? 'Exit the flyover' : 'Fly the route'); fh.title = fh.getAttribute('aria-label'); } if (on) { closePicker(); if (!SIDE()) setSheet(false); }
   $('flypill').hidden = !on; $('flypause').hidden = !on || !!(fly && fly.control); document.body.classList.toggle('skating', !!(fly && fly.control));
-  { const tk = $('flytake'); if (tk) { tk.hidden = !(BETA && on && !fly.control); if (BETA && on) loadSkateCss(); } }
+  { const tk = $('flytake'); if (tk) { tk.hidden = !(UIX && on && !fly.control); if (UIX && on) loadSkateCss(); } }
   if (on) {
     const paused = fly.paused;
     $('flypause').innerHTML = fly.done ? '&#8635;' : paused ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>' : ICON_PAUSE;
@@ -502,7 +502,7 @@ function flyStep(ts) {
   placeSkater(R, s, dt, c);
   { const tk = $('flytake'); if (tk && !tk.hidden && !tk.dataset.busy) { const d = !skater.group.visible; if (tk.disabled !== d) tk.disabled = d; } } // Take control needs the skater on screen
 }
-/* ---- Take control (beta): skate.js is fetched only now. The flyover skater's spot and heading hand over to the skate simulation. */
+/* ---- Take control (everyone with the data layers UI: BETA or the promoted public page): skate.js is fetched only now. The flyover skater's spot and heading hand over to the skate simulation. */
 let SK = null, SKP = null, skCss = false, skRead = '';
 function loadSkateCss() { if (skCss) return; skCss = true; const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'skate.css'; document.head.appendChild(l); }
 async function takeControl() {
