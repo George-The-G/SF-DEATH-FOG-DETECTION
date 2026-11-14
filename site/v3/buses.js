@@ -1,4 +1,4 @@
-/* Live skate-shuttle buses (closed beta). Loaded by app.js only with ?beta=1&buses=1.
+/* Live skate-shuttle buses (closed beta). Loaded by app.js when data/bus_config.json has a feed address (or with ?beta=1&buses=1); ?buses=0 turns it off.
    Per district: one Muni line (19 Polk for Potrero Hill, 66 Quintara for Sunset), a shelter at the bottom stop with a pinned
    "next bus / then" popup (busstop.js), and the line's buses drawn as small boxes that glide between the once-a-minute reports
    (busfilter.js). Data comes from our own Cloudflare Worker (edge/bus-proxy), which holds the 511 key; this page never sees a key.
@@ -220,8 +220,8 @@ export async function createBuses({ THREE, scene, camera, controls, canvas, EX, 
   canvas.addEventListener('wheel', (e) => { if (S.b && S.cam) { e.preventDefault(); S.cam.zoomBy(Math.exp(e.deltaY * 0.001)); } }, { passive: false, capture: true });
 
   /* ---------- replay mode: which buses exist at the simulation time, their popup times, loading the log ---------- */
-  const HIDE_ABOVE = 60; // real-time multiple: above this a bus crosses the district in a second or two, so buses are hidden (chip says so)
-  const chip = null; // no on-screen notice: buses simply disappear above x60
+  const HIDE_ABOVE = Infinity; // buses stay visible at every speed (they just move fast when the clock does)
+  const chip = null; // no on-screen notice
   function activate(o, t) { // make o.buses match the tracks that could be on screen at time t (meshes are made when a bus is first drawn)
     const act = o.rp.active(t), ids = new Set();
     for (const [id, tr] of act) { ids.add(id); if (!o.buses.has(id)) o.buses.set(id, { track: tr, mesh: null, off: 0 }); }
