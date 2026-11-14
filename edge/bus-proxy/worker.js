@@ -79,12 +79,12 @@ export async function handle(request, env, deps) {
         const pj = await getUp(deps, env, 'patterns', { operator_id: op, line_id: line }), seqs = [];
         (function walk(o) { if (Array.isArray(o)) { if (o.length && o.every((x) => x && typeof x === 'object' && x.ScheduledStopPointRef != null)) seqs.push(o.slice().sort((a, b) => num(a.Order) - num(b.Order)).map((x) => String(x.ScheduledStopPointRef))); else o.forEach(walk); } else if (o && typeof o === 'object') Object.values(o).forEach(walk); })(pj);
         const pos = new Map(st.v.map((p) => [p[0], p])), k = Math.cos(near[0] * Math.PI / 180) * 111320, dist = (p, q) => Math.hypot((p[3] - q[1]) * k, (p[2] - q[0]) * 110540);
-        const best = new Map();
+        const best = new Map(), tr = Math.min(3000, Number(url.searchParams.get('tr')) || 400), seen = new Map();
         for (const q of seqs) {
           const P = q.map((id) => pos.get(id)); let jt = -1, dt = 1e9; P.forEach((p, i) => { if (p) { const d = dist(p, to); if (d < dt) { dt = d; jt = i; } } });
-          P.forEach((p, i) => { if (p && dist(p, near) <= rad && jt > i && dt < 400) { const m = Math.round(dist(p, near)), o = best.get(p[0]); if (!o || m < o.m) best.set(p[0], { stopCode: p[0], name: p[1], m, stopsToTop: jt - i }); } });
+          P.forEach((p, i) => { if (p) { const m0 = Math.round(dist(p, near)); if (m0 <= 1500 && (!seen.has(p[0]) || seen.get(p[0]).m > m0)) seen.set(p[0], { stopCode: p[0], name: p[1], m: m0, toTopM: Math.round(dt) }); } if (p && dist(p, near) <= rad && jt > i && dt < tr) { const m = Math.round(dist(p, near)), o = best.get(p[0]); if (!o || m < o.m) best.set(p[0], { stopCode: p[0], name: p[1], m, stopsToTop: jt - i }); } });
         }
-        return new Response(JSON.stringify({ line, patterns: seqs.length, towardTop: [...best.values()].sort((x, y) => x.m - y.m) }), { headers: H });
+        return new Response(JSON.stringify({ line, patterns: seqs.length, towardTop: [...best.values()].sort((x, y) => x.m - y.m), ...(best.size ? {} : { lineStopsNearBottom: [...seen.values()].sort((x, y) => x.m - y.m).slice(0, 8) }) }), { headers: H });
       } catch (e) { return new Response(JSON.stringify({ upstream: redact(e.message, env.API_KEY_511) }), { status: 502, headers: H }); }
     }
     if (near.length === 2 && near.every(Number.isFinite)) { // stop finder: ?near=lat,lon&r=metres lists Muni stops around a point (to pick stopCode values)
