@@ -3,7 +3,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createFog } from './fog.js';
 import { createFogVol } from './fog2.js'; // beta volumetric fog, used only with ?beta=1&fog=vol (falls back to fog.js sheets by itself)
-import { createRibbons } from './ribbons.js';
+import { createRibbons as createRibbonsPublic } from './ribbons.js';
+import { createRibbons as createRibbonsBeta } from './ribbons2.js'; // smoothed, joined, capped, tile-culled streets: beta only (?beta=1)
 import { createSkater } from './skater.js';
 import { ICON_SKATE_PLAY, ICON_FOG_PLAY, ICON_FOG_PAUSE } from './icons.js';
 
@@ -20,6 +21,7 @@ const BETA = QP.has('beta') && QP.get('beta') !== '0'; // ?beta=1: the beta prev
 const FOGV = QP.get('fog') !== 'sheets'; // volumetric fog (and the sky that lights it) for everyone; ?fog=sheets gets the old sheets back
 /* The data layers UI (beta_ui.js) is on for everyone whose public live output says it was built with the promoted settings (status.json "promoted", written by `build --promoted`).
    If the scheduled job falls back to the old settings (or DEATHFOG_LIVE_PROMOTE is false) that flag is absent and the page is exactly the old public page. ?beta=1 is unchanged. */
+const createRibbons = (o) => (BETA ? createRibbonsBeta : createRibbonsPublic)(o);
 const PROMO_P = BETA ? Promise.resolve(null) : (() => { const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 5000); return fetch('live/status.json', { cache: 'no-store', signal: ac.signal }).then((r) => (r.ok ? r.json() : null)).catch(() => null).finally(() => clearTimeout(tm)); })();
 const PST = await PROMO_P; // the public live status (small); bootLive reuses it
 const PROMO = !!(PST && PST.promoted && !BETA);
