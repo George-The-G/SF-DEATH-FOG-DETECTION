@@ -105,12 +105,17 @@ if ((FOGV && QP.get('sky') !== '0') || (BETA && QP.get('hud') === '1')) { // liv
   import('./sky.js').then((m) => m.createSky({ THREE, scene, camera, renderer, starsUrl: 'stars.bin', sky: QP.get('sky') !== '0', hud: BETA && QP.get('hud') === '1' }))
     .then((s) => { SKY = s; if (FOGV) s.setExtra(() => fog.info()); if (night) skyTime(curF); }).catch((e) => console.warn('sky unavailable', e));
 }
-/* Beta live buses (buses.js, loaded only with ?beta=1&buses=1): the two skate shuttles, bus-stop shelters with pinned arrival popups. The normal page never fetches it. */
+/* Live buses (buses.js): the two skate shuttles, bus-stop shelters with pinned arrival popups. Two ways in:
+   - beta preview: ?beta=1&buses=1 (works with no feed: simulated MOCK buses, labelled)
+   - everyone: as soon as data/bus_config.json has a feed address ("api", our Cloudflare Worker). With no address the public page does not fetch buses.js at all, and ?buses=0 turns it off. */
 let BUSES = null;
-if (BETA && QP.get('buses') === '1') {
-  import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, controls, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getTerrain: () => terrainH, getCol: () => buildingsMesh && buildingsMesh.userData.col, getG: () => G, getDist: () => camera.position.distanceTo(controls.target), QP, toast }))
-    .then((b) => { BUSES = b; }).catch((e) => console.warn('buses unavailable', e));
-}
+(async () => {
+  let on = BETA && QP.get('buses') === '1';
+  if (!on && QP.get('buses') !== '0') { try { on = !!(await getJSON('data/bus_config.json')).api; } catch (e) { on = false; } }
+  if (!on) return;
+  return import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, controls, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getTerrain: () => terrainH, getCol: () => buildingsMesh && buildingsMesh.userData.col, getG: () => G, getDist: () => camera.position.distanceTo(controls.target), QP, toast }))
+    .then((b) => { BUSES = b; });
+})().catch((e) => console.warn('buses unavailable', e));
 function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) fog.setLight(SKY.light); } }
 
 let meta = null, pts = null, terrainH = null, T = null;
