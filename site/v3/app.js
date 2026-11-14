@@ -105,7 +105,7 @@ if (BETA && (QP.get('sky') !== '0' || QP.get('hud') === '1')) { // beta default:
 /* Beta live buses (buses.js, loaded only with ?beta=1&buses=1): the two skate shuttles, bus-stop shelters with pinned arrival popups. The normal page never fetches it. */
 let BUSES = null;
 if (BETA && QP.get('buses') === '1') {
-  import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getDist: () => camera.position.distanceTo(controls.target), QP, toast }))
+  import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, controls, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getTerrain: () => terrainH, getCol: () => buildingsMesh && buildingsMesh.userData.col, getG: () => G, getDist: () => camera.position.distanceTo(controls.target), QP, toast }))
     .then((b) => { BUSES = b; }).catch((e) => console.warn('buses unavailable', e));
 }
 function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) fog.setLight(SKY.light); } }
@@ -184,7 +184,7 @@ function buildBuildings(buf) {
   const pnv = take(Uint8Array, np), pb = take(Uint16Array, np), ph = take(Uint16Array, np), pv = take(Uint16Array, nvt * 2);
 
   const lo = new THREE.Color(0x56647f), hi = new THREE.Color(0xaabcdf), col = new THREE.Color();
-  const colData = { nb, np, xyQ, hQ, wdQ, cx, cn, bw, bd, ba, pnv, pv }; // read by skate.js for building walls (beta Take control)
+  const colData = { nb, np, xyQ, hQ, wdQ, cx, cn, bw, bd, ba, pnv, pv, bb, bh, pb, ph }; // read by skate.js for building walls (beta Take control)
   const tint = (h, k) => { // taller = lighter, plus a little per-building variation
     const t = Math.pow(clamp((h - 6) / 90, 0, 1), 0.7), j = 0.9 + 0.2 * (((k * 2654435761) >>> 8) % 1000) / 1000;
     return col.copy(lo).lerp(hi, t).multiplyScalar(j);
