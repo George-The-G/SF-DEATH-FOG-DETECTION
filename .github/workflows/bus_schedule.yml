@@ -1,0 +1,55 @@
+name: bus-schedule
+
+# Rebuilds site/v3/data/bus_schedule.json (scheduled passing times of the two shuttle lines, 14 days) from the Muni GTFS feed and commits it to v3-dev.
+# The next collect run publishes it. No 511 key is needed: SFMTA publishes the schedule feed openly.
+# Run it by hand from the Actions tab, or let the weekly schedule keep the next ~10 days covered.
+on:
+  workflow_dispatch:
+    inputs:
+      gtfs_url:
+        description: "GTFS zip to read (default: the SFMTA schedule feed)"
+        default: "https://gtfs.sfmta.com/transitdata/google_transit.zip"
+  schedule:
+    - cron: "17 11 * * 1"       # Mondays, about 3-4 AM Pacific
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bus-schedule
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v3-dev
+
+      - name: Download the Muni GTFS zip
+        run: |
+          URL="${{ inputs.gtfs_url || 'https://gtfs.sfmta.com/transitdata/google_transit.zip' }}"
+          curl -fsSL --retry 3 -A "deathfog-sf bus schedule (${{ github.server_url }}/${{ github.repository }})" -o "$RUNNER_TEMP/gtfs.zip" "$URL"
+          ls -l "$RUNNER_TEMP/gtfs.zip"
+
+      - name: Build bus_schedule.json
+        run: python3 tools/make_bus_schedule.py --gtfs "$RUNNER_TEMP/gtfs.zip" --days 14
+
+      - name: Sanity check
+        run: |
+          python3 - <<'PY'
+          import json
+          d = json.load(open("site/v3/data/bus_schedule.json"))
+          n = {k: len(v.get("trips", [])) for k, v in d["lines"].items()}
+          print("trips per line:", n)
+          assert n and all(c > 20 for c in n.values()), "too few trips: wrong feed or line ids in bus_config.json"
+          PY
+
+      - name: Commit to v3-dev
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f site/v3/data/bus_schedule.json
+          if git diff --cached --quiet; then echo "no change"; else git commit -m "Refresh the bus schedule (Muni GTFS)" && git push origin HEAD:v3-dev; fi
