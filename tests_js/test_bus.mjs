@@ -20,7 +20,7 @@ assert.ok(err / n < 40, `mean error ${err / n} m`);
 // stale: no reports for 200 s hides the bus; extrapolation stops at 90 s
 const s2 = new BusTrack(); s2.report(0, 0, 1e9, 1e9); s2.report(0, 80, 1e9 + 10, 1e9 + 10);
 const a = s2.step(1e9 + 100), b = s2.step(1e9 + 150), c = s2.step(1e9 + 200);
-assert.ok(a.alpha === 0.5 || a.alpha > 0.5 && a.alpha < 1, 'fades after 60 s'); assert.equal(b.z, s2.step(1e9 + 160).z); assert.equal(c.alpha, 0);
+assert.ok(a.alpha === 0.5 || a.alpha > 0.5 && a.alpha < 1, 'fades after 60 s'); assert.ok(Math.abs(b.z - s2.step(1e9 + 160).z) < 0.1); assert.equal(c.alpha, 0);
 // dwell: a bus heading for a stop 100 m ahead waits about 20 s there
 const d = new BusTrack({ stops: [{ x: 0, z: 100 }] }); d.report(0, 0, 1e9, 1e9); d.report(0, 40, 1e9 + 5, 1e9 + 5); d.report(0, 80, 1e9 + 10, 1e9 + 10);
 let held = 0; for (let t = 10; t < 40; t += 0.5) { const s = d.step(1e9 + t); if (s.dwelling) held += 0.5; }

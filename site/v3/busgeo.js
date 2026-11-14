@@ -11,3 +11,14 @@ export function llToScene(lat, lon) {
   const Nn = K0 * (M + N * t * (a * a / 2 + (5 - T + 9 * C + 4 * C * C) * a ** 4 / 24 + (61 - 58 * T + T * T + 600 * C - 330 * EP2) * a ** 6 / 720));
   return { x: E - X0, z: -(Nn - Y0) };
 }
+/* inverse of llToScene (a few Newton steps; metre accuracy is plenty), used by the mock feed to speak lat/lon like the real one */
+export function sceneToLL(x, z) {
+  let lat = 37.76 + (-z + Y0 - 4179000) / 111200, lon = -122.44 + (x + X0 - 548500) / 88000;
+  for (let i = 0; i < 4; i++) {
+    const a = llToScene(lat, lon), b = llToScene(lat + 1e-5, lon), c = llToScene(lat, lon + 1e-5);
+    const dxdlat = (b.x - a.x) / 1e-5, dzdlat = (b.z - a.z) / 1e-5, dxdlon = (c.x - a.x) / 1e-5, dzdlon = (c.z - a.z) / 1e-5;
+    const ex = x - a.x, ez = z - a.z, det = dxdlat * dzdlon - dxdlon * dzdlat;
+    lat += (ex * dzdlon - ez * dxdlon) / det; lon += (dxdlat * ez - dzdlat * ex) / det;
+  }
+  return { lat, lon };
+}

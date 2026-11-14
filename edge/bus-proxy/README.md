@@ -14,6 +14,13 @@ A tiny always-on program that sits between the beta map page and 511. It holds y
 ## First run: check the real answer
 Open the Worker address plus `/api/buses` from the beta page's origin only (other origins get "forbidden" by design). Because the 511 field names here come from 511's documentation and could not be tested from our build environment, if `vehicles` stays empty ask for a check: the fix is in `parseVehicles` / `parseArrivals` in `worker.js` (about 10 lines).
 
+## Mock now, real later (no design change)
+The viewer only reads one JSON shape, the feed contract documented at the top of `site/v3/busfeed.js`. Two things produce it:
+- `site/v3/busmock.js` (used while `"api"` in `bus_config.json` is empty): a simulated bus day with the same fields as the real feed.
+  Try it with `?beta=1&buses=1`; a small "Mock buses" selector (bottom left) switches scenarios: normal, jumpy (bad GPS), stale, empty (no service), notok, down.
+- This Worker, once `"api"` points at it. `validateFeed` checks both, and a test runs the Worker's output through the same check.
+So going live is one line in `bus_config.json` (`"api"`), nothing else changes. `?busmock=normal` forces the mock even when `"api"` is set, for comparison.
+
 ## Safety
 - The key exists only as the Worker secret `API_KEY_511`. It is not in the code, config, logs, error messages or responses (a test checks this).
 - Only `https://george-the-g.github.io` (set in `ALLOWED_ORIGINS`) may call it.

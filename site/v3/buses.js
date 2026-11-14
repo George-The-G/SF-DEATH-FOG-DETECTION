@@ -2,11 +2,14 @@
    Per district: one Muni line (19 Polk for Potrero Hill, 66 Quintara for Sunset), a shelter at the bottom stop with a pinned
    "next bus / then" popup (busstop.js), and the line's buses drawn as small boxes that glide between the once-a-minute reports
    (busfilter.js). Data comes from our own Cloudflare Worker (edge/bus-proxy), which holds the 511 key; this page never sees a key.
-   With no worker URL set (data/bus_config.json "api", or ?busapi=URL) it runs on a built-in DEMO feed that is labelled as such.
+   The only thing it reads is the feed contract (busfeed.js). With no worker URL set (data/bus_config.json "api", or ?busapi=URL) it uses the
+   MOCK source (busmock.js), labelled as such; ?busmock=normal|jumpy|stale|empty|notok|down forces the mock and picks a scenario.
    Honest limits: positions between reports are simulated; the popup times are the feed's own predictions. */
 import { llToScene } from './busgeo.js';
-import { BusTrack } from './busfilter.js';
+import { BusTrack, PathTrack } from './busfilter.js';
 import { createStop } from './busstop.js';
+import { validateFeed, httpSource } from './busfeed.js';
+import { createMockFeed, SCENARIOS } from './busmock.js';
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const POLL_MS = 30000;
@@ -15,7 +18,7 @@ export async function createBuses({ THREE, scene, camera, canvas, EX, getJSON, g
   const cfg = await getJSON('data/bus_config.json');
   const rj = await getJSON('data/routes.json');
   const api = QP.get('busapi') || cfg.api || '';
-  const demo = !api;
+  const demo = !api || QP.has('busmock');
   const scale = () => clamp(getDist() / 450, 1, 80);
   const D = [];
   for (const d of cfg.districts) {
@@ -34,6 +37,9 @@ export async function createBuses({ THREE, scene, camera, canvas, EX, getJSON, g
     D.push({ d, R, stop, color, sx, sz, buses: new Map(), stopsXZ: (d.stops || []).map((s) => llToScene(s.lat, s.lon)) });
   }
 
+  const mock = demo ? createMockFeed({ districts: D.map((o) => ({ id: o.d.id, line: o.d.line, poly: o.R.poly, offset: o.d.mock_offset || 0, headway: o.d.mock_headway })), scenario: QP.get('busmock') || 'normal' }) : null;
+  const source = demo ? mock : httpSource(api, getJSON);
+
   /* bus meshes: one shared geometry per kind, a number badge sprite per line */
   const busGeo = new THREE.BoxGeometry(2.6, 3, 11), winGeo = new THREE.BoxGeometry(2.64, .9, 9);
   const badgeTex = (line, col) => {
@@ -50,8 +56,13 @@ export async function createBuses({ THREE, scene, camera, canvas, EX, getJSON, g
     g.userData = { mats: [mat, win.material, sp.material] }; scene.add(g); return g;
   };
 
+  /* a bus that first shows up within 40 m of the district's street polyline is tied to it (PathTrack: follows corners, dwells at the stop);
+     any other bus uses the free-space filter, which needs no map of the line */
+  for (const o of D) { o.path = new PathTrack(o.R.poly); o.stopS = o.path.proj(o.sx, o.sz).s; }
+  const newTrack = (o, p) => (o.path.proj(p.x, p.z).d < 40 ? new PathTrack(o.R.poly, { stopsS: [o.stopS] }) : new BusTrack({ stops: o.stopsXZ }));
+
   /* ---------- feed ---------- */
-  let feed = null, feedErr = 0, lastOk = 0, timer = 0;
+  let feed = null, feedOk = false, feedErr = 0, lastOk = 0, timer = 0;
   const nowS = () => Date.now() / 1000;
   function ingest(f) {
     const now = nowS(); lastOk = now; feedErr = 0;
@@ -64,23 +75,28 @@ export async function createBuses({ THREE, scene, camera, canvas, EX, getJSON, g
         if (Math.hypot(p.x - o.sx, p.z - o.sz) > (o.d.radius_m || 1000)) continue; // only buses near this district
         const id = String(v.id); seen.add(id);
         let b = o.buses.get(id);
-        if (!b) { b = { track: new BusTrack({ stops: o.stopsXZ }), mesh: mkBus(o) }; o.buses.set(id, b); }
-        b.track.report(p.x, p.z, v.t || now, now);
+        if (!b) { b = { track: newTrack(o, p), mesh: mkBus(o), off: 0 }; o.buses.set(id, b); }
+        if (b.track instanceof PathTrack) { // tied to the street while it really is on it; free-space filter otherwise
+          if (b.track.proj(p.x, p.z).d > 60) { if (++b.off >= 2) { b.track = new BusTrack({ stops: o.stopsXZ }); b.off = 0; } } else b.off = 0;
+        }
+        b.track.report(p.x, p.z, v.t || now, now, v.bearing);
       }
       const a = (f.arrivals || {})[o.d.id]; if (a) o.stop.setArrivals({ next: a.next || [], t: a.t || f.ts || now }, 'live');
     }
   }
-  async function poll() {
-    if (document.hidden) return;
+  async function poll(force) {
+    if (document.hidden && !force) return;
     try {
-      const f = demo ? demoFeed(D) : await getJSON(api, { cache: 'no-store' });
-      if (f.ok === false) throw new Error('feed not ok'); feed = f; ingest(f);
-    } catch (e) { feedErr++; if (feedErr === 3 && toast) toast('Live buses unavailable right now'); }
-    if (!demo && nowS() - lastOk > 180) for (const o of D) o.stop.setArrivals(null, 'down');
+      const f = validateFeed(await source.get(nowS()));
+      if (f.ok === false) throw new Error('feed not ok');
+      feed = f; ingest(f); feedOk = true; for (const o of D) if (!f.arrivals[o.d.id]) o.stop.setArrivals(null, 'down');
+    } catch (e) { feedErr++; feedOk = false; if (feedErr === 3 && toast) toast('Live buses unavailable right now'); }
+    if (!feedOk && (force || nowS() - lastOk > 180 || feedErr >= 3)) for (const o of D) o.stop.setArrivals(null, 'down');
   }
-  poll(); timer = setInterval(poll, POLL_MS);
+  poll(); timer = setInterval(() => poll(), POLL_MS);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
-  if (demo && toast) toast('Beta buses: DEMO data (no live feed connected)');
+  if (demo && toast) toast('Beta buses: MOCK data (no live feed connected)');
+  if (demo) mockPanel(mock, poll);
 
   /* ---------- per frame ---------- */
   function update() {
@@ -96,22 +112,14 @@ export async function createBuses({ THREE, scene, camera, canvas, EX, getJSON, g
       }
     }
   }
-  return { update, stops: D.map((o) => o.stop), dispose() { clearInterval(timer); D.forEach((o) => { o.stop.dispose(); o.buses.forEach((b) => scene.remove(b.mesh)); }); }, get demo() { return demo; } };
+  return { update, poll, mock, stops: D.map((o) => o.stop), dispose() { clearInterval(timer); D.forEach((o) => { o.stop.dispose(); o.buses.forEach((b) => scene.remove(b.mesh)); }); }, get demo() { return demo; } };
 }
 
-/* DEMO feed: two buses per line looping up the skate route's street (bottom to top) every ~4 min, reported with a little noise,
-   and a timetable that repeats every 9 and 19 minutes. Used only when no worker URL is configured. */
-function demoFeed(D) {
-  const now = Date.now() / 1000, vehicles = [], arrivals = {};
-  for (const o of D) {
-    const P = o.R.poly.slice().reverse(), cum = [0]; for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][2] - P[i - 1][2]));
-    const Ltot = cum[cum.length - 1], T = 240;
-    for (let k = 0; k < 2; k++) {
-      const tRec = now - 4, ph = ((tRec / T + k * 0.5) % 1), d = ph * Ltot; let i = 1; while (i < cum.length - 1 && cum[i] < d) i++;
-      const f = (d - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1), j = () => (Math.random() - .5) * 10;
-      vehicles.push({ id: o.d.id + k, district: o.d.id, x: P[i - 1][0] + (P[i][0] - P[i - 1][0]) * f + j(), z: P[i - 1][2] + (P[i][2] - P[i - 1][2]) * f + j(), t: tRec });
-    }
-    arrivals[o.d.id] = { t: now, next: [now + (540 - (now % 540)), now + (540 - (now % 540)) + 600] };
-  }
-  return { ok: true, ts: now, vehicles, arrivals };
+/* small beta-only selector to try the mock scenarios (only shown when the mock source is in use) */
+function mockPanel(mock, poll) {
+  const el = document.createElement('label');
+  el.style.cssText = 'position:fixed;left:8px;bottom:230px;z-index:25;font:12px Inter,system-ui,sans-serif;color:#e8eef4;background:rgba(16,24,34,.92);border:1px solid #2a3745;border-radius:8px;padding:5px 8px;display:flex;gap:6px;align-items:center';
+  el.innerHTML = 'Mock buses <select style="font:inherit;color:inherit;background:#0e141b;border:1px solid #2a3745;border-radius:5px">' + SCENARIOS.map((s) => `<option${s === mock.scenario ? ' selected' : ''}>${s}</option>`).join('') + '</select>';
+  el.querySelector('select').addEventListener('change', (e) => { mock.setScenario(e.target.value); poll(true); });
+  document.body.appendChild(el);
 }

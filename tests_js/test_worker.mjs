@@ -1,5 +1,6 @@
 // node tests_js/test_worker.mjs  (mocked 511; shapes follow 511's SIRI JSON docs and are UNVERIFIED against the live service)
 import assert from 'node:assert/strict';
+import { validateFeed } from '../site/v3/busfeed.js';
 import { handle, parseVehicles, parseArrivals } from '../edge/bus-proxy/worker.js';
 const KEY = 'SECRETKEY123', T = 1.8e9;
 const veh = '﻿' + JSON.stringify({ Siri: { ServiceDelivery: { VehicleMonitoringDelivery: { VehicleActivity: [
@@ -24,6 +25,7 @@ assert.equal((await handle(req(), env, deps)).status, 403);
 let r = await handle(req('https://ok.example'), env, deps), b = await r.json();
 assert.equal(r.headers.get('access-control-allow-origin'), 'https://ok.example'); assert.ok(b.ok); assert.equal(b.vehicles.length, 2); assert.equal(b.arrivals.potrero.next.length, 2); assert.ok(!('sunset' in b.arrivals));
 assert.ok(!JSON.stringify(b).includes(KEY), 'key leaked into the response');
+validateFeed(b); // the Worker speaks the same contract as the mock, so the viewer cannot tell them apart
 const c1 = calls; for (let i = 0; i < 20; i++) await handle(req('https://ok.example'), env, deps); assert.equal(calls, c1, '20 viewers must not cause upstream calls inside the TTL');
 now = T + 61; fail = true; r = await handle(req('https://ok.example'), env, deps); b = await r.json(); assert.ok(b.ok && b.stale, 'serves stale copy when 511 fails');
 now = T + 400; r = await handle(req('https://ok.example'), env, deps); b = await r.json(); assert.equal(b.ok, false); assert.ok(!JSON.stringify(b).includes(KEY));
