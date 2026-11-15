@@ -16,8 +16,8 @@ PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS)
 # Beta preview channel (site/v3/live_beta/, opened with /v3/?beta=1): a second build of the same fetched inputs with these settings. It is applied ONLY by `build --beta`
 # (build.run(beta=True)); the public build never reads it. Staging order (user's decision 2026-11-12): stage 1 = station anchors + clear-sky sun, stage 2 = carry_state,
 # stage 3 = film + pavement. A stage goes to the public settings above only after the user has looked at the preview and approved it.
-BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True)
-# GOES5 (multi-scale guide 07): 5-minute GOES crop store + macro frames. The beta build reads BETA.get("goes5", False): the key is absent (off) until the 24 h gate of the guide is met and George says so, then BETA["goes5"] = True.
+BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, goes5=True)
+# GOES5 (multi-scale guide 07): 5-minute GOES crop store + macro frames. The beta build reads BETA.get("goes5", False): on for beta since 2026-11-15 (George: "Deploy to beta whenever"); the 24 h gate of the guide is still to be reported. Never in PROMOTED without George.
 # WIND_EAST (guide 14): the east wind-direction fields (22.5 .. 135 deg; 157.5 is an accepted gap) feed the STREET WIND only: station-anchor wind fit and
 # the direction weights. Needs live_east.npz next to the static table; the fog tracer weight for east / offshore wind stays zero. False = the public model, bit for bit.
 # The public build reads this value; the beta build reads BETA["wind_east"] only. build.run sets it for the duration of one build (like NUDGE_ANCHORS).

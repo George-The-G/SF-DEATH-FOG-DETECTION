@@ -394,10 +394,11 @@ class TestMacro(unittest.TestCase):
 class TestSwitchOff(unittest.TestCase):
     def test_off_by_default_everywhere(self):
         self.assertFalse(C.GOES5)
-        self.assertNotIn("goes5", C.BETA)
+        self.assertTrue(C.BETA["goes5"])                      # beta only (George, 2026-11-15)
         self.assertNotIn("goes5", C.PROMOTED)
-        for beta, promoted in ((False, False), (False, True), (True, False)):
+        for beta, promoted in ((False, False), (False, True)):
             self.assertFalse(build.goes5_enabled(beta, promoted))
+        self.assertTrue(build.goes5_enabled(True))
 
     def test_switches_are_separate(self):
         saved = dict(C.BETA), C.GOES5
