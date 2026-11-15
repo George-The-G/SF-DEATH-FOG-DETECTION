@@ -11,8 +11,8 @@ def L(s): log.write(time.strftime("%H:%M:%S ")+str(s)+"\n")
 for d in dirs:
     st=f"wind_{int(round(d*10)):04d}"; f=OUT/f"{st}.npz"
     if f.exists(): continue
-    if d==270.0 and (D/"scratch/windcube_city2700_fixed.npz").exists():
-        shutil.copy(D/"scratch/windcube_city2700_fixed.npz",f); shutil.copy(D/"scratch/windcube_city2700_fixed.json",OUT/f"{st}.json"); L("270 copied"); continue
+    if d==270.0 and (D/"scratch/windcube_city2700_v2.npz").exists():
+        shutil.copy(D/"scratch/windcube_city2700_v2.npz",f); shutil.copy(D/"scratch/windcube_city2700_v2.json",OUT/f"{st}.json"); L("270 copied"); continue
     while LK.exists(): L("gpu busy, waiting"); time.sleep(120)
     LK.write_text(str(os.getpid()))
     try:
