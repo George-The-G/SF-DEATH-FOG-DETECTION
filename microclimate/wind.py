@@ -1,6 +1,8 @@
 """M2 part 1: steady mean wind for one inflow direction on the 20 m city grid (XLB, Warp backend, D3Q19, Smagorinsky LES)."""
 import json
 import math
+import shutil
+import tempfile
 import time
 from pathlib import Path
 
@@ -36,6 +38,21 @@ def near_ground_mean(speed, solid, layers_above=2):
 
 def run(solid, direction_deg, steps=40000, avg_steps=8000, avg_every=100, omega=1.95, log=print, check_every=1000):
     """Returns mean velocity ratio field u/U_in as float16 [3, nx, ny, nz] (x east, y north, z up) and diagnostics."""
+    nx, ny, nz = solid.shape
+    # Warp's on-disk kernel cache keys the XLB stepper module by a hash that does not see which boundary-condition functions the
+    # kernel was built with. A cached stepper from an earlier run with a different BC set (any test, bench or other script) is
+    # silently reused, and then the HalfwayBounceBack wall nodes keep their initial free-stream state: no walls, no wakes (a
+    # single cube leaves a 3 % lee deficit; the 20 m wind library has near-ground ratios of 1.006). So every run compiles into
+    # its own empty cache directory (about 30 s). Checked by tests_mc/test_wind_walls.py.
+    kdir = tempfile.mkdtemp(prefix="warp_wind_")
+    wp.config.kernel_cache_dir = kdir
+    try:
+        return _run(solid, direction_deg, steps, avg_steps, avg_every, omega, log, check_every)
+    finally:
+        shutil.rmtree(kdir, ignore_errors=True)
+
+
+def _run(solid, direction_deg, steps, avg_steps, avg_every, omega, log, check_every):
     nx, ny, nz = solid.shape
     prec = PrecisionPolicy.FP32FP32
     be = ComputeBackend.WARP
