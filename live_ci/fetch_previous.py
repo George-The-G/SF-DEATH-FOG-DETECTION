@@ -27,6 +27,10 @@ if EXTRAS:
     fl = (idx.get("film") or {}).get("files") or {}
     for v in fl.values():
         names += list(v)
+    # multi-scale guide 03/05: the 3D fog atlases named in index.json fog3d.files (null = no file for that hour) only this exact name shape (a name from the remote index is never used as a path otherwise)
+    import re
+    f3 = idx.get("fog3d") or {}
+    names += [n for n in (f3.get("files") or []) if n and re.fullmatch(r"fog3d_\d{3}\.png", n)]
 names = [n for n in dict.fromkeys(names) if n]
 tmp = Path(tempfile.mkdtemp())
 try:
@@ -42,7 +46,7 @@ for n in names:
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"fetched {len(names)} files of the previous live output")
 # Beta channel: stations.json and the rolling GOES sunlight cache (dsr_cache.json) are carried too, best effort.
-for n in (("stations.json", "dsr_cache.json") if EXTRAS else ()):
+for n in (("stations.json", "dsr_cache.json", "fog_base_dbg.png") if EXTRAS else ()):   # fog_base_dbg.png: guide 05 debug picture, best effort
     try:
         (out / n).write_bytes(get(n))
         print("fetched", n)
