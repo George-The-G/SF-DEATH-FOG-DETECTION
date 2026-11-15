@@ -30,7 +30,7 @@ Speed ratio at k cells above the highest solid cell of each column, 5th / 50th /
 Domain-mean ratio at 60 / 120 / 200 / 400 m above sea level: old 1.01 / 1.03 / 1.05 / 1.01, fixed 0.22 / 0.37 / 0.57 / 0.93. The diagnostic `mean_speed_ratio_near_ground` goes from 1.003 to 0.164. All 16 library directions have 1.006 to 1.008, so all of them were computed with the stale kernel.
 
 ## Fix (in this branch)
-`microclimate/wind.py`: `run()` points `wp.config.kernel_cache_dir` at an empty temporary folder for the run and deletes it afterwards (a fresh compile costs about 10 s here). `cache_kernels = False` alone did not help. `tests_mc/test_wind_walls.py`: 12-cell cube, 3 s on the GPU; passes with the fix and fails without it (checked).
+`microclimate/wind.py`: `run()` points `wp.config.kernel_cache_dir` at an empty temporary folder for the run and deletes it afterwards (the fresh compile adds only a few seconds here). `cache_kernels = False` alone did not help. `tests_mc/test_wind_walls.py`: 12-cell cube, 3 s on the GPU; passes with the fix and fails without it (checked).
 
 ## What this means before anyone acts on it
 - The whole wind library (16 directions) and everything built from it (fog tracer bands, street wind, the 5 m spike comparison) used fields with no walls. The fixed field is strongly sheltered at street level (median 0.04 to 0.10 at 30 to 50 m above roofs) because the inflow is uniform, so the city builds its own boundary layer over about 17 km. Whether those magnitudes are right is not shown here: there is no validation against station wind yet, and any calibration that was tuned on the old near-uniform field needs a look.

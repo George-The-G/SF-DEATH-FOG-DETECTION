@@ -43,7 +43,7 @@ def run(solid, direction_deg, steps=40000, avg_steps=8000, avg_every=100, omega=
     # kernel was built with. A cached stepper from an earlier run with a different BC set (any test, bench or other script) is
     # silently reused, and then the HalfwayBounceBack wall nodes keep their initial free-stream state: no walls, no wakes (a
     # single cube leaves a 3 % lee deficit; the 20 m wind library has near-ground ratios of 1.006). So every run compiles into
-    # its own empty cache directory (about 30 s). Checked by tests_mc/test_wind_walls.py.
+    # its own empty cache directory (a few seconds). Checked by tests_mc/test_wind_walls.py.
     kdir = tempfile.mkdtemp(prefix="warp_wind_")
     wp.config.kernel_cache_dir = kdir
     try:
