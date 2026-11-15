@@ -7,6 +7,7 @@
    No wall clock is used in here; everything takes the time to draw as an argument. */
 import { llToScene } from './busgeo.js';
 
+export const SCHED_ON_M = 150; // scheduled stops sit on the real bus street, which can run up to ~100 m beside the skate polyline; a looser cut keeps enough of them per trip
 export const ON_ROUTE_M = 60;   // a report farther than this from the street polyline is "not on the street"
 const GPS_NEAR = 150;           // s: estimates are used only inside gaps between GPS points longer than this
 const MAX_GPS_GAP = 240;        // s: GPS points farther apart than this are not joined (the bus may have left the street)
@@ -143,7 +144,7 @@ export class BusReplay {
     this.trips = []; this.ghosts.clear();
     for (const T of trips || []) {
       const pts = [];
-      for (const [t, lat, lon] of T.p || T.pts || []) { const g = llToScene(lat, lon), pr = this.path.proj(g.x, g.z); if (pr.d < ON_ROUTE_M) pts.push({ t, s: pr.s }); }
+      for (const [t, lat, lon] of T.p || T.pts || []) { const g = llToScene(lat, lon), pr = this.path.proj(g.x, g.z); if (pr.d < SCHED_ON_M) pts.push({ t, s: pr.s }); }
       pts.sort((a, b) => a.t - b.t); if (pts.length < 2) continue;
       this.trips.push(new Trip(String(T.id), pts));
     }
