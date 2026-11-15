@@ -417,8 +417,8 @@ class TestSwitchOff(unittest.TestCase):
             C.GOES5 = saved[1]
 
     def test_settings_dicts_do_not_change(self):
-        self.assertEqual(sorted(build.settings(False)), ["carry_state", "nudge_anchors", "physics", "wind_east"])
-        self.assertEqual(sorted(build.settings(True)), ["carry_state", "nudge_anchors", "physics", "wind_east"])
+        self.assertEqual(sorted(build.settings(False)), ["carry_state", "nudge_anchors", "physics", "top_fusion", "wind_east"])
+        self.assertEqual(sorted(build.settings(True)), ["carry_state", "nudge_anchors", "physics", "top_fusion", "wind_east"])
 
     def test_build_hook_makes_no_download_and_no_files_when_off(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(goes, "download", side_effect=AssertionError("download")), \

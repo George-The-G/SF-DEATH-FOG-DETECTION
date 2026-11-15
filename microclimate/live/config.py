@@ -16,7 +16,7 @@ PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS)
 # Beta preview channel (site/v3/live_beta/, opened with /v3/?beta=1): a second build of the same fetched inputs with these settings. It is applied ONLY by `build --beta`
 # (build.run(beta=True)); the public build never reads it. Staging order (user's decision 2026-11-12): stage 1 = station anchors + clear-sky sun, stage 2 = carry_state,
 # stage 3 = film + pavement. A stage goes to the public settings above only after the user has looked at the preview and approved it.
-BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, goes5=True, fog3d=True, fog_base=True, urban_lift=False)
+BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, goes5=True, fog3d=True, fog_base=True, urban_lift=False, top_fusion=True)
 # GOES5 (multi-scale guide 07): 5-minute GOES crop store + macro frames. The beta build reads BETA.get("goes5", False): on for beta since 2026-11-15 (George: "Deploy to beta whenever"); the 24 h gate of the guide is still to be reported. Never in PROMOTED without George.
 # WIND_EAST (guide 14): the east wind-direction fields (22.5 .. 135 deg; 157.5 is an accepted gap) feed the STREET WIND only: station-anchor wind fit and
 # the direction weights. Needs live_east.npz next to the static table; the fog tracer weight for east / offshore wind stays zero. False = the public model, bit for bit.
@@ -104,6 +104,16 @@ BOX_NEAR_KM, BOX_FAR_KM, SECTOR_HALF_DEG = 2.0, 15.0, 22.5   # upwind sector (of
 COAST_REF = (37.760, -122.510)       # Ocean Beach: the sector is laid out from here
 CLEAR_MAX_OPACITY = 0.30             # fog sheet cells where GOES says clear (observed hours) get at most this opacity
 FOG_TOP_ABOVE_CEILING_M = 100.0
+# ---- fog top fusion (guide 06, switch TOP_FUSION; all first guesses) ----
+TOP_FUSION = False                    # True: the fog top is a Kalman-filtered, RTS-smoothed fusion of model profile, sounding, ceiling and GOES top with an error bar (build.run sets it per build from BETA["top_fusion"]); False = the old override/floor code, bit for bit
+TF_SIGMA_MODEL_M, TF_SIGMA_MODEL_BAD_M = 120.0, 250.0   # model profile top: normal / fallback, floor or cap hit
+TF_SIGMA_SND_M, TF_SND_PER_H_M, TF_SND_MAX_H = 50.0, 30.0, 9.0   # sounding inversion base: sigma at the valid time, growth per hour away, unused beyond
+TF_SIGMA_CEIL_M, STRATUS_THICK_M = 120.0, 250.0         # ceiling + typical marine stratus depth is a top observation
+TF_CEIL_LOWER_M = 30.0                # the top is never below ceiling + this
+TF_SIGMA_GOES_M, TF_GOES_MIN_PIX = 250.0, 5   # GOES ACHA low-cloud top (coarse, biased): weight low; pixels needed
+TF_P0_M, TF_Q_M = 150.0, 60.0         # start sd of the top; random-walk sd per hour
+TF_GATE_SIGMA = 3.0                   # an observation farther than this many sd from the state is skipped and counted
+TF_COAST_BOX = (-122.56, 37.70, -122.46, 37.80)   # lon0, lat0, lon1, lat1 around Ocean Beach, for the GOES top
 SOUNDING_VALID_H = 6.0               # a sounding overrides the RRFS fog top for this long after its valid time, then fades out over the next 6 h
 INV_RISE_C = 1.0                     # inversion: temperature rises by at least this within INV_DEPTH_M above its base
 INV_DEPTH_M = 300.0

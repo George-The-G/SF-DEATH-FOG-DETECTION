@@ -343,6 +343,17 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
     if hlc is not None:
         top = np.maximum(top, cf)
     top = np.minimum(top, wetness.FOG_TOP_MAX_M + 400.0)
+    top_x = {}
+    if C.TOP_FUSION:   # guide 06: replaces the series above by the fused one (the old path above ran unchanged, its numbers go to info for the compare report)
+        top_old = top
+        top, top_sd, tf_info = fuse_fog_top(ser, snd, mt, goes_hours, t0, t_h, g, hg, nh, log)
+        top_x = dict(fog_top_sigma=top_sd)
+        tf_info["stuck_old"] = _stuck_share(top_old, ser["elevation_m"])
+        tf_info["stuck_new"] = _stuck_share(top, ser["elevation_m"])
+        tf_info["mean_abs_change_m"] = float(np.mean(np.abs(top - top_old)))
+        tf_info["max_abs_change_m"] = float(np.max(np.abs(top - top_old)))
+        info["top_fusion"] = tf_info
+        info["fog_top_source"] = "fusion"
 
     # --- cloud base correction (guide 08): hourly offset of the T - Td formula from the airport ceilings
     cb_off = None
@@ -419,7 +430,7 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
     info["obs_until"] = None if obs_until is None else obs_until.isoformat()
     info["coast_lattice_points"] = int(west.sum())
     return dict(ser=ser, s_series=s_series, fog_top=top, forcing_fn=forcing_fn, info=info, s_model=s_model, obs_until=obs_until,
-                dir_hourly=dir_h, lattice_cl=CL, goes_frac=goes_frac, khaf=khaf, t_hours=t_h, idx=idx, w=w4, lattice=lat_t, **sun_out, **pav_out, **base_lat, **extra)
+                dir_hourly=dir_h, lattice_cl=CL, goes_frac=goes_frac, khaf=khaf, t_hours=t_h, idx=idx, w=w4, lattice=lat_t, **sun_out, **pav_out, **base_lat, **extra, **top_x)
 
 
 def base_offset_hourly(mt, t_h, nh, info):
@@ -641,6 +652,64 @@ def sites(obs, kind):
         if rows and st in C.NWS_STATIONS:
             out.append((st, *C.NWS_STATIONS[st], [r["t"] for r in rows], [r["temp" if kind == "T" else "dewp"] for r in rows]))
     return out
+
+
+def _stuck_share(top, elev):
+    """Share of the model steps whose top sits at the floor (grid elevation + FOG_TOP_MIN_M) or at the model cap (FOG_TOP_MAX_M)."""
+    top = np.asarray(top, float)
+    return float(np.mean((top <= elev + wetness.FOG_TOP_MIN_M + 1.0) | (top >= wetness.FOG_TOP_MAX_M - 1.0)))
+
+
+def fuse_fog_top(ser, snd, mt, goes_hours, t0, t_h, g, hg, nh, log=print):
+    """Guide 06: fog top series [len(g)] m ASL, its sd, and an info dict, from the model profile, the sounding inversion base, the airport ceilings and the GOES top."""
+    from . import topfusion
+    nan = np.full(nh, np.nan)
+    elev = ser["elevation_m"]
+    floor = elev + wetness.FOG_TOP_MIN_M
+    top_m, tinfo = fogtop.estimate_fog_top(ser)
+    zmod = np.interp(hg, g, np.asarray(top_m, float))
+    bad = np.full(nh, tinfo.get("source") != "profile") | (zmod <= floor + 1e-6) | (zmod >= wetness.FOG_TOP_MAX_M - 1e-6)
+    obs = {"model": (zmod, np.where(bad, C.TF_SIGMA_MODEL_BAD_M, C.TF_SIGMA_MODEL_M))}
+    info = dict(model_bad_hours=int(bad.sum()))
+    # sounding: inversion base, sigma grows with the distance from its valid time
+    zs, ss = nan.copy(), nan.copy()
+    if snd is not None:
+        base = _inv(snd)
+        if base is not None:
+            tv = (snd["valid"] - t0).total_seconds() / 3600.0
+            dh = np.abs(hg - tv)
+            ok = dh <= C.TF_SND_MAX_H
+            zs[ok], ss[ok] = base, C.TF_SIGMA_SND_M + C.TF_SND_PER_H_M * dh[ok]
+    obs["sounding"] = (zs, ss)
+    # ceiling: highest valid ceiling of KHAF / KSFO (<= 3000 ft) + stratus depth; also a hard lower bound
+    zc, sc, lower = nan.copy(), nan.copy(), nan.copy()
+    for k in range(nh):
+        cl = []
+        for st_ in ("KHAF", "KSFO"):
+            for x_ in ((mt or {}).get(st_, []) or []):
+                if abs((x_["t"] - t_h[k]).total_seconds()) <= 1800 and np.isfinite(x_["ceil_ft"]) and x_["ceil_ft"] <= 3000:
+                    cl.append(x_["ceil_ft"] * 0.3048 + C.METAR_ELEV_M.get(st_, 0.0))
+        if cl:
+            zc[k], sc[k] = max(cl) + C.STRATUS_THICK_M, C.TF_SIGMA_CEIL_M
+            lower[k] = max(cl) + C.TF_CEIL_LOWER_M
+    obs["ceiling"] = (zc, sc)
+    # GOES top: median ACHA height of the low-cloud pixels in the upwind and coast boxes
+    zg, sg = nan.copy(), nan.copy()
+    for k in range(nh):
+        lc = (goes_hours or {}).get(t_h[k])
+        if lc is not None and getattr(lc, "ht", None) is not None:
+            try:
+                v = lc.low_top_median([C.UPWIND_BOX, C.TF_COAST_BOX], C.TF_GOES_MIN_PIX)
+            except Exception as e:  # noqa: BLE001
+                log(f"goes top {t_h[k]:%Y-%m-%d %H}Z: {e!r}")
+                continue
+            if np.isfinite(v):
+                zg[k], sg[k] = v, C.TF_SIGMA_GOES_M
+    obs["goes"] = (zg, sg)
+    zh, sd_h, finfo = topfusion.fuse(obs, lower=lower)
+    zh = np.clip(zh, floor, wetness.FOG_TOP_MAX_M + 400.0)        # the existing floor and cap last (a ceiling bound above the cap stays capped as today)
+    info.update(finfo)
+    return np.interp(g, hg, zh), np.interp(g, hg, sd_h), info
 
 
 def _inv(snd):

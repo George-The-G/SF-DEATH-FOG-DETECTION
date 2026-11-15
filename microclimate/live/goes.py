@@ -136,6 +136,7 @@ class LowCloud:
         acm, ht = cr["acm"], cr["ht"]
         self.t = cr["t"]
         self.nav, self.x, self.y = cr["nav"], cr["x"], cr["y"]
+        self.ht = ht                     # cloud top height (m, NaN = none), fusion of the fog top (guide 06)
         self.acm = np.asarray(acm)       # clear sky mask classes 0..3 (255 = none): the cloudiness factor of guide 06 is taken from them
         cloudy = (acm == 2) | (acm == 3)
         self.valid = acm != 255
@@ -200,6 +201,16 @@ class LowCloud:
         low = np.asarray(self.low)[m][v] >= 0.5
         cloudy = np.asarray(self.cloudy)[m][v] >= 0.5
         return float(low.mean()), float((cloudy & ~low).mean()), nv / n
+
+    def low_top_median(self, boxes, min_pix=5):
+        """Median ACHA top height (m) of the low-cloud pixels inside the lon/lat boxes (lon0, lat0, lon1, lat1), or NaN with fewer than min_pix pixels."""
+        lon, lat = self.pixel_lonlat()
+        m = np.zeros(lon.shape, bool)
+        for b in boxes:
+            m |= (lon >= b[0]) & (lon <= b[2]) & (lat >= b[1]) & (lat <= b[3])
+        m &= np.asarray(self.low) >= 0.5
+        m &= np.isfinite(self.ht)
+        return float(np.median(self.ht[m])) if int(m.sum()) >= min_pix else float("nan")
 
     def sector_fraction(self, wind_from_deg):
         """Mean low-cloud flag in the upwind sector 2-15 km off the coast reference point, wind-from direction +- 22.5 deg."""
