@@ -424,7 +424,7 @@ class TestSwitchOff(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(goes, "download", side_effect=AssertionError("download")), \
                 mock.patch.object(goes, "_list_keys", side_effect=AssertionError("list")), mock.patch.object(goes5, "run", side_effect=AssertionError("goes5.run")):
             # the hook in build.run is guarded by goes5_enabled(); with it off nothing of goes5 is called and nothing is written
-            if build.goes5_enabled(True, False):
+            if build.goes5_enabled(False, False):    # the public build (beta is on since 2026-11-15)
                 goes5.run(tmp, T0)
             self.assertEqual(list(Path(tmp).iterdir()), [])
 
