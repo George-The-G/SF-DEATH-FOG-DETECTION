@@ -132,6 +132,8 @@ def check(cfg, lib_dir, grids_dir, report_dir, tol=0.01, directions=None):
             tot = sum(new)
             r["d_full_column_maxerr"] = [float(np.abs(tot[i, :, :][fluid[i, :, :]] - 1).max()) for i in (2, 3, 4, 5)]
             d_ok = max(r["d_full_column_maxerr"]) <= 0.02
+            # info only: the strict gate above includes k=0 (ground deposition) and the top 3 levels (the k=39 lid is forced to 0 and diffuses down)
+            r["d_interior_k1_36_maxerr"] = [float(np.abs(tot[i, :, 1:37][fluid[i, :, 1:37]] - 1).max()) for i in (2, 3, 4, 5)]
         r["pass"] = bool(r["a_range_ok"] and r["b_drift_ok"] and all(v["ok"] for v in r["c_nesting"].values()) and d_ok)
         res["pass"] &= r["pass"]
         res["directions"][str(d)] = r
