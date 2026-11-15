@@ -11,6 +11,7 @@ import warp as wp
 import xlb
 from scipy.ndimage import binary_erosion
 from xlb.compute_backend import ComputeBackend
+from .slipbc import SlipFloorBC
 from xlb.grid import grid_factory
 from xlb.operator.boundary_condition import (EquilibriumBC, ExtrapolationOutflowBC, FullwayBounceBackBC, HalfwayBounceBackBC, RegularizedBC)
 from xlb.operator.macroscopic import Macroscopic
@@ -36,7 +37,7 @@ def near_ground_mean(speed, solid, layers_above=2):
     return float(speed[ii, jj, kk[ii, jj]].mean())
 
 
-def run(solid, direction_deg, steps=40000, avg_steps=8000, avg_every=100, omega=1.95, log=print, check_every=1000):
+def run(solid, direction_deg, steps=40000, avg_steps=8000, avg_every=100, omega=1.95, log=print, check_every=1000, sea_slip=False):
     """Returns mean velocity ratio field u/U_in as float16 [3, nx, ny, nz] (x east, y north, z up) and diagnostics."""
     nx, ny, nz = solid.shape
     # Warp's on-disk kernel cache keys the XLB stepper module by a hash that does not see which boundary-condition functions the
@@ -47,12 +48,12 @@ def run(solid, direction_deg, steps=40000, avg_steps=8000, avg_every=100, omega=
     kdir = tempfile.mkdtemp(prefix="warp_wind_")
     wp.config.kernel_cache_dir = kdir
     try:
-        return _run(solid, direction_deg, steps, avg_steps, avg_every, omega, log, check_every)
+        return _run(solid, direction_deg, steps, avg_steps, avg_every, omega, log, check_every, sea_slip)
     finally:
         shutil.rmtree(kdir, ignore_errors=True)
 
 
-def _run(solid, direction_deg, steps, avg_steps, avg_every, omega, log, check_every):
+def _run(solid, direction_deg, steps, avg_steps, avg_every, omega, log, check_every, sea_slip=False):
     nx, ny, nz = solid.shape
     prec = PrecisionPolicy.FP32FP32
     be = ComputeBackend.WARP
@@ -66,7 +67,8 @@ def _run(solid, direction_deg, steps, avg_steps, avg_every, omega, log, check_ev
     th = math.radians(direction_deg)
     ux, uy = -math.sin(th) * U_LAT, -math.cos(th) * U_LAT  # wind FROM direction -> flow vector
     solid = solid.copy()
-    solid[:, :, 0] = True  # ground / sea surface as a no-slip floor
+    sea = (~solid[:, :, 1:4].any(axis=2)) if sea_slip else np.zeros(solid.shape[:2], bool)  # columns with nothing above the floor: open sea
+    solid[:, :, 0] = True  # ground / sea surface as a no-slip floor (free-slip over open sea when sea_slip)
 
     interior = {}
     box = np.zeros((nx, ny, nz), bool)
@@ -107,11 +109,16 @@ def _run(solid, direction_deg, steps, avg_steps, avg_every, omega, log, check_ev
     shell = solid & ~binary_erosion(solid, structure=np.ones((3, 3, 3), bool), border_value=1)
     shell &= ~(in_mask | out_mask | far_mask | edges)
     wall_cells = shell | (edges & ~in_mask & ~far_mask)
-    bcs = [FullwayBounceBackBC(indices=idx_list(wall_cells & ~shell)),
+    floor_slip = np.zeros_like(box)
+    if sea_slip:
+        floor_slip[:, :, 0] = sea
+        floor_slip &= ~(in_mask | out_mask | far_mask | edges)
+        shell = shell & ~floor_slip
+    bcs = [FullwayBounceBackBC(indices=idx_list(wall_cells & ~shell & ~floor_slip)),
            RegularizedBC("velocity", prescribed_value=(ux, uy, 0.0), indices=idx_list(in_mask & ~solid)),
            ExtrapolationOutflowBC(indices=idx_list(out_mask & ~solid)),
            EquilibriumBC(1.0, (ux, uy, 0.0), indices=idx_list(far_mask & ~solid)),
-           HalfwayBounceBackBC(indices=idx_list(shell))]
+           HalfwayBounceBackBC(indices=idx_list(shell))] + ([SlipFloorBC(indices=idx_list(floor_slip))] if floor_slip.any() else [])
     stepper = IncompressibleNavierStokesStepper(grid=grid, boundary_conditions=bcs, collision_type="SmagorinskyLESBGK")
     f0, f1, bc_mask, missing = stepper.prepare_fields()
     macro = Macroscopic(compute_backend=be, precision_policy=prec, velocity_set=vs)
