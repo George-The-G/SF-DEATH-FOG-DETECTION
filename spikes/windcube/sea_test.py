@@ -5,7 +5,7 @@ LK='C:/Users/George/deathfog-data/library/runs/gpu.lock'
 assert not os.path.exists(LK); open(LK,'w').write(str(os.getpid()))
 try:
     s=np.zeros((int(os.environ.get("NX","600")),int(os.environ.get("NY","40")),int(os.environ.get("NZ","40"))),bool)
-    u,d=wind.run(s,270,steps=int(os.environ.get("STEPS","30000")),avg_steps=int(os.environ.get("AVG","6000")),sea_slip=slip,log=print)
+    u,d=wind.run(s,270,steps=int(os.environ.get("STEPS","30000")),avg_steps=int(os.environ.get("AVG","6000")),sea_slip=slip,box_slip=os.environ.get("BOXSLIP")=="1",outlet=os.environ.get("OUTLET","extrap"),log=print)
 finally: os.remove(LK)
 print(sys.argv[1],d["nan"])
 u=u.astype(float); sp=np.sqrt((u[:2,:,u.shape[2]//2]**2).sum(0))

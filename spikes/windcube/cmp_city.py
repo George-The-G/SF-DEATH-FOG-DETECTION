@@ -1,7 +1,7 @@
 import numpy as np
 solid=np.load("C:/Users/George/deathfog-data/grids/solid_20m.npz")["solid"]
 old=np.load("C:/Users/George/deathfog-data/library/wind_2700.npz")["u"].astype(np.float32)
-new=np.load("C:/Users/George/deathfog-data/scratch/windcube_city2700_fixed.npz")["u"].astype(np.float32)
+new=np.load("C:/Users/George/deathfog-data/scratch/windcube_city2700_v2.npz")["u"].astype(np.float32)
 nx,ny,nz=solid.shape; print("grid",solid.shape)
 top=nz-1-np.argmax(solid[:,:,::-1],axis=2)
 ii,jj=np.meshgrid(np.arange(nx),np.arange(ny),indexing="ij")

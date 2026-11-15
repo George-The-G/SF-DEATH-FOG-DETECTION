@@ -35,3 +35,17 @@ def test_cube_has_wake_and_stagnation():
     k = 1 + H // 2
     assert ux[x0 - H // 4, yc, k] < 0.7, "no stagnation in front of the cube"
     assert ux[x0 + H + 1:x0 + 4 * H, yc, k].min() < -0.05, "no reversed flow in the lee"
+
+
+@pytest.mark.skipif(not _gpu_ok(), reason="needs a free GPU")
+def test_empty_sea_keeps_its_speed_over_fetch():
+    """Empty water, free-slip floor, fixed-pressure outlet: speed at 30 m stays within 15 % of the inflow over 8 km (the zero-gradient
+    outlet plus no-slip sea gave 0.13 at 6 km)."""
+    from microclimate import wind
+    LOCK.write_text(str(os.getpid()))
+    try:
+        u, _ = wind.run(np.zeros((300, 60, 40), bool), 270, steps=15000, avg_steps=4000, log=lambda *a: None)
+    finally:
+        LOCK.unlink()
+    sp = np.sqrt((u[:2, :, 30, 1].astype(float) ** 2).sum(0))
+    assert sp[50:280].min() > 0.75 and sp[50:280].max() < 1.1

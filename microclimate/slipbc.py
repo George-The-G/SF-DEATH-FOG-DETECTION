@@ -8,8 +8,10 @@ import warp as wp
 from xlb.operator.boundary_condition import HalfwayBounceBackBC
 
 
-class SlipFloorBC(HalfwayBounceBackBC):
-    def __init__(self, indices=None):
+class SlipWallBC(HalfwayBounceBackBC):
+    """axis = 0, 1, 2: the component of the lattice velocity that is mirrored (normal of the wall)."""
+    def __init__(self, indices=None, axis=2):
+        self.axis = axis
         super().__init__(indices=indices)
 
     def _construct_warp(self):
@@ -17,7 +19,7 @@ class SlipFloorBC(HalfwayBounceBackBC):
         q = c.shape[1]
         mir = []
         for l in range(q):
-            t = (c[0, l], c[1, l], -c[2, l])
+            t = tuple(-c[a, l] if a == self.axis else c[a, l] for a in range(3))
             mir.append(next(m for m in range(q) if (c[0, m], c[1, m], c[2, m]) == t))
         _mir = wp.constant(wp.types.vector(length=q, dtype=wp.int32)(mir))
         _q = q
@@ -36,3 +38,8 @@ class SlipFloorBC(HalfwayBounceBackBC):
 
         kernel = self._construct_kernel(functional)
         return functional, kernel
+
+
+class SlipFloorBC(SlipWallBC):
+    def __init__(self, indices=None):
+        super().__init__(indices=indices, axis=2)

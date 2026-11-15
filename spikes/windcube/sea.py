@@ -1,7 +1,7 @@
 import json, numpy as np
 from pathlib import Path
 D=Path("C:/Users/George/deathfog-data"); spec=json.load(open(D/"grids/grid_spec.json")); solid=np.load(D/"grids/solid_20m.npz")["solid"]
-new=np.load(D/"library_walls/wind_2700.npz")["u"].astype(np.float32); old=np.load(D/"library/wind_2700.npz")["u"].astype(np.float32)
+new=np.load(D/"scratch/windcube_city2700_v2.npz")["u"].astype(np.float32); old=np.load(D/"library/wind_2700.npz")["u"].astype(np.float32)
 nx,ny,nz=solid.shape; print(solid.shape,spec["cell_m"])
 sea=(solid[:,:,1:4].sum(2)==0)   # open columns: no terrain in the lowest layers
 for xi in (20,60,150,300):
