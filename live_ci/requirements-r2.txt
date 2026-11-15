@@ -1,0 +1,1 @@
+boto3==1.40.0   # R2 uploader only (live_ci/r2_sync.py, multi-scale guide 10 part B); NOT in requirements-live.txt until R2 is switched on

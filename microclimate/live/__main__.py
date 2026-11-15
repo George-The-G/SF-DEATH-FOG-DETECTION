@@ -13,6 +13,7 @@
   stationwind [--data DIR] [--out FILE]                                offline (PC with the wind library): simulated wind vectors at the in-grid stations -> station_wind.npz (guide 03)
   tracer3d [--data DIR] [--out FILE] [--check]                         offline (PC with the tracer library): pack the 99 fog3d fields -> live_tracer3d.npz (guide 02)
   check   [--since 30d] [--out DIR]                                    compare the model with METAR / GOES / CO-OPS (section 7); guide 03: leave-one-station-out table
+  backup  [--data DIR] [--stale-min 30] [--force] [--dry-run]          PC backup (guide 10): if the published data is stale, build here (CPU only) and publish to R2 backup/ (never to git)
   cloudscore [--file cloud_score.json] [--since 14d] [--archive DIR]   print the satellite cloud score summary (guide 04)
 """
 import sys
@@ -67,6 +68,9 @@ def main(argv):
     elif cmd == "cloudscore":
         from . import cloud_score
         sys.exit(cloud_score.run_cli(argv[1:]))
+    elif cmd == "backup":
+        from . import backup
+        sys.exit(backup.run(argv[1:]))
     else:
         print(__doc__)
 
