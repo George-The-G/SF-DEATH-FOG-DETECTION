@@ -152,6 +152,17 @@ def fog3d_enabled(beta=False, promoted=False):
     return bool(C.BETA.get("fog3d", False)) if beta else (bool(C.FOG3D) and not promoted)
 
 
+def fog_base_switches(beta=False, promoted=False):
+    """(fog_base, urban_lift) of this build (multi-scale guide 05), read like fog3d_enabled. urban_lift without fog_base is an error (the lift moves the cloud floor)."""
+    if beta:
+        fb, ul = bool(C.BETA.get("fog_base", False)), bool(C.BETA.get("urban_lift", False))
+    else:
+        fb, ul = bool(C.FOG_BASE) and not promoted, bool(C.URBAN_LIFT) and not promoted
+    if ul and not fb:
+        raise ValueError("urban_lift needs fog_base: the urban heat lifts the cloud floor")
+    return fb, ul
+
+
 def goes5_enabled(beta=False, promoted=False):
     """The goes5 switch (multi-scale guide 07): BETA["goes5"] for the beta build (absent = off), C.GOES5 for the public build (never in a promoted build). Both off today."""
     return bool(C.BETA.get("goes5", False)) if beta else (bool(C.GOES5) and not promoted)
@@ -307,6 +318,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     east_on = bool(east_info and east_info.get("applied"))
     # ---- 3D fog (guide 03): only when the switch is on AND live_tracer3d.npz fits this static table; otherwise no 3D files (noted in the status)
     fog3d_pack, fog3d_info = None, None
+    fb_on, ul_on = fog_base_switches(beta, promoted)
     if fog3d_enabled(beta, promoted):
         from . import fog3d as _fog3d
         T3, fog3d_info = _fog3d.load(static.parent / C.FOG3D_FILE, S.get("dirs"))
@@ -371,7 +383,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     # ---- outputs
     cs_hook = cloud_score.Hook()
     try:
-        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log, tiles_cb=cs_hook.tiles_cb, fog3d=fog3d_pack)
+        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log, tiles_cb=cs_hook.tiles_cb, fog3d=fog3d_pack, fogbase=(dict(urban=ul_on) if (fog3d_pack and fb_on) else None))
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"writing outputs failed: {e!r}")
@@ -456,7 +468,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
         if east_info is not None:
             status["wind_east"] = east_info
         if fog3d_info is not None:
-            status["fog3d"] = dict(fog3d_info, bytes_written=(meta.get("fog3d_bytes") if meta else None))
+            status["fog3d"] = dict(fog3d_info, bytes_written=(meta.get("fog3d_bytes") if meta else None), base=(meta.get("fog3d_base") if meta else None))
         if dsr_stats is not None:
             status["dsr"] = dsr_stats
     (out / "status.json").write_text(json.dumps(status, indent=1, default=str))

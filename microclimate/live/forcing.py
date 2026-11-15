@@ -399,6 +399,9 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
         if "drizzle" in info["physics"]:   # guide 11
             drz = drizzle_series(mt, t_h, nh, g, wetness.drizzle_rate(np.maximum(top - cb_coast, 0.0), cCL), info)
         sun_out = dict(sun_out, cloud_base_coast=cb_coast.astype(np.float32))
+    base_lat = {}
+    if cb_on:   # guide 05: the lattice pieces of the cloud base for the tile grid (read only by live.fogbase)
+        base_lat = dict(base_lat=dict(T=Ts, Td=Tds, zm=np.asarray(rrfs["elev"], float), off=cb_off))
     extra = {}
     if anch is not None:
         try:
@@ -416,7 +419,7 @@ def build(rrfs, t0, n, now, x, y, obs, sector_fn=None, step_min=C.STEP_MIN, log=
     info["obs_until"] = None if obs_until is None else obs_until.isoformat()
     info["coast_lattice_points"] = int(west.sum())
     return dict(ser=ser, s_series=s_series, fog_top=top, forcing_fn=forcing_fn, info=info, s_model=s_model, obs_until=obs_until,
-                dir_hourly=dir_h, lattice_cl=CL, goes_frac=goes_frac, khaf=khaf, t_hours=t_h, idx=idx, w=w4, lattice=lat_t, **sun_out, **pav_out, **extra)
+                dir_hourly=dir_h, lattice_cl=CL, goes_frac=goes_frac, khaf=khaf, t_hours=t_h, idx=idx, w=w4, lattice=lat_t, **sun_out, **pav_out, **base_lat, **extra)
 
 
 def base_offset_hourly(mt, t_h, nh, info):

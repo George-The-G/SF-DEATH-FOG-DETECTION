@@ -97,7 +97,7 @@ FOG3D_BUDGET_BYTES = 12_000_000     # target for all 3D files; over it, only fra
 FOG3D_PAST_H, FOG3D_FUTURE_H = 6, 30
 
 
-def write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log=print):
+def write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log=print, base=None, dbg_frame=None):
     """fog3d = (T, info) from live.fog3d.load. Writes fog3d_<fff>.png for frames with any fog aloft. Returns (index field, file names)."""
     import datetime as dt
     from . import fog3d as f3
@@ -106,12 +106,19 @@ def write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log=print):
     top = np.asarray(F["fog_top"], float)
     nF = len(amps)
     files, tops, sizes = [None] * nF, [-1] * nF, [0] * nF
+    base_m, lift_m, dbg = [None] * nF, [None] * nF, None
     for f in range(nF):
         a = f3.band_weights(top[min(f * spf, len(top) - 1)], 0.0)
         rows = f3.dir_rows(dirs, Wts[f], T["dirs"])
         if not rows or not np.any(a > 0):
             continue
-        u8 = f3.encode(f3.volume(T, rows, a, amps[f]))
+        w3 = None
+        if base is not None:   # guide 05: cloud floor (and urban lift) as a weight on every level
+            w3, bst = base.frame(f, amps[f], top[min(f * spf, len(top) - 1)])
+            base_m[f], lift_m[f] = bst["base_m"], bst["lift_m"]
+            if f == dbg_frame:
+                dbg = bst["base"]
+        u8 = f3.encode(f3.volume(T, rows, a, amps[f], weight3d=w3))
         tl = f3.top_layer(u8)
         if tl < 0:
             continue
@@ -133,7 +140,15 @@ def write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log=print):
              "bytes": total}
     if windowed:
         field["windowed_h"] = windowed
-    return field, [x for x in files if x]
+    names = [x for x in files if x]
+    if base is not None:
+        field["base_m"] = [None if v is None else round(v, 1) for v in base_m]
+        field["lift_m"] = [None if v is None else round(v, 1) for v in lift_m]
+        if dbg is not None:   # beta only: the base field of the newest observed frame, 4 m per grey level
+            from PIL import Image
+            Image.fromarray(np.clip(np.rint(dbg / 4.0), 0, 255).astype(np.uint8), "L").save(out / "fog_base_dbg.png", optimize=True)
+            names.append("fog_base_dbg.png")
+    return field, names
 
 
 def tile_lonlat():
@@ -199,7 +214,7 @@ def sheet(tiles):
     return Image.fromarray(img, "L"), rows
 
 
-def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=print, tiles_cb=None, fog3d=None):
+def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=print, tiles_cb=None, fog3d=None, fogbase=None):
     import datetime as dt
     out = Path(out)
     if Rb is None:
@@ -235,7 +250,17 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
     local = [t.astimezone(PT) for t in t_hours]
     extra_fields, extra_files = write_extras(out, diag, Rb, ranges, idx, local)
     if fog3d is not None:
-        f3, f3files = write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log)
+        fbo, fb_info = None, None
+        if fogbase is not None:   # guide 05: never fatal, any problem means no cloud floor
+            try:
+                from . import fogbase as _fb, forcing as _fc
+                xs_, ys_, _, _ = tile_lonlat()
+                fbo, fb_info = _fb.prepare(F, diag, fog3d[0], (replay.FOG_H, replay.FOG_W), (xs_, ys_), spf, fogbase.get("urban", False), _fc._xy_to_ll, nF)
+            except Exception as e:  # noqa: BLE001
+                fbo, fb_info = None, dict(applied=False, reason=repr(e)[:160])
+        obs_u = F.get("obs_until")
+        dbg_f = max([f for f in range(nF) if obs_u is None or t_hours[f] <= obs_u] or [nF - 1])
+        f3, f3files = write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log, base=fbo, dbg_frame=dbg_f)
         extra_fields["fog3d"] = f3
         extra_files = list(extra_files) + f3files
     wj = {"t": [x.isoformat() for x in local], "temp_c": np.round(np.asarray(ser["temperature_2m"])[idx], 2).tolist(),
@@ -279,5 +304,6 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
     meta["S_district"], meta["S_city"] = SA, SB
     if fog3d is not None:
         meta["fog3d_bytes"] = extra_fields["fog3d"]["bytes"]
+        meta["fog3d_base"] = fb_info
     log("outputs: " + json.dumps({k: v for k, v in meta.items() if not isinstance(v, dict)}))
     return meta
