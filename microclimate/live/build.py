@@ -138,13 +138,14 @@ def settings(beta=False, physics=None, carry_state=None, promoted=False):
     promoted=True (public build, `build --promoted`): reads ONLY C.PROMOTED, the approved set that went from beta to the public page."""
     if promoted and not beta:
         return dict(physics=tuple(C.PROMOTED["physics"] if physics is None else physics), nudge_anchors=bool(C.PROMOTED.get("nudge_anchors", False)),
-                    carry_state=bool(C.PROMOTED.get("carry_state", False) if carry_state is None else carry_state), wind_east=bool(C.PROMOTED.get("wind_east", False)))
+                    carry_state=bool(C.PROMOTED.get("carry_state", False) if carry_state is None else carry_state), wind_east=bool(C.PROMOTED.get("wind_east", False)),
+                    fog3d=bool(C.PROMOTED.get("fog3d", False)))
     if beta:
         b = dict(C.BETA)
         return dict(physics=tuple(C.BETA["physics"] if physics is None else physics), nudge_anchors=bool(b.get("nudge_anchors", False)),
-                    carry_state=bool(b.get("carry_state", False) if carry_state is None else carry_state), wind_east=bool(b.get("wind_east", False)))
+                    carry_state=bool(b.get("carry_state", False) if carry_state is None else carry_state), wind_east=bool(b.get("wind_east", False)), fog3d=bool(b.get("fog3d", False)))
     return dict(physics=tuple(C.PHYSICS if physics is None else physics), nudge_anchors=bool(C.NUDGE_ANCHORS), carry_state=bool(C.CARRY_STATE if carry_state is None else carry_state),
-                wind_east=bool(C.WIND_EAST))
+                wind_east=bool(C.WIND_EAST), fog3d=bool(C.FOG3D))
 
 
 def beta_label(s):
@@ -295,6 +296,16 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
             st.notes.append(f"wind_east is on but not applied: {east_info['reason']}")
             log(st.notes[-1])
     east_on = bool(east_info and east_info.get("applied"))
+    # ---- 3D fog (guide 03): only when the switch is on AND live_tracer3d.npz fits this static table; otherwise no 3D files (noted in the status)
+    fog3d_pack, fog3d_info = None, None
+    if S_set["fog3d"]:
+        from . import fog3d as _fog3d
+        T3, fog3d_info = _fog3d.load(static.parent / C.FOG3D_FILE, S.get("dirs"))
+        if T3 is not None:
+            fog3d_pack = (T3, fog3d_info)
+        else:
+            st.notes.append(f"fog3d is on but not applied: {fog3d_info['reason']}")
+            log(st.notes[-1])
     # ---- forcing
     nudge0, east0 = C.NUDGE_ANCHORS, C.WIND_EAST
     try:
@@ -351,7 +362,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     # ---- outputs
     cs_hook = cloud_score.Hook()
     try:
-        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log, tiles_cb=cs_hook.tiles_cb)
+        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log, tiles_cb=cs_hook.tiles_cb, fog3d=fog3d_pack)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"writing outputs failed: {e!r}")
@@ -421,6 +432,8 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
                               wind_east=bool(S_set["wind_east"]), sun_dsr=bool(C.SUN_DSR and "sun_clear" in P), inputs=inp_info)
         if east_info is not None:
             status["wind_east"] = east_info
+        if fog3d_info is not None:
+            status["fog3d"] = dict(fog3d_info, bytes_written=(meta.get("fog3d_bytes") if meta else None))
         if dsr_stats is not None:
             status["dsr"] = dsr_stats
     (out / "status.json").write_text(json.dumps(status, indent=1, default=str))
