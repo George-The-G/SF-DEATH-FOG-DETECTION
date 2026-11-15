@@ -56,7 +56,7 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(build.beta_label(build.settings(True)), "clear-sky sun (GOES sunlight), water film, pavement heat, cloud base, uniform fog-front speed, drizzle, in-place fog, station anchors, carried state, east wind (street wind only), fog top fusion")
         C.SUN_DSR_OLD, C.SUN_DSR = C.SUN_DSR, False
         try:
-            self.assertEqual(build.beta_label(build.settings(True)), "clear-sky sun, water film, pavement heat, cloud base, uniform fog-front speed, drizzle, in-place fog, station anchors, carried state, east wind (street wind only)")
+            self.assertEqual(build.beta_label(build.settings(True)), "clear-sky sun, water film, pavement heat, cloud base, uniform fog-front speed, drizzle, in-place fog, station anchors, carried state, east wind (street wind only), fog top fusion")
         finally:
             C.SUN_DSR = C.SUN_DSR_OLD
             del C.SUN_DSR_OLD
