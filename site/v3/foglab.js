@@ -46,11 +46,12 @@ const ADVANCED = [
   ['motion', 'Cheaper while moving', 'check', null, null, null, 'Lower resolution and fewer steps while the camera moves'],
   ['motionSteps', 'Steps while moving', 'range', 0.3, 1, 0.05],
   ['taa', 'Trace 1 in 16 while moving', 'check', null, null, null, 'While moving, trace one pixel in 16 each frame and reuse the rest from earlier frames'],
+  ['data3d', '3D fog data', 'check', null, null, null, 'Live data only: the fog gets its floor, top and holes from the 3D fog files instead of the 2D tile with a guessed top'],
   ['dither', 'Dither', 'range', 0, 1, 0.05],
   ['blur', 'Blur', 'check'],
   ['auto', 'Auto quality drop', 'check', null, null, null, 'Lowers quality by itself when the frame rate falls'],
 ];
-const NUMERIC_CHECK = new Set(['blur', 'skip', 'motion', 'flow', 'taa']);
+const NUMERIC_CHECK = new Set(['blur', 'skip', 'motion', 'flow', 'taa', 'data3d']);
 
 const CLOUD = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M7.5 19h10a4.5 4.5 0 0 0 .6-8.96A6 6 0 0 0 6.6 8.1 5.5 5.5 0 0 0 7.5 19Z"/></svg>';
 
