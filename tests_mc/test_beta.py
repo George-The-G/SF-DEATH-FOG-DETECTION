@@ -43,11 +43,11 @@ class TestSettings(unittest.TestCase):
         before = build.settings(False)
         C.BETA.update(physics=("film",), nudge_anchors=True, carry_state=True)
         self.assertEqual(build.settings(False), before)
-        self.assertEqual(before, dict(physics=(), nudge_anchors=False, carry_state=False, wind_east=False))
+        self.assertEqual(before, dict(physics=(), nudge_anchors=False, carry_state=False, wind_east=False, top_fusion=False))
 
     def test_public_settings_never_reach_the_beta_build(self):
         C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE = ("film",), True, True
-        self.assertEqual(build.settings(True), dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True))
+        self.assertEqual(build.settings(True), dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, top_fusion=False))
         C.BETA.update(nudge_anchors=False)
         self.assertFalse(build.settings(True)["nudge_anchors"])
         self.assertEqual(build.settings(True, physics=("film",))["physics"], ("film",))          # an explicit argument still wins (tests, command line)

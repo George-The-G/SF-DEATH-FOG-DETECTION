@@ -81,6 +81,16 @@ BOX_NEAR_KM, BOX_FAR_KM, SECTOR_HALF_DEG = 2.0, 15.0, 22.5   # upwind sector (of
 COAST_REF = (37.760, -122.510)       # Ocean Beach: the sector is laid out from here
 CLEAR_MAX_OPACITY = 0.30             # fog sheet cells where GOES says clear (observed hours) get at most this opacity
 FOG_TOP_ABOVE_CEILING_M = 100.0
+# ---- fog top fusion (guide 06, switch TOP_FUSION; all first guesses) ----
+TOP_FUSION = False                    # True: the fog top is a Kalman-filtered, RTS-smoothed fusion of model profile, sounding, ceiling and GOES top with an error bar (build.run sets it per build from BETA["top_fusion"]); False = the old override/floor code, bit for bit
+TF_SIGMA_MODEL_M, TF_SIGMA_MODEL_BAD_M = 120.0, 250.0   # model profile top: normal / fallback, floor or cap hit
+TF_SIGMA_SND_M, TF_SND_PER_H_M, TF_SND_MAX_H = 50.0, 30.0, 9.0   # sounding inversion base: sigma at the valid time, growth per hour away, unused beyond
+TF_SIGMA_CEIL_M, STRATUS_THICK_M = 120.0, 250.0         # ceiling + typical marine stratus depth is a top observation
+TF_CEIL_LOWER_M = 30.0                # the top is never below ceiling + this
+TF_SIGMA_GOES_M, TF_GOES_MIN_PIX = 250.0, 5   # GOES ACHA low-cloud top (coarse, biased): weight low; pixels needed
+TF_P0_M, TF_Q_M = 150.0, 60.0         # start sd of the top; random-walk sd per hour
+TF_GATE_SIGMA = 3.0                   # an observation farther than this many sd from the state is skipped and counted
+TF_COAST_BOX = (-122.56, 37.70, -122.46, 37.80)   # lon0, lat0, lon1, lat1 around Ocean Beach, for the GOES top
 SOUNDING_VALID_H = 6.0               # a sounding overrides the RRFS fog top for this long after its valid time, then fades out over the next 6 h
 INV_RISE_C = 1.0                     # inversion: temperature rises by at least this within INV_DEPTH_M above its base
 INV_DEPTH_M = 300.0

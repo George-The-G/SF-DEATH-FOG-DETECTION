@@ -33,7 +33,7 @@ class TestPromotedSettings(unittest.TestCase):
         """Sunlight, film, pavement, cloud base, fog-front speed, drizzle, in-place fog, station anchors, carried state, east street wind."""
         self.assertEqual(C.PROMOTED, dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True))
         self.assertEqual(wetness.check_physics(C.PROMOTED["physics"]), frozenset({"sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"}))
-        self.assertEqual(build.settings(False, promoted=True), dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True))
+        self.assertEqual(build.settings(False, promoted=True), dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, top_fusion=False))
         self.assertEqual(build.beta_label(build.settings(False, promoted=True)), "clear-sky sun (GOES sunlight), water film, pavement heat, cloud base, uniform fog-front speed, drizzle, in-place fog, station anchors, carried state, east wind (street wind only)")
 
     def test_east_wind_comes_only_from_the_promoted_set(self):
@@ -49,14 +49,14 @@ class TestPromotedSettings(unittest.TestCase):
         self.assertTrue(build.settings(False, promoted=True)["wind_east"])
 
     def test_default_public_build_is_the_old_one(self):
-        self.assertEqual(build.settings(False), dict(physics=(), nudge_anchors=False, carry_state=False, wind_east=False))
+        self.assertEqual(build.settings(False), dict(physics=(), nudge_anchors=False, carry_state=False, wind_east=False, top_fusion=False))
         self.assertEqual((C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE), ((), False, False))
 
     def test_the_three_settings_never_mix(self):
         C.BETA.update(physics=("film",), nudge_anchors=False, carry_state=True, wind_east=True)  # the next beta stage: must not reach the promoted build
-        self.assertEqual(build.settings(False, promoted=True), dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True))
+        self.assertEqual(build.settings(False, promoted=True), dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, top_fusion=False))
         C.PROMOTED.update(physics=("film",), carry_state=True)                            # and the other way round
-        self.assertEqual(build.settings(True), dict(physics=("film",), nudge_anchors=False, carry_state=True, wind_east=True))
+        self.assertEqual(build.settings(True), dict(physics=("film",), nudge_anchors=False, carry_state=True, wind_east=True, top_fusion=False))
         C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE = ("pavement",), True, True             # the legacy values do not reach either
         self.assertEqual(build.settings(False, promoted=True)["physics"], ("film",))
         self.assertEqual(build.settings(True)["physics"], ("film",))
