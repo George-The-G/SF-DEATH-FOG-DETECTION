@@ -57,3 +57,18 @@ for n in idx.get("state_files", []) or []:
         print("fetched state file", n)
     except Exception as e:  # noqa: BLE001
         print("state file", n, "not fetched:", e)
+# Carried 5-minute GOES store (multi-scale guide 07; files listed in index.json "goes5"."files" as 'goes5/grid.json', 'goes5/<date>/<HH>.npz'): best effort, a missing file only means a cold store.
+_g5 = (idx.get("goes5") or {}).get("files") or []
+_ok5 = 0
+for n in _g5:
+    try:
+        parts = n.split("/")
+        if parts[0] != "goes5" or ".." in parts or n.startswith("/") or "\\" in n or not (n.endswith(".npz") or n.endswith(".json")):
+            continue
+        (out / n).parent.mkdir(parents=True, exist_ok=True)
+        (out / n).write_bytes(get(n))
+        _ok5 += 1
+    except Exception as e:  # noqa: BLE001
+        print("goes5 file", n, "not fetched:", e)
+if _g5:
+    print(f"fetched {_ok5} of {len(_g5)} goes5 store files")

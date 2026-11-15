@@ -25,7 +25,12 @@ def load(p):
 ns = load(new / "status.json")
 if rc == 0 and ns.get("ok") and (new / "index.json").exists():
     for f in sorted(new.iterdir()):
-        if f.name != "status.json":
+        if f.name == "status.json":
+            continue
+        if f.is_dir():   # goes5 store and macro frames (multi-scale guide 07): the new folder replaces the old one, so deleted hours and frames go
+            shutil.rmtree(out / f.name, ignore_errors=True)
+            shutil.copytree(f, out / f.name)
+        else:
             shutil.copyfile(f, out / f.name)
     keep = {f.name for f in new.glob("state_*.npz")}
     for f in out.glob("state_*.npz"):   # carried state: only the files of the new run stay (it keeps the two newest)

@@ -17,7 +17,7 @@ import numpy as np
 
 from .. import wetness
 from . import config as C
-from . import archive, cloud_score, fetch, forcing, goes, outputs, state as statelib
+from . import archive, cloud_score, fetch, forcing, goes, goes5, outputs, state as statelib
 
 PT = ZoneInfo("America/Los_Angeles")
 
@@ -145,6 +145,11 @@ def settings(beta=False, physics=None, carry_state=None, promoted=False):
                     carry_state=bool(b.get("carry_state", False) if carry_state is None else carry_state), wind_east=bool(b.get("wind_east", False)))
     return dict(physics=tuple(C.PHYSICS if physics is None else physics), nudge_anchors=bool(C.NUDGE_ANCHORS), carry_state=bool(C.CARRY_STATE if carry_state is None else carry_state),
                 wind_east=bool(C.WIND_EAST))
+
+
+def goes5_enabled(beta=False, promoted=False):
+    """The goes5 switch (multi-scale guide 07): BETA["goes5"] for the beta build (absent = off), C.GOES5 for the public build (never in a promoted build). Both off today."""
+    return bool(C.BETA.get("goes5", False)) if beta else (bool(C.GOES5) and not promoted)
 
 
 def beta_label(s):
@@ -393,6 +398,18 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
         traceback.print_exc()
         sinfo["error"] = repr(e)[:200]
     log(f"state: {sinfo}")
+    # ---- 5-minute GOES store + macro frames (multi-scale guide 07, switch goes5: C.GOES5 for the public build, BETA["goes5"] for the beta build; both off): never fatal, nothing else reads it
+    goes5_info = None
+    if goes5_enabled(beta, promoted):
+        goes5_info = goes5.run(out, now, cache=cache / "goes5_raw", log=log)
+        try:
+            idx_p = out / "index.json"
+            idx = json.loads(idx_p.read_text())
+            idx["goes5"] = dict(files=goes5_info.pop("store_files", []), macro=f"{C.GOES5_MACRO_DIR}/index.json")
+            idx_p.write_text(json.dumps(idx, indent=1))
+        except Exception as e:  # noqa: BLE001
+            goes5_info["index_error"] = repr(e)[:160]
+        log(f"goes5: { {k: v for k, v in goes5_info.items()} }")
     ainfo = None
     if archive_dir and C.ARCHIVE and not beta:      # the beta channel never writes the run archive
         try:
@@ -410,6 +427,8 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
                   points=int(len(S["x"])), outputs=meta, cloud_score=cs_info, stations=sinfo_st)
     if pavinfo is not None:
         status["pavement"] = pavinfo
+    if goes5_info is not None:
+        status["goes5"] = goes5_info
     if promoted and not beta:   # the public page reads this flag to switch its data layers on; absent = the old public page
         status["promoted"] = dict(label=beta_label(S_set), physics=list(S_set["physics"]), nudge_anchors=S_set["nudge_anchors"], carry_state=S_set["carry_state"],
                                   sun_dsr=bool(C.SUN_DSR and "sun_clear" in P))

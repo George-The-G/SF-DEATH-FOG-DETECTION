@@ -97,32 +97,45 @@ def _axis(ds, name):
     return raw * float(a.attrs["scale_factor"][0]) + float(a.attrs["add_offset"][0])
 
 
+BOX = (-123.3, 37.2, -121.9, 38.3)   # lon0, lat0, lon1, lat1 of the crop of LowCloud (and of the 5-minute store, microclimate/live/goes5.py)
+
+
+def read_crop(a, h, box=BOX):
+    """The ONE implementation of the crop of a scan pair (LowCloud and the 5-minute store both call it). a, h: open h5py files of the ACM and ACHA scans.
+    -> dict(nav, x, y (crop axes, rad), c0, c1, r0, r1 (offsets in the ACM grid), acm (uint8 [H, W]), dqf (uint8 [H, W] or None), t (datetime), ht (float32 [H, W] metres, NaN = none))."""
+    nav = Nav(a["goes_imager_projection"])
+    x, y = _axis(a, "x"), _axis(a, "y")
+    lons = np.array([box[0], box[2], box[0], box[2]])
+    lats = np.array([box[1], box[1], box[3], box[3]])
+    bx, by = nav.xy(lons, lats)
+    pad = 3 * 5.6e-5
+    ci = np.nonzero((x >= bx.min() - pad) & (x <= bx.max() + pad))[0]        # x increases with column
+    ri = np.nonzero((y >= by.min() - pad) & (y <= by.max() + pad))[0]        # y decreases with row
+    c0, c1, r0, r1 = int(ci.min()), int(ci.max()) + 1, int(ri.min()), int(ri.max()) + 1
+    acm = a["ACM"][r0:r1, c0:c1]
+    dqf = a["DQF"][r0:r1, c0:c1] if "DQF" in a else None   # ACM data quality flag (0 good, 1 bad quality, 2 space, 6 degraded; 255 fill), checked in a real file 2026-11
+    t = dt.datetime(2000, 1, 1, 12, tzinfo=dt.timezone.utc) + dt.timedelta(seconds=float(a["t"][()]))
+    hx, hy = _axis(h, "x"), _axis(h, "y")
+    hc = np.clip(np.rint(np.interp(x[c0:c1], hx, np.arange(len(hx)))).astype(int), 0, len(hx) - 1)
+    hr = np.clip(np.rint(np.interp(y[r0:r1], hy[::-1], np.arange(len(hy))[::-1])).astype(int), 0, len(hy) - 1)
+    ht_raw = h["HT"][:]
+    sc = float(h["HT"].attrs["scale_factor"][0])
+    fill = int(h["HT"].attrs["_FillValue"][0])
+    ht = ht_raw[np.ix_(hr, hc)].astype(np.float32) * sc
+    ht[ht_raw[np.ix_(hr, hc)] == fill] = np.nan
+    return dict(nav=nav, x=x[c0:c1], y=y[r0:r1], c0=c0, c1=c1, r0=r0, r1=r1, acm=np.asarray(acm), dqf=None if dqf is None else np.asarray(dqf), t=t, ht=ht)
+
+
 class LowCloud:
     """Low-cloud flag (0/1, float) on the 2 km GOES crop around San Francisco for one scan."""
 
-    def __init__(self, acm_path, ha_path, box=(-123.3, 37.2, -121.9, 38.3)):
+    def __init__(self, acm_path, ha_path, box=BOX):
         import h5py
         with h5py.File(acm_path, "r") as a, h5py.File(ha_path, "r") as h:
-            nav = Nav(a["goes_imager_projection"])
-            x, y = _axis(a, "x"), _axis(a, "y")
-            lons = np.array([box[0], box[2], box[0], box[2]])
-            lats = np.array([box[1], box[1], box[3], box[3]])
-            bx, by = nav.xy(lons, lats)
-            pad = 3 * 5.6e-5
-            ci = np.nonzero((x >= bx.min() - pad) & (x <= bx.max() + pad))[0]        # x increases with column
-            ri = np.nonzero((y >= by.min() - pad) & (y <= by.max() + pad))[0]        # y decreases with row
-            c0, c1, r0, r1 = int(ci.min()), int(ci.max()) + 1, int(ri.min()), int(ri.max()) + 1
-            acm = a["ACM"][r0:r1, c0:c1]
-            self.t = dt.datetime(2000, 1, 1, 12, tzinfo=dt.timezone.utc) + dt.timedelta(seconds=float(a["t"][()]))
-            hx, hy = _axis(h, "x"), _axis(h, "y")
-            hc = np.clip(np.rint(np.interp(x[c0:c1], hx, np.arange(len(hx)))).astype(int), 0, len(hx) - 1)
-            hr = np.clip(np.rint(np.interp(y[r0:r1], hy[::-1], np.arange(len(hy))[::-1])).astype(int), 0, len(hy) - 1)
-            ht_raw = h["HT"][:]
-            sc = float(h["HT"].attrs["scale_factor"][0])
-            fill = int(h["HT"].attrs["_FillValue"][0])
-        ht = ht_raw[np.ix_(hr, hc)].astype(np.float32) * sc
-        ht[ht_raw[np.ix_(hr, hc)] == fill] = np.nan
-        self.nav, self.x, self.y = nav, x[c0:c1], y[r0:r1]
+            cr = read_crop(a, h, box)
+        acm, ht = cr["acm"], cr["ht"]
+        self.t = cr["t"]
+        self.nav, self.x, self.y = cr["nav"], cr["x"], cr["y"]
         self.acm = np.asarray(acm)       # clear sky mask classes 0..3 (255 = none): the cloudiness factor of guide 06 is taken from them
         cloudy = (acm == 2) | (acm == 3)
         self.valid = acm != 255
@@ -226,3 +239,71 @@ def hourly(hours, cache, log=print, workers=6):
     except Exception:  # noqa: BLE001
         pass
     return res
+
+
+# ---- 5-minute store: one derivation of "satellite fog" (multi-scale guide 07, replay/goes-crop-format.md) ----
+RULE_VERSION = 1
+
+
+def _sun_elevation(t_unix, lon, lat):
+    """Sun elevation (degrees) at lon/lat at a unix time, from the same pvlib call the sun code uses (microclimate.wetness.sun_position)."""
+    from .. import wetness
+    t = dt.datetime.fromtimestamp(float(t_unix), tz=dt.timezone.utc)
+    return float(wetness.sun_position([t], lat, lon)[1][0])
+
+
+def low_cloud(crop, i, version=1, sun_el=None):
+    """Probability, confidence and top of low cloud for scan i of a 5-minute crop -> (p, c, top_m, rule_version); p, c, top_m are float32 [H, W] (top_m 0 = none).
+    crop needs: acm uint8 [n, H, W], ht uint16 [n, H, W] (metres, 0 = no retrieval), t_scan int64 [n] (unix s), centre (lon, lat) of the crop.
+    Rule version 1:
+      p  = {0: 0, 1: 0.25, 2: 0.75, 3: 1}[class] where the cloud top is below C.LOW_TOP_M or no height was retrieved; 0 where the top is high; 0 where acm >= 254.
+      c  = 0 where acm >= 254 (bad quality / missing); 0 where more than C.CLOUD_HIGH_MAX of the valid pixels within +- C.GOES5_HIGH_WIN pixels are cloud with a top at
+           or above C.LOW_TOP_M (high cloud hides the layer); 0 while the sun elevation is within +- C.GOES5_TERM_EL degrees (day / night algorithm swap);
+           else C.GOES5_CONF_DAY by day (elevation above the window), C.GOES5_CONF_NIGHT by night. The elevation is taken once at the crop centre (it varies
+           by about 1 degree over the crop). sun_el overrides it (tests).
+    Parallax is not applied here: it belongs to sampling (parallax_shift_m, goes5.sample_macro)."""
+    if version != RULE_VERSION:
+        raise ValueError(f"unknown low-cloud rule version {version}")
+    from scipy.ndimage import uniform_filter
+    acm = np.asarray(crop.acm[i])
+    ht = np.asarray(crop.ht[i]).astype(np.float32)
+    bad = acm >= 254
+    cls = np.where(bad, 0, acm).clip(0, 3)
+    pc = np.array([0.0, 0.25, 0.75, 1.0], np.float32)[cls]
+    high_top = ht >= C.LOW_TOP_M                      # ht 0 = none retrieved: not high
+    p = np.where(bad | high_top, 0.0, pc).astype(np.float32)
+    top = np.where(ht > 0, ht, 0).astype(np.float32)
+    cloudy_high = ((cls >= 2) & ~bad & high_top).astype(np.float32)
+    valid = (~bad).astype(np.float32)
+    w = 2 * int(C.GOES5_HIGH_WIN) + 1
+    nv = uniform_filter(valid, size=w, mode="nearest")
+    nh = uniform_filter(cloudy_high, size=w, mode="nearest")
+    hidden = nh > C.CLOUD_HIGH_MAX * np.maximum(nv, 1e-6)
+    el = _sun_elevation(crop.t_scan[i], *crop.centre) if sun_el is None else float(sun_el)
+    if abs(el) <= C.GOES5_TERM_EL:
+        base = 0.0
+    else:
+        base = C.GOES5_CONF_DAY if el > 0 else C.GOES5_CONF_NIGHT
+    c = np.where(bad | hidden, 0.0, base).astype(np.float32)
+    return p, c, top, RULE_VERSION
+
+
+def view_geometry(lon, lat, sat_lon, sat_h_m=35786023.0, r_earth_m=6371008.8):
+    """View zenith angle (degrees) and azimuth from the ground point TOWARDS the satellite (degrees clockwise from north) of a geostationary satellite at
+    longitude sat_lon (equator, height sat_h_m above a spherical earth of radius r_earth_m). Spherical formulas: central angle g between the point and the subpoint,
+    cos g = cos(lat) cos(lon - sat_lon); zenith z from tan z = sin g / (cos g - R / (R + H)); azimuth = initial great-circle bearing to the subpoint.
+    San Francisco (-122.4, 37.76) with the satellite at -137.0 gives a zenith of 46.4 degrees and an azimuth of 203 degrees (south-south-west)."""
+    phi, dl = np.radians(lat), np.radians(np.asarray(sat_lon, float) - np.asarray(lon, float))
+    cg = np.cos(phi) * np.cos(dl)
+    sg = np.sqrt(np.maximum(1.0 - cg ** 2, 0.0))
+    z = np.degrees(np.arctan2(sg, cg - r_earth_m / (r_earth_m + sat_h_m)))
+    az = np.degrees(np.arctan2(np.sin(dl), -np.sin(phi) * np.cos(dl))) % 360.0
+    return z, az
+
+
+def parallax_shift_m(top_m, lon, lat, sat_lon):
+    """(east, north) metres by which the true ground position of a cloud top of height top_m lies from where the satellite projects it: top_m * tan(zenith) TOWARDS
+    the satellite (the line of sight meets the ground farther from the satellite than the cloud is, so the cloud is south-west of its apparent place at San Francisco)."""
+    z, az = view_geometry(lon, lat, sat_lon)
+    d = np.asarray(top_m, float) * np.tan(np.radians(z))
+    return d * np.sin(np.radians(az)), d * np.cos(np.radians(az))

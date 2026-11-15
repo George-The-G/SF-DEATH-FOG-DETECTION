@@ -85,6 +85,7 @@ beta_build() {
   rm -rf "$NEWB"
   mkdir -p "$NEWB"
   cp "$OUTB"/state_*.npz "$NEWB"/ 2>/dev/null && echo "carried beta state files: $(ls "$NEWB" | grep -c '^state_')" || echo "no carried beta state files: cold start"
+  [ -d "$OUTB/goes5" ] && cp -r "$OUTB/goes5" "$NEWB/goes5" && echo "carried the 5-minute GOES store ($(du -sk "$NEWB/goes5" | cut -f1) kB)" || echo "no 5-minute GOES store carried (switch off or cold start)"   # multi-scale guide 07, switch goes5
   if [ "$PROMOTED_RUN" = 1 ] && cp "$OUT"/dsr_cache.json "$NEWB"/ 2>/dev/null; then echo "beta uses the GOES sunlight cache of the public build (same hours, one fetch)"
   else cp "$OUTB"/dsr_cache.json "$NEWB"/ 2>/dev/null && echo "carried the GOES sunlight cache" || echo "no GOES sunlight cache carried"; fi
   local S0 RCB
@@ -141,6 +142,7 @@ public_build() {
   rm -rf "$NEW" "$ARCH" "$(dirname "$INPUTS")"
   mkdir -p "$NEW"
   cp "$OUT"/state_*.npz "$NEW"/ 2>/dev/null && echo "carried state files: $(ls "$NEW" | grep -c '^state_')" || echo "no carried state files: cold start"
+  [ -d "$OUT/goes5" ] && cp -r "$OUT/goes5" "$NEW/goes5"   # multi-scale guide 07: only exists when the public goes5 switch has been on
   if [ "$1" = promoted ]; then   # the rolling GOES sunlight cache: the public one, else the beta one (a cold cache only means the first runs fetch the hours piece by piece)
     cp "$OUT"/dsr_cache.json "$NEW"/ 2>/dev/null && echo "carried the GOES sunlight cache" \
       || { cp "$OUTB"/dsr_cache.json "$NEW"/ 2>/dev/null && echo "seeded the GOES sunlight cache from the beta channel" || echo "no GOES sunlight cache carried"; }

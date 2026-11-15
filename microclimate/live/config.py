@@ -17,10 +17,12 @@ PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS)
 # (build.run(beta=True)); the public build never reads it. Staging order (user's decision 2026-11-12): stage 1 = station anchors + clear-sky sun, stage 2 = carry_state,
 # stage 3 = film + pavement. A stage goes to the public settings above only after the user has looked at the preview and approved it.
 BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True)
+# GOES5 (multi-scale guide 07): 5-minute GOES crop store + macro frames. The beta build reads BETA.get("goes5", False): the key is absent (off) until the 24 h gate of the guide is met and George says so, then BETA["goes5"] = True.
 # WIND_EAST (guide 14): the east wind-direction fields (22.5 .. 135 deg; 157.5 is an accepted gap) feed the STREET WIND only: station-anchor wind fit and
 # the direction weights. Needs live_east.npz next to the static table; the fog tracer weight for east / offshore wind stays zero. False = the public model, bit for bit.
 # The public build reads this value; the beta build reads BETA["wind_east"] only. build.run sets it for the duration of one build (like NUDGE_ANCHORS).
 WIND_EAST = False
+GOES5 = False                         # public build: 5-minute GOES store and macro frames off (never in PROMOTED without George's approval)
 EAST_FILE = "live_east.npz"           # release asset of live-static-v1 (wind vectors at the stations for the 15 library directions); optional
 # Settings the PUBLIC build runs with when it is started with `build --promoted` (live_ci/refresh.sh does that when DEATHFOG_LIVE_PROMOTE is true; the job falls back to the old settings,
 # C.PHYSICS / C.NUDGE_ANCHORS / C.CARRY_STATE, if such a build fails). Approved 2026-11-13: stage 1 (clear-sky sun + station anchors), then stage 2 + 3 (carried state, water film, pavement heat) after the beta look. Guides 08 (cloud base), 09, 11, 12 approved 2026-11-14 after the beta look. Not the east wind
@@ -57,6 +59,19 @@ SOUNDING_URL = "https://www.spc.noaa.gov/exper/soundings/{yy}{mm}{dd}{hh}_OBS/OA
 GOES_BUCKET = "https://noaa-goes18.s3.amazonaws.com/"
 GOES_MASK = "ABI-L2-ACMC"            # clear sky mask (ACM 0 clear, 1 probably clear, 2 probably cloudy, 3 cloudy), 2 km
 GOES_HEIGHT = "ABI-L2-ACHAC"         # cloud top height HT (m), 10 km
+GOES5_MAX_SCANS_PER_RUN = 6          # 5-minute store: at most this many new scans are ingested per run (oldest first)
+GOES5_DEADLINE_S = 60.0              # 5-minute store: no new scan is started after this many seconds
+GOES5_COLD_MIN = 60                  # 5-minute store: a cold start takes only the scans of the last this many minutes
+GOES5_KEEP_H = 48                    # 5-minute store: hour files older than this are deleted
+GOES5_PAIR_TOL_S = 60                # ACM and ACHA scans pair when their scan starts are within this many seconds
+GOES5_DIR = "goes5"                  # store folder in the output folder (contract: state/goes5/): grid.json and <YYYY-MM-DD>/<HH>.npz
+GOES5_MACRO_DIR = "macro"            # macro frames folder in the output folder: index.json and <yyyymmddThhmm>.png
+GOES5_MACRO_H = 6                    # macro frames cover the last this many hours
+GOES5_MACRO_RES = 0.01               # macro grid spacing, degrees (141 x 111 over the GOES box)
+GOES5_TERM_EL = 6.0                  # confidence 0 while the sun elevation is within +- this many degrees (day / night algorithm swap) - first guess
+GOES5_CONF_DAY, GOES5_CONF_NIGHT = 1.0, 0.7   # confidence of a valid pixel by day / by night - first guess
+GOES5_HIGH_WIN = 2                   # a pixel's neighbourhood for the high-cloud rule: +- this many pixels (5 x 5 = about 10 km) - first guess
+GOES5_DEFAULT_TOP_M = 300.0          # cloud top used for parallax when a pixel has no retrieved height and no fused fog top exists yet
 GOES_CACHE_H = 40                    # hours of GOES history kept in the local cache directory
 
 # ---- nudging (3.3) ----
