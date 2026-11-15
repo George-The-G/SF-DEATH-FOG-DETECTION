@@ -32,6 +32,24 @@ def main(argv):
             fog.build_dirs(cfg, DATA / "grids", DATA / "library", dirs)
         if "--validate" in argv:
             validate_dirs.run(DATA, dirs)
+    elif cmd == "fog3d":  # fog3d [--dirs 270,...] [--bands 0,1,...] [--tol 0.01] [--dry-run] [--check]: 11 inflow bands (guide 01)
+        from . import fog3d
+
+        def opt(name, conv, default):
+            return conv(argv[argv.index(name) + 1]) if name in argv else default
+        dirs = opt("--dirs", lambda v: [float(x) for x in v.split(",")], None)
+        bands = opt("--bands", lambda v: [int(x) for x in v.split(",")], None)
+        tol = opt("--tol", float, 0.01)
+        if "--check" in argv:
+            res = fog3d.check(cfg, DATA / "library", DATA / "grids", Path("reports/fog3d"), tol, dirs)
+            print("PASS" if res["pass"] else "FAIL")
+            sys.exit(0 if res["pass"] else 1)
+        from . import fog
+        try:
+            fog.build_bands3d(cfg, DATA / "grids", DATA / "library", dirs or fog3d.WEST_DIRS, bands, tol, dry_run="--dry-run" in argv)
+        except fog3d.GpuLockHeld as e:
+            print(e)
+            sys.exit(3)
     elif cmd == "street":
         from . import street
         print(json.dumps(street.build(cfg, DATA / "grids", DATA / "library"), indent=1))
