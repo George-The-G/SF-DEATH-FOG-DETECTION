@@ -1,0 +1,70 @@
+{
+ "load_seconds": 0.01,
+ "compressed_mb": 8.6,
+ "a_shapes_ok": true,
+ "b_old_tile": {
+  "180.0": {
+   "pearson_r": 0.9988,
+   "mean_abs_diff": 0.0069,
+   "ok": true
+  },
+  "202.5": {
+   "pearson_r": 0.999,
+   "mean_abs_diff": 0.0075,
+   "ok": true
+  },
+  "225.0": {
+   "pearson_r": 0.9991,
+   "mean_abs_diff": 0.0078,
+   "ok": true
+  },
+  "247.5": {
+   "pearson_r": 0.9992,
+   "mean_abs_diff": 0.008,
+   "ok": true
+  },
+  "270.0": {
+   "pearson_r": 0.9996,
+   "mean_abs_diff": 0.0067,
+   "ok": true
+  },
+  "292.5": {
+   "pearson_r": 0.9995,
+   "mean_abs_diff": 0.0081,
+   "ok": true
+  },
+  "315.0": {
+   "pearson_r": 0.9995,
+   "mean_abs_diff": 0.0084,
+   "ok": true
+  },
+  "337.5": {
+   "pearson_r": 0.9994,
+   "mean_abs_diff": 0.0086,
+   "ok": true
+  },
+  "360.0": {
+   "pearson_r": 0.9993,
+   "mean_abs_diff": 0.0072,
+   "ok": true
+  }
+ },
+ "b_ok": true,
+ "c_peak_cell": [
+  202,
+  118
+ ],
+ "c_peak_cell_independent": [
+  202,
+  118
+ ],
+ "c_coast_mean_ground_west3cols_m": 1.24,
+ "c_ok": true,
+ "d_violations": 0,
+ "d_ok": true,
+ "urban_range": [
+  0,
+  255
+ ],
+ "pass": true
+}

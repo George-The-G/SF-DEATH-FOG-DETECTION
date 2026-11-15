@@ -93,6 +93,49 @@ def write_extras(out, diag, Rb, ranges, idx, local):
     return fields, names
 
 
+FOG3D_BUDGET_BYTES = 12_000_000     # target for all 3D files; over it, only frames from FOG3D_PAST_H before now to FOG3D_FUTURE_H after keep a file (the viewer falls back to 2D elsewhere)
+FOG3D_PAST_H, FOG3D_FUTURE_H = 6, 30
+
+
+def write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log=print):
+    """fog3d = (T, info) from live.fog3d.load. Writes fog3d_<fff>.png for frames with any fog aloft. Returns (index field, file names)."""
+    import datetime as dt
+    from . import fog3d as f3
+    T, _ = fog3d
+    dirs = np.asarray(S["dirs"], float)
+    top = np.asarray(F["fog_top"], float)
+    nF = len(amps)
+    files, tops, sizes = [None] * nF, [-1] * nF, [0] * nF
+    for f in range(nF):
+        a = f3.band_weights(top[min(f * spf, len(top) - 1)], 0.0)
+        rows = f3.dir_rows(dirs, Wts[f], T["dirs"])
+        if not rows or not np.any(a > 0):
+            continue
+        u8 = f3.encode(f3.volume(T, rows, a, amps[f]))
+        tl = f3.top_layer(u8)
+        if tl < 0:
+            continue
+        fn = f"fog3d_{f:03d}.png"
+        f3.atlas(u8).save(out / fn, optimize=True)
+        files[f], tops[f], sizes[f] = fn, tl, (out / fn).stat().st_size
+    total = sum(sizes)
+    windowed = None
+    if total > FOG3D_BUDGET_BYTES:
+        lo, hi = now - dt.timedelta(hours=FOG3D_PAST_H), now + dt.timedelta(hours=FOG3D_FUTURE_H)
+        for f in range(nF):
+            if files[f] and not (lo <= t_hours[f] <= hi):
+                (out / files[f]).unlink()
+                total -= sizes[f]
+                files[f], tops[f] = None, -1
+        windowed = [FOG3D_PAST_H, FOG3D_FUTURE_H]
+    log(f"fog3d: {sum(1 for x in files if x)} of {nF} frames, {total} bytes" + (f" (over {FOG3D_BUDGET_BYTES}: windowed to -{FOG3D_PAST_H} h .. +{FOG3D_FUTURE_H} h)" if windowed else ""))
+    field = {"files": files, "nz": f3.NZ, "dz_m": f3.DZ, "z0_m": 0, "cols": f3.COLS, "rows": f3.ROWS, "w": replay.FOG_W, "h": replay.FOG_H, "top_layer": tops, "ref": 16,
+             "bytes": total}
+    if windowed:
+        field["windowed_h"] = windowed
+    return field, [x for x in files if x]
+
+
 def tile_lonlat():
     from pyproj import Transformer
     t = Transformer.from_crs(32610, 4326, always_xy=True)
@@ -103,9 +146,11 @@ def tile_lonlat():
     return xs, ys, lon, lat
 
 
-def fog_frames(S, diag, F, goes_hours, t_hours, step_per_frame):
+def fog_frames(S, diag, F, goes_hours, t_hours, step_per_frame, return_amp=False):
     """Hourly fog tiles uint8 [nF, H, W]: 255 * s(t - lag) * direction-blended 80 m tracer (weights of the HOUR's wind direction), times the GOES
-    clear-sky factor for observed hours (cells where GOES sees no low cloud keep at most CLEAR_MAX_OPACITY)."""
+    clear-sky factor for observed hours (cells where GOES sees no low cloud keep at most CLEAR_MAX_OPACITY).
+    return_amp=True (guide 03, fog3d): returns (tiles, amps, Wts) with amp = lagged source * GOES factor [H, W] float32 per frame and the direction weights of each frame;
+    the tiles are computed exactly as without it."""
     from PIL import Image  # noqa: F401
     tr80, dirs = S["tr80"], np.asarray(S["dirs"], float)
     xs, ys, lon, lat = tile_lonlat()
@@ -116,6 +161,7 @@ def fog_frames(S, diag, F, goes_hours, t_hours, step_per_frame):
     nF = (n + step_per_frame - 1) // step_per_frame
     out = np.zeros((nF, replay.FOG_H, replay.FOG_W), np.uint8)
     lagc = {}
+    amps, Wts = [], []
     for f in range(nF):
         i = f * step_per_frame
         b = i // blk
@@ -125,7 +171,9 @@ def fog_frames(S, diag, F, goes_hours, t_hours, step_per_frame):
             lagc[b] = wetness.lag_seconds_dir(xs[None, :], ys[:, None], mb, float(np.mean(wspd[sl]))) / (C.STEP_MIN * 60.0)
         Wt = dirlib.weights(wdir[i], dirs)[0]
         trb = np.tensordot(Wt, tr80, axes=1)
-        tile = 255.0 * wetness.lagged(s, i - lagc[b]) * trb
+        la = wetness.lagged(s, i - lagc[b])
+        tile = 255.0 * la * trb
+        fac = None
         lc = goes_hours.get(t_hours[f]) if goes_hours else None
         if lc is not None:
             low = lc.sample(lon, lat, "low")
@@ -133,8 +181,11 @@ def fog_frames(S, diag, F, goes_hours, t_hours, step_per_frame):
             v = np.maximum(low, 0.5 * cl)
             fac = np.where(np.isfinite(v), C.CLEAR_MAX_OPACITY + (1 - C.CLEAR_MAX_OPACITY) * v, 1.0)
             tile = tile * fac
+        if return_amp:
+            amps.append(np.asarray(la * (1.0 if fac is None else fac), np.float32) * np.ones((replay.FOG_H, replay.FOG_W), np.float32))
+            Wts.append(np.asarray(Wt, float))
         out[f] = np.clip(np.rint(tile), 0, 255).astype(np.uint8)
-    return out
+    return (out, amps, Wts) if return_amp else out
 
 
 def sheet(tiles):
@@ -148,7 +199,7 @@ def sheet(tiles):
     return Image.fromarray(img, "L"), rows
 
 
-def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=print, tiles_cb=None):
+def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=print, tiles_cb=None, fog3d=None):
     import datetime as dt
     out = Path(out)
     if Rb is None:
@@ -163,7 +214,10 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
     parts = np.array_split(np.arange(nF), N_DAYS)
     ranges = [[int(p[0]), int(p[-1]) + 1] for p in parts]
     t_hours = [t0 + dt.timedelta(hours=k) for k in range(nF)]
-    tiles = fog_frames(S, diag, F, goes_hours, t_hours, spf)
+    if fog3d is not None:
+        tiles, amps, Wts = fog_frames(S, diag, F, goes_hours, t_hours, spf, return_amp=True)
+    else:
+        tiles = fog_frames(S, diag, F, goes_hours, t_hours, spf)
     if tiles_cb is not None:
         tiles_cb(tiles, t_hours)        # read-only hand-over for the cloud score (cloud_score.Hook)
     files = {}
@@ -180,6 +234,10 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
     idx = np.arange(nF) * spf
     local = [t.astimezone(PT) for t in t_hours]
     extra_fields, extra_files = write_extras(out, diag, Rb, ranges, idx, local)
+    if fog3d is not None:
+        f3, f3files = write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log)
+        extra_fields["fog3d"] = f3
+        extra_files = list(extra_files) + f3files
     wj = {"t": [x.isoformat() for x in local], "temp_c": np.round(np.asarray(ser["temperature_2m"])[idx], 2).tolist(),
           "dewpoint_c": np.round(np.asarray(ser["dew_point_2m"])[idx], 2).tolist(), "wind_ms": np.round(np.asarray(ser["wind_speed_10m"])[idx], 2).tolist(),
           "wind_dir": np.round(np.asarray(ser["wind_dir"])[idx], 1).tolist(), "cloud_low_pct": np.round(np.asarray(ser["cloud_cover_low"])[idx], 1).tolist(),
@@ -219,5 +277,7 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
             meta[fn] = {"bytes": len(raw), "gz": len(gzip.compress(raw, 9))}
     meta["first_paint_gz_extra"] = sum(meta[f]["gz"] for f in ("index.json", "day0.u8", "fog0.png", "ribbons_city.bin", "ribbons_city_meta.json", "weather.json") if f in meta)
     meta["S_district"], meta["S_city"] = SA, SB
+    if fog3d is not None:
+        meta["fog3d_bytes"] = extra_fields["fog3d"]["bytes"]
     log("outputs: " + json.dumps({k: v for k, v in meta.items() if not isinstance(v, dict)}))
     return meta

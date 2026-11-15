@@ -11,6 +11,7 @@
                                                                        compare_<time>.md/.json (default out: reports/physics_compare)
   ribbons [--stride N] [--static PATH] [--out DIR]                     offline: city ribbons + column maps (out default: the static file's folder)
   stationwind [--data DIR] [--out FILE]                                offline (PC with the wind library): simulated wind vectors at the in-grid stations -> station_wind.npz (guide 03)
+  tracer3d [--data DIR] [--out FILE] [--check]                         offline (PC with the tracer library): pack the 99 fog3d fields -> live_tracer3d.npz (guide 02)
   check   [--since 30d] [--out DIR]                                    compare the model with METAR / GOES / CO-OPS (section 7); guide 03: leave-one-station-out table
   cloudscore [--file cloud_score.json] [--since 14d] [--archive DIR]   print the satellite cloud score summary (guide 04)
 """
@@ -60,6 +61,9 @@ def main(argv):
     elif cmd == "stationwind":
         from . import stationwind
         sys.exit(stationwind.run(argv[1:]))
+    elif cmd == "tracer3d":
+        from . import tracer3d
+        sys.exit(tracer3d.run(argv[1:]))
     elif cmd == "cloudscore":
         from . import cloud_score
         sys.exit(cloud_score.run_cli(argv[1:]))

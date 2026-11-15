@@ -16,13 +16,17 @@ PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS)
 # Beta preview channel (site/v3/live_beta/, opened with /v3/?beta=1): a second build of the same fetched inputs with these settings. It is applied ONLY by `build --beta`
 # (build.run(beta=True)); the public build never reads it. Staging order (user's decision 2026-11-12): stage 1 = station anchors + clear-sky sun, stage 2 = carry_state,
 # stage 3 = film + pavement. A stage goes to the public settings above only after the user has looked at the preview and approved it.
-BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, goes5=True)
+BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, goes5=True, fog3d=True)
 # GOES5 (multi-scale guide 07): 5-minute GOES crop store + macro frames. The beta build reads BETA.get("goes5", False): on for beta since 2026-11-15 (George: "Deploy to beta whenever"); the 24 h gate of the guide is still to be reported. Never in PROMOTED without George.
 # WIND_EAST (guide 14): the east wind-direction fields (22.5 .. 135 deg; 157.5 is an accepted gap) feed the STREET WIND only: station-anchor wind fit and
 # the direction weights. Needs live_east.npz next to the static table; the fog tracer weight for east / offshore wind stays zero. False = the public model, bit for bit.
 # The public build reads this value; the beta build reads BETA["wind_east"] only. build.run sets it for the duration of one build (like NUDGE_ANCHORS).
 WIND_EAST = False
 GOES5 = False                         # public build: 5-minute GOES store and macro frames off (never in PROMOTED without George's approval)
+# FOG3D (guide 03): one 3D fog atlas (fog3d_<fff>.png) per hourly frame next to the 2D tiles, from live_tracer3d.npz (release asset of live-static-v1, optional: missing or not matching ->
+# not applied, noted in the status). Writes new files only; the 2D tiles, street wetness and everything else stay byte-identical. Public build reads FOG3D; the beta build reads BETA["fog3d"] only.
+FOG3D = False
+FOG3D_FILE = "live_tracer3d.npz"
 EAST_FILE = "live_east.npz"           # release asset of live-static-v1 (wind vectors at the stations for the 15 library directions); optional
 # Settings the PUBLIC build runs with when it is started with `build --promoted` (live_ci/refresh.sh does that when DEATHFOG_LIVE_PROMOTE is true; the job falls back to the old settings,
 # C.PHYSICS / C.NUDGE_ANCHORS / C.CARRY_STATE, if such a build fails). Approved 2026-11-13: stage 1 (clear-sky sun + station anchors), then stage 2 + 3 (carried state, water film, pavement heat) after the beta look. Guides 08 (cloud base), 09, 11, 12 approved 2026-11-14 after the beta look. Not the east wind
