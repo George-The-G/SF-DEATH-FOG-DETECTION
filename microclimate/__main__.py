@@ -23,6 +23,9 @@ def main(argv):
         from . import wind
         order = [270, 247.5, 292.5, 225, 315, 202.5, 337.5, 360]
         wind.build(cfg, DATA / "grids", DATA / "library", directions=order)
+    elif cmd == "meshes-wide":  # multi-scale guide 09: 400 m terrain out to 60 km -> site/v3/data/terrain_wide.bin
+        from . import wide
+        print(json.dumps(wide.run(DATA, Path("site/v3/data/terrain_wide.bin")), indent=1))
     elif cmd == "winddirs":  # winddirs [dir ...] [--fog] [--validate]: rotated-frame wind runs, fog bands, validation + manifest
         from . import windrot, fog, validate_dirs
         dirs = [float(a) for a in argv[1:] if not a.startswith("--")] or [315, 225, 180, 360, 247.5, 292.5, 337.5, 202.5]
@@ -74,7 +77,7 @@ def main(argv):
         validate.overview(cfg, DATA, Path("site/v3/replay"))
         sys.exit(0 if ok else 1)
     else:
-        print("commands: geometry, zone, meshes, wind, winddirs [dirs] [--fog|--validate], street, sun [--check], replay, validate, "
+        print("commands: geometry, zone, meshes, meshes-wide, wind, winddirs [dirs] [--fog|--validate], street, sun [--check], replay, validate, "
               "routes [--force] [--from STEP] [--only STEP] [--no-validate]  (routes: everything for all routes in routes.toml)")
 
 
