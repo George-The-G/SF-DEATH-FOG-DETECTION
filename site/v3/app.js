@@ -1321,8 +1321,10 @@ function ui2Track() {
 let stSig = '';
 function ui2Clock(w, f) { // clock second line, status line, track
   const i = Math.round(f), fr = LV ? LV.idx.observed_until_frame : null, fc = !!LV && (fr == null || i > fr);
-  $('clock-sub').textContent = LV ? `${w.day.split(' ')[0]} · ${fc ? 'forecast' : 'observed'}` : w.day + ' ' + tzName(night.start_iso);
-  $('clock-sub').classList.toggle('fc', fc);
+  // label: observed | estimated | forecast. 'estimated' appears only when the index marks this frame 'interpolated' (fog5 frame kinds, guide 08); today's data never does.
+  const kd = fc ? 'forecast' : (LV && LV.idx.kinds && LV.idx.kinds[i] === 'interpolated' ? 'estimated' : 'observed');
+  $('clock-sub').textContent = LV ? `${w.day.split(' ')[0]} · ${kd}` : w.day + ' ' + tzName(night.start_iso);
+  $('clock-sub').classList.toggle('fc', fc); $('clock-sub').classList.toggle('est', kd === 'estimated');
   let t = LV
     ? (fc ? (LV.real && ageNow() != null ? `Forecast (NWS RRFS) \u00b7 updated ${fmtAge(ageNow())} ago` : 'Forecast hour \u00b7 NWS RRFS model') : LV.real ? `As of ${LV.asofTxt}` + (ageNow() != null ? ` \u00b7 updated ${fmtAge(ageNow())} ago` : '') : `Snapshot \u00b7 as of ${LV.asofTxt}`)
     : nightLabel(night) + ' · replay';
