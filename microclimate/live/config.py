@@ -28,6 +28,9 @@ GOES5 = False                         # public build: 5-minute GOES store and ma
 FOG3D = False
 # FOG_BASE / URBAN_LIFT (multi-scale guide 05): a cloud floor for the 3D fog files (needs fog3d and the cloud_base physics), and an urban heat lift of that floor (needs fog_base). Both off for the public build;
 # the beta build reads BETA["fog_base"] / BETA["urban_lift"] only. They change the 3D files only (never the 2D tiles or street wetness). The urban constants (fogbase.py) are first guesses.
+# FOG_TRAVEL (multi-scale guide 08 part A): 5-minute fog carried by the wind and corrected by each GOES scan -> fog5/ in the output folder (needs goes5 and fog3d). Public build: off. The beta build reads
+# BETA.get("fog_travel", False): the key is added to BETA only after the guide's leave-one-scan-out gate (not run yet). Writes new files only.
+FOG_TRAVEL = False
 FOG_BASE = False
 URBAN_LIFT = False
 FOG3D_FILE = "live_tracer3d.npz"

@@ -163,6 +163,11 @@ def fog_base_switches(beta=False, promoted=False):
     return fb, ul
 
 
+def fog_travel_enabled(beta=False, promoted=False):
+    """The fog_travel switch (multi-scale guide 08): BETA.get("fog_travel", False) for the beta build, C.FOG_TRAVEL for the public build (never in a promoted build)."""
+    return bool(C.BETA.get("fog_travel", False)) if beta else (bool(C.FOG_TRAVEL) and not promoted)
+
+
 def goes5_enabled(beta=False, promoted=False):
     """The goes5 switch (multi-scale guide 07): BETA["goes5"] for the beta build (absent = off), C.GOES5 for the public build (never in a promoted build). Both off today."""
     return bool(C.BETA.get("goes5", False)) if beta else (bool(C.GOES5) and not promoted)
@@ -256,6 +261,28 @@ def fetch_dsr(st, t0, now, out, log=print):
         traceback.print_exc()
         st.fail("goes_dsr", repr(e))
         return None, dict(error=repr(e)[:200])
+
+
+def _run_fog5(out, F, S, fog3d_pack, t0, now, log):
+    """Guide 08 part A: the scans of the 5-minute store on the tile grid (parallax-corrected nearest sample), then the cycle (live/fog5.py)."""
+    import numpy as np
+    from . import fog5
+    xs, ys, lon, lat = outputs.tile_lonlat()
+    crop = goes5.Crop5(Path(out) / C.GOES5_DIR, t_from=now - dt.timedelta(hours=8))
+    cache = {}
+
+    def scan_at(t):
+        if len(crop) == 0:
+            return None
+        j = int(np.argmin(np.abs(crop.t_scan - t)))
+        if abs(float(crop.t_scan[j]) - t) > fog5.T.SCAN_TOL_S:
+            return None
+        if j not in cache:
+            p, c, top = goes.low_cloud(crop, j)[:3]
+            sp, sc, _ = goes5.sample_macro(crop, j, p, c, top, lon, lat)
+            cache[j] = (np.nan_to_num(sp).astype(np.float32), np.nan_to_num(sc).astype(np.float32))
+        return cache[j]
+    return fog5.write(out, F, S, fog3d_pack[0], outputs.last_fogbase, t0, now, scan_at, xs, ys, log=log)
 
 
 def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, physics=None, carry_state=None, archive_dir=None, beta=False, inputs=None, inputs_out=None, promoted=False):
@@ -437,6 +464,21 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
         except Exception as e:  # noqa: BLE001
             goes5_info["index_error"] = repr(e)[:160]
         log(f"goes5: { {k: v for k, v in goes5_info.items()} }")
+    # ---- fog travel (multi-scale guide 08 part A): needs the goes5 store of this run and the 3D asset; never fatal
+    fog5_info = None
+    if fog_travel_enabled(beta, promoted):
+        if not (goes5_info and fog3d_pack):
+            fog5_info = dict(applied=False, reason="needs goes5 and fog3d applied in this build")
+        else:
+            try:
+                fog5_info = _run_fog5(out, F, S, fog3d_pack, t0, now, log)
+                idx_p = out / "index.json"
+                idx = json.loads(idx_p.read_text())
+                idx["fog5"] = dict(index="fog5/index.json")
+                idx_p.write_text(json.dumps(idx, indent=1))
+            except Exception as e:  # noqa: BLE001
+                traceback.print_exc()
+                fog5_info = dict(applied=False, reason=repr(e)[:160])
     ainfo = None
     if archive_dir and C.ARCHIVE and not beta:      # the beta channel never writes the run archive
         try:
@@ -456,6 +498,8 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
         status["pavement"] = pavinfo
     if goes5_info is not None:
         status["goes5"] = goes5_info
+    if fog5_info is not None:
+        status["fog5"] = fog5_info
     if promoted and not beta:   # the public page reads this flag to switch its data layers on; absent = the old public page
         status["promoted"] = dict(label=beta_label(S_set), physics=list(S_set["physics"]), nudge_anchors=S_set["nudge_anchors"], carry_state=S_set["carry_state"],
                                   sun_dsr=bool(C.SUN_DSR and "sun_clear" in P))

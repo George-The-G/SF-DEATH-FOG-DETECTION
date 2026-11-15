@@ -97,6 +97,9 @@ FOG3D_BUDGET_BYTES = 12_000_000     # target for all 3D files; over it, only fra
 FOG3D_PAST_H, FOG3D_FUTURE_H = 6, 30
 
 
+last_fogbase = None   # the FogBase of the latest write() (guide 08 reuses it for the 5-minute 3D files); None when fog_base is off
+
+
 def write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log=print, base=None, dbg_frame=None):
     """fog3d = (T, info) from live.fog3d.load. Writes fog3d_<fff>.png for frames with any fog aloft. Returns (index field, file names)."""
     import datetime as dt
@@ -260,6 +263,7 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
                 fbo, fb_info = None, dict(applied=False, reason=repr(e)[:160])
         obs_u = F.get("obs_until")
         dbg_f = max([f for f in range(nF) if obs_u is None or t_hours[f] <= obs_u] or [nF - 1])
+        globals()["last_fogbase"] = fbo
         f3, f3files = write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log, base=fbo, dbg_frame=dbg_f)
         extra_fields["fog3d"] = f3
         extra_files = list(extra_files) + f3files
