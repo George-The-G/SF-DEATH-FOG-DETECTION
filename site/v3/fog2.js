@@ -15,6 +15,7 @@
    A frame-time governor steps down tiers 3 -> 2 -> 1 -> 0; tier 0 is the old sheets (fog.js). */
 import { createFog as createSheets } from './fog.js';
 import { solveWind } from './fogflow.js';
+import { colMax, volumeHeight, usable, createLru } from './fog3dview.js';
 
 const PX_REF = 16; // sprite value that maps to full density after the sqrt stretch (same as fog.js)
 const OCC_CELLS = 4; // occupancy cell = 4 x 4 fog cells (320 m)
@@ -54,6 +55,7 @@ export const DEFAULTS = {
   flowSpeed: 0.042, // voxel: detail drift as a fraction of the real wind speed, in simulation time
   eddy: 0.2,       // voxel: curl-noise eddies added to the wind field (fraction of the wind speed)
   taa: 1,          // voxel: while the camera moves, trace 1 pixel in 16 per frame and reproject the rest
+  data3d: 0,       // voxel: 1 = the fog takes its shape from the live 3D fog files (index.json fog3d: a cloud floor, a data top, holes behind hills); 0 = the 2D tile with a guessed top. Lab switch; live data only (guide 04)
 };
 
 const VERT = `varying vec2 vUv; void main(){ vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); }`;
@@ -145,7 +147,17 @@ const BAKE_A = `
   precision highp float; precision highp sampler3D; varying vec2 vUv;
   uniform sampler2D uTex, uHt; uniform sampler3D uNoise;
   uniform vec4 uTiles; uniform vec2 uTexel, uGo, uGs; uniform vec3 uOff;
-  uniform float uNT, uFrame, uHtMax, uFollow, uVH, uTop, uDens, uSoft, uBump, uWarp, uEX, uLayer, uD, uDbg;` + TILE + `
+  uniform float uNT, uFrame, uHtMax, uFollow, uVH, uTop, uDens, uSoft, uBump, uWarp, uEX, uLayer, uD, uDbg;
+  uniform sampler2D uTex3; uniform float uUse3, uDz, uNz; uniform vec2 uAt, uT3;` + TILE + `
+  float lay3(float k, vec2 q){ // one level of the 3D atlas; q as in tile(): x 0..1, s 0..1 from north
+    float c = mod(k, uAt.x), r = floor(k / uAt.x);
+    vec2 tp = clamp(q * uT3, vec2(.5), uT3 - .5); // stay half a texel inside the tile
+    return texture2D(uTex3, (vec2(c * uT3.x, r * uT3.y) + tp) / (uAt * uT3)).r;
+  }
+  float data3(vec2 q, float zM){ // zM = metres above sea level, levels of uDz m (centre at (k + .5) * uDz)
+    float f = clamp(zM / uDz - .5, 0., uNz - 1.), k0 = floor(f), k1 = min(k0 + 1., uNz - 1.);
+    return mix(lay3(k0, q), lay3(k1, q), f - k0) * 255.;
+  }
   mat2 rot(float a){ float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
   void main(){
     float v = (uLayer + .5) / uD;
@@ -153,7 +165,7 @@ const BAKE_A = `
     float gh = texture2D(uHt, q).r * uHtMax;
     float base = gh * uFollow, y = base + v * uVH;
     if (y < gh) { gl_FragColor = vec4(0.); return; }
-    float px = tile(uFrame, q) * 255.;
+    float px = uUse3 > .5 ? data3(q, y / uEX) : tile(uFrame, q) * 255.;
     float cov = max(clamp(sqrt(px / ${PX_REF.toFixed(1)}) * uDens, 0., 1.), uDbg);
     if (cov < .004) { gl_FragColor = vec4(0.); return; }
     // world metres; non-commensurate tile sizes and rotations so the 64^3 noise never repeats visibly over the grid
@@ -165,9 +177,9 @@ const BAKE_A = `
             + .2 * texture(uNoise, w3 * vec3(1. / 3100., 1. / 1100., 1. / 3100.) + .71).g;
     // lumpy top surface; uTop is the mean top above the base
     float tn = texture(uNoise, vec3(wq.x / 2600., .31, wq.z / 2600.)).r * .6 + texture(uNoise, vec3(w2.x / 900., .77, w2.z / 900.)).g * .4;
-    float topL = uTop * (1. + uBump * (tn - .5) * 1.6);
+    float topL = uUse3 > .5 ? uVH : uTop * (1. + uBump * (tn - .5) * 1.6); // 3D data: hh runs 0..1 over the volume height, the data decides where the top is
     float hh = (y - base) / topL;
-    float prof = (1. - smoothstep(1. - .5 * uSoft - .05, 1., hh)) * (1. - .3 * clamp(hh, 0., 1.));
+    float prof = uUse3 > .5 ? 1. : (1. - smoothstep(1. - .5 * uSoft - .05, 1., hh)) * (1. - .3 * clamp(hh, 0., 1.));
     // coverage remap: thick fog fills the slab; thin fog breaks into separate billows instead of a uniform haze
     float thr = 1. - cov, e = .08 + .3 * uSoft;
     float s = smoothstep(thr - e, thr + e, n + (1. - hh) * .12);
@@ -396,7 +408,8 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   const accScene = quad(ACC_FS, AU);
   // voxel bake passes (uniform objects shared with U where the value is the same for every hour)
   const BA = { uTex: U.uTex, uHt: U.uHt, uNoise: U.uNoise, uTiles: U.uTiles, uTexel: U.uTexel, uGo: U.uGo, uGs: U.uGs, uOff: { value: V3() }, uNT: U.uNT, uFrame: { value: 0 }, uHtMax: U.uHtMax,
-    uFollow: U.uFollow, uVH: { value: 300 }, uTop: { value: 200 }, uDens: U.uDens, uSoft: U.uSoft, uBump: { value: .25 }, uWarp: U.uWarp, uEX: U.uEX, uLayer: { value: 0 }, uD: { value: 24 }, uDbg: U.uDbg };
+    uFollow: U.uFollow, uVH: { value: 300 }, uTop: { value: 200 }, uDens: U.uDens, uSoft: U.uSoft, uBump: { value: .25 }, uWarp: U.uWarp, uEX: U.uEX, uLayer: { value: 0 }, uD: { value: 24 }, uDbg: U.uDbg,
+    uTex3: { value: null }, uUse3: { value: 0 }, uDz: { value: 25 }, uNz: { value: 24 }, uAt: { value: V2() }, uT3: { value: new THREE.Vector2(214, 203) } };
   const BB = { uA: { value: null }, uLayer: BA.uLayer, uD: BA.uD, uVH: BA.uVH, uK: { value: .0231 } };
   const bakeAScene = quad(BAKE_A, BA), bakeBScene = quad(BAKE_B, BB);
 
@@ -485,23 +498,56 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     if (wx && wx.wind && P.advect > 0) out.set(wx.wind[0], 0, wx.wind[1]).multiplyScalar(hours * 3600 * P.advect); else out.set(0, 0, 0);
     return out;
   }
-  function bakeHour(renderer, e, k) {
-    const t0 = performance.now(), top = topForHour(k) * EX, vh = top * (1 + P.bump * .8) + 4, D = vlayers();
+  /* ---- 3D fog data (guide 04): index.json fog3d atlases, decoded on demand, 3 hours kept (the two in use plus one ahead) */
+  const d3 = { info: null, base: '', sfx: '', keep: [], pending: new Set(), missing: new Set(),
+    cache: createLru(3, (e) => { e.dead = true; if (e.tex) e.tex.dispose(); }) };
+  const d3On = () => !!(P.data3d && d3.info && grid && usable(d3.info, grid));
+  function d3Fail(k) { d3.pending.delete(k); d3.missing.add(k); }
+  function d3Load(k) { // starts decoding hour k; the PNG is read through a canvas once (colMax for the occupancy) and its pixels become the texture, so no colour management or premultiply can touch them
+    const I = d3.info; if (!I || k < 0 || k >= I.files.length || d3.cache.has(k) || d3.pending.has(k) || d3.missing.has(k)) return;
+    const fn = I.files[k]; if (!fn) { d3.missing.add(k); return; }
+    d3.pending.add(k); const info = I, img = new Image();
+    img.onload = () => {
+      if (d3.info !== info) { d3.pending.delete(k); return; } // the data changed while loading
+      try {
+        const W = info.cols * info.w, H = info.rows * info.h; if (img.width !== W || img.height !== H) throw new Error('atlas size');
+        const c = document.createElement('canvas'); c.width = W; c.height = H;
+        const cx = c.getContext('2d', { willReadFrequently: true }); cx.drawImage(img, 0, 0);
+        const rgba = cx.getImageData(0, 0, W, H).data, px = new Uint8Array(W * H);
+        for (let i = 0, j = 0; i < px.length; i++, j += 4) px[i] = rgba[j];
+        const tex = new THREE.DataTexture(px, W, H, THREE.RedFormat, THREE.UnsignedByteType);
+        tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.generateMipmaps = false; tex.flipY = false; tex.needsUpdate = true;
+        d3.cache.set(k, { k, tex, colMax: colMax(px, info), topLayer: info.top_layer && info.top_layer[k] != null ? info.top_layer[k] : info.nz - 1 }, d3.keep);
+        d3.pending.delete(k);
+      } catch (e) { d3Fail(k); }
+    };
+    img.onerror = () => d3Fail(k);
+    img.src = d3.base + fn + d3.sfx;
+  }
+  function d3State(k) { // { e } loaded, { loading } coming, {} none for this hour (null file, failed, or off)
+    if (!d3.info) return {};
+    const e = d3.cache.get(k); if (e) return { e };
+    d3Load(k); return d3.pending.has(k) ? { loading: true } : {};
+  }
+  let lastVsig = null;
+  function bakeHour(renderer, e, k, d3e) {
+    const t0 = performance.now(); let top = topForHour(k) * EX, vh = top * (1 + P.bump * .8) + 4; const D = vlayers();
+    if (d3e) { vh = volumeHeight(d3e.topLayer, d3.info, EX); top = vh; BA.uTex3.value = d3e.tex; BA.uUse3.value = 1; } else BA.uUse3.value = 0;
     BA.uFrame.value = k; BA.uTop.value = top; BA.uVH.value = vh; windOffset(hoursOf(k), BA.uOff.value);
     for (let l = 0; l < D; l++) { BA.uLayer.value = l; renderer.setRenderTarget(scratch, l); renderer.render(bakeAScene, ortho); }
     for (let l = 0; l < D; l++) { BA.uLayer.value = l; renderer.setRenderTarget(e.rt, l); renderer.render(bakeBScene, ortho); }
-    e.k = k; e.ver = bakeVer; e.vh = vh; e.stamp = ++bakes;
+    e.k = k; e.ver = bakeVer; e.vh = vh; e.stamp = ++bakes; e.src3 = d3e ? 1 : 0; e.d3 = d3e || null;
     bakeMs = performance.now() - t0; // CPU-side submit time (the GPU work is asynchronous); bench() measures it synchronously
   }
-  function getVol(renderer, k, budget, keep) {
+  function getVol(renderer, k, budget, keep, d3e) {
     let e = cache.find((c) => c.k === k);
-    if (e && e.ver === bakeVer) { e.used = frameNo; return e; }
+    if (e && e.ver === bakeVer && e.src3 === (d3e ? 1 : 0)) { e.used = frameNo; return e; }
     if (budget.n <= 0) return e || null; // stale (or nothing): reuse what there is, bake next frame
     if (!e) {
       if (cache.length < 3) { e = { k, rt: newVolRT(), ver: -1 }; cache.push(e); }
       else { e = cache.filter((c) => !keep.includes(c.k)).sort((a, b) => a.used - b.used)[0]; }
     }
-    budget.n--; bakeHour(renderer, e, k); e.used = frameNo; return e;
+    budget.n--; bakeHour(renderer, e, k, d3e); e.used = frameNo; return e;
   }
 
   /* ---- coarse occupancy (320 m columns) from the sprite pixels, for hours kA and kB, dilated so drift and filtering never cut fog off */
@@ -514,16 +560,18 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
       spritePx = out; spriteW = img.width;
     } catch (e) { spritePx = null; } // unreadable: no skipping
   }
-  function updateOcc(kA, kB) {
+  function updateOcc(kA, kB, d3A, d3B) {
     if (!grid) return;
     const ow = Math.ceil(grid.w / OCC_CELLS), oh = Math.ceil(grid.h / OCC_CELLS);
     const drift = P.advect > 0 && wx && wx.wind ? Math.hypot(wx.wind[0], wx.wind[1]) * 3600 * P.advect : 0;
     const fdrift = P.flow && U.uFlowOn.value ? windMax * 3600 * (grid.frame_min || 60) / 60 * P.advect : 0;
     const r = 1 + Math.ceil(Math.max(drift, fdrift) / (OCC_CELLS * grid.cell_m));
-    const key = [kA, kB, ow, oh, r, U.uDbg.value > 0, !!spritePx, U.uDens.value > 0].join(',');
+    const key = [kA, kB, ow, oh, r, U.uDbg.value > 0, !!spritePx, U.uDens.value > 0, d3A ? 1 : 0].join(',');
     if (key === occKey && occTex) return; occKey = key;
     const raw = new Uint8Array(ow * oh);
-    if (!spritePx || U.uDbg.value > 0) raw.fill(255);
+    if (d3A && U.uDbg.value <= 0) { // 3D data: a cell is occupied when any of its columns has fog at any level
+      for (const cm of [d3A.colMax, d3B.colMax]) for (let y = 0; y < grid.h; y++) { const oy = Math.floor(y / OCC_CELLS) * ow; for (let x = 0; x < grid.w; x++) if (cm[y * grid.w + x] >= 1) raw[oy + Math.floor(x / OCC_CELLS)] = 255; }
+    } else if (!spritePx || U.uDbg.value > 0) raw.fill(255);
     else for (const k of [kA, kB]) {
       const tr = Math.floor(k / grid.cols), tc = k - tr * grid.cols, x0 = tc * grid.w, y0 = tr * grid.h;
       for (let y = 0; y < grid.h; y++) {
@@ -634,7 +682,15 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     const f = Math.max(0, Math.min(U.uNT.value - 1, U.uFrame.value)), kA = Math.floor(f), kB = Math.min(kA + 1, U.uNT.value - 1);
     let mixT = kB > kA ? f - kA : 0;
     const budget = { n: cache.some((c) => c.ver === bakeVer) ? 1 : 2 }; // bake at most one hour per frame once something is on screen
-    let eA = getVol(renderer, kA, budget, [kA, kB]), eB = mixT > .001 ? getVol(renderer, kB, budget, [kA, kB]) : null;
+    // 3D data (guide 04): both hours of a blend come from 3D files or both from the 2D tile; while a file is still loading the previous volume stays up
+    let d3A = null, d3B = null;
+    if (d3On()) {
+      d3.keep = [kA, kB];
+      const sA = d3State(kA), sB = mixT > .001 ? d3State(kB) : sA; d3Load(kB + 1);
+      if (sA.e && sB.e) { d3A = sA.e; d3B = sB.e; }
+      else if ((sA.loading || sB.loading) && lastVsig && cache.some((c) => c.ver === bakeVer)) return lastVsig;
+    }
+    let eA = getVol(renderer, kA, budget, [kA, kB], d3A), eB = mixT > .001 ? getVol(renderer, kB, budget, [kA, kB], d3B) : null;
     if (!eA && eB) { eA = eB; mixT = 0; }
     if (!eA) return null;
     if (!eB) { eB = eA; if (eA.k !== kB) mixT = 0; }
@@ -643,8 +699,8 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     const ds = grid ? 3600 * (grid.frame_min || 60) / 60 * P.advect : 0; U.uDriftS.value = ds;
     if (P.advect > 0 && wx && wx.wind && grid) U.uDrift.value.set(wx.wind[0] * ds / U.uGs.value.x, wx.wind[1] * ds / U.uGs.value.y);
     else U.uDrift.value.set(0, 0);
-    updateWind(eA.k); updateOcc(eA.k, eB.k);
-    return `${U.uFlowOn.value}:${U.uFlowT.value.toFixed(2)}|${eA.k}:${eA.stamp}|${eB.k}:${eB.stamp}|${mixT.toFixed(4)}`;
+    updateWind(eA.k); updateOcc(eA.k, eB.k, d3A && eA.src3 ? d3A : null, d3B && eB.src3 ? d3B : null);
+    return (lastVsig = `${U.uFlowOn.value}:${U.uFlowT.value.toFixed(2)}|${eA.k}:${eA.stamp}|${eB.k}:${eB.stamp}|${mixT.toFixed(4)}`);
   }
 
   function renderFrame(renderer, scn, camera, plain) { // plain (optional): how app.js wants the scene drawn when the fog pass is not running (beta: through its own multisampled target)
@@ -707,7 +763,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     for (let i = 0; i < n; i++) { const t0 = performance.now(); fogPass(r, target, steps, 0); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); times.push(performance.now() - t0); }
     let bake = null;
     if (vox && opts.bake !== false && cache.length) {
-      const e = cache[0], t0 = performance.now(); bakeHour(r, e, e.k); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); bake = performance.now() - t0;
+      const e = cache[0], t0 = performance.now(); bakeHour(r, e, e.k, e.d3 && !e.d3.dead ? e.d3 : null); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); bake = performance.now() - t0;
     }
     r.setRenderTarget(prev); accN = 0; U.uSubOn.value = 0;
     times.sort((a, b) => a - b);
@@ -748,6 +804,15 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
       const seriesChanged = !wx || wx.series !== nw.series || wx.windSrc !== nw.windSrc;
       wx = nw; if (seriesChanged) bakeVer++; applyTop();
     },
+    /* guide 04: the index.json "fog3d" entry (or null), the folder of the files and the cache-busting suffix; live nights only (replay nights call it with null) */
+    setData3d(info, base, sfx) {
+      d3.info = info || null; d3.base = base || ''; d3.sfx = sfx || ''; d3.pending.clear(); d3.missing.clear(); lastVsig = null;
+      for (const k of d3.cache.keys()) { const e = d3.cache.get(k); e.dead = true; if (e.tex) e.tex.dispose(); }
+      d3.cache = createLru(3, (e) => { e.dead = true; if (e.tex) e.tex.dispose(); });
+      if (info) { BA.uDz.value = info.dz_m; BA.uNz.value = info.nz; BA.uAt.value.set(info.cols, info.rows); BA.uT3.value.set(info.w, info.h); }
+      bakeVer++; occKey = '';
+    },
+    get data3d() { return d3On(); },
     setLight,
     get params() { return { ...P }; },
     setParams(patch) { Object.assign(P, patch || {}); applyParams(); },

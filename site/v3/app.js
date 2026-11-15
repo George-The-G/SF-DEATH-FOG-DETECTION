@@ -1235,6 +1235,7 @@ async function bootLive() {
   liveSetData(new Uint8Array(d0), f0);
   fogGrid = { ...idx.fog_grid, rows: idx.fog_grid.rows[0] };
   setStatus('Loading fog…');
+  if (fog.setData3d) fog.setData3d(BETA ? idx.fog3d || null : null, base, V); // beta only (guide 04): 3D fog files, used when the fog lab switch data3d is on
   const ok = await fog.build(base + idx.fog_files[0] + V, fogGrid);
   $('fogtoggle').disabled = !ok; $('fogdens').disabled = !ok; if (!ok) $('fogtoggle').checked = false;
   fog.setVisible($('fogtoggle').checked);
