@@ -223,10 +223,12 @@ const VOX_FS = COMMON_U + `
       float og = length((g - qg) * uGs);
       vec2 cell = min(floor(g * uOccN), ceil(uOccN) - 1.);
       vec2 oc = uSkip > 0. && og == 0. ? texelFetch(uOcc, ivec2(cell), 0).rg : vec2(1.);
-      if (oc.x < .5 || p.y > oc.y * uHtMax * uFollow + max(uVHa, uVHb)) { // empty coarse column, or above its fog layer: jump to where the ray leaves the column
+      float colTop = oc.y * uHtMax * uFollow + max(uVHa, uVHb); bool emp = oc.x < .5; // a column with no fog, or a ray above its fog layer
+      if (emp || p.y > colTop) { // empty coarse column, or above its fog layer: jump to where the ray leaves the column
         vec2 bmin = uGo + cell / uOccN * uGs, bmax = bmin + uGs / uOccN;
         vec2 tt = (mix(bmin, bmax, step(0., rxz)) - p.xz) / rxz;
         float tE = t + max(min(tt.x, tt.y), 0.) + .5;
+        if (!emp && rd.y < -1e-5) tE = min(tE, t + (p.y - colTop) / -rd.y); // above the layer only: never jump past where the ray reaches the fog top (a descending ray would skip fog in the column, giving a 320 m grid)
         if (tE >= t1) break;
         fi = max(fi, floor(sqrt((tE - t0) / (t1 - t0)) * N - jit));
         continue;
