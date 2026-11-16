@@ -43,6 +43,12 @@ def main(argv):
         dirs = opt("--dirs", lambda v: [float(x) for x in v.split(",")], None)
         bands = opt("--bands", lambda v: [int(x) for x in v.split(",")], None)
         tol = opt("--tol", float, 0.01)
+        kd = opt("--kd", float, None)   # eddy diffusivity (m2/s) for this run; default = microclimate.toml (2.0). Sideways spreading: 2 leaves sharp wake lanes, 20 looks right (2026-11-16)
+        if kd is not None:
+            cfg["library"]["eddy_diffusivity_m2s"] = kd
+        kdv = opt("--kdv", float, None)   # up-down mixing (m2/s); default = the same as kd
+        if kdv is not None:
+            cfg["library"]["eddy_diffusivity_v_m2s"] = kdv
         if "--check" in argv:
             res = fog3d.check(cfg, Path(opt("--out", str, str(DATA / "library"))), DATA / "grids", Path(opt("--report", str, "reports/fog3d")), tol, dirs, old_dir=Path(opt("--old", str, str(DATA / "library"))))   # --old none: skip the nesting test (a new wind library has no matching old 4-band files)
             print("PASS" if res["pass"] else "FAIL")

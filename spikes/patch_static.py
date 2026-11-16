@@ -1,6 +1,6 @@
 """Patch ONLY the tracer-derived arrays (tracer [9, N], tr80 [9, H, W]) of live_static.npz from the new (walls wind) library bands; every other array is copied unchanged
 (wind_ratio, rel_wind and refine_corr still come from the old wind: they need the street-feature rebuild of the wind thread). Writes a NEW file; the live file is not touched.
-usage: python spikes/patch_static.py [out.npz]   (default deathfog-data/scratch/live_static_walls_tracer.npz)"""
+usage: python spikes/patch_static.py [out.npz] [data dir] [base static.npz]   (default deathfog-data/scratch/live_static_walls_tracer.npz)"""
 import sys
 import time
 from pathlib import Path
@@ -11,9 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from microclimate import fogtop, replay  # noqa: E402
 
-D = Path.home() / "deathfog-data"
+D = Path(sys.argv[2]) if len(sys.argv) > 2 else Path.home() / "deathfog-data"      # data dir whose library\ holds the fog_<d>_<B> files to use
 out = Path(sys.argv[1]) if len(sys.argv) > 1 else D / "scratch" / "live_static_walls_tracer.npz"
-z = np.load(D / "live" / "live_static.npz", allow_pickle=False)
+base = Path(sys.argv[3]) if len(sys.argv) > 3 else D / "live" / "live_static.npz"   # the static file whose other arrays are copied
+z = np.load(base, allow_pickle=False)
 S = {k: z[k] for k in z.files}
 dirs = [float(d) for d in S["dirs"]]
 pts = dict(x=S["x"].astype(float), y=S["y"].astype(float), z=S["z"].astype(float))
