@@ -36,3 +36,8 @@ Show clouds the way they really occur: several layers at different heights, incl
 - Humidity threshold and default thickness (first guesses above).
 - Whether airport layers are strong evidence (override the model) or weak (nudge).
 - Whether thin cirrus should render at all in the first version.
+
+## Input prep (started 2026-11-16, before the guide begins)
+- Daily collector: `tools/collect_sky_inputs.py` writes `C:\Users\George\deathfog-data\sky_inputs\<yyyymmdd>\` with the raw METAR (all cloud layers, 72 h; the live fetch keeps only the lowest ceiling), a 7-day RRFS profile at the Golden Gate Park point with a wider ladder (12 levels, 1000 to 300 hPa; the live fetch stops at 850 hPa, about 1.5 km, so upper layers need more levels), the published 5-minute GOES store, and the newest OAK sounding. First run: 2026-11-16, all four parts saved. Run it once a day; five or more days give the guide its test nights.
+- The live fetch (`PROFILE_VARS` in `live/config.py`) will need the same wider ladder when the guide starts.
+- This guide is number 13 of the multi-scale series; start it after guides 01 to 12 and the open fixes (the flat-map floor decision, the refinement patch rerun, more nights for the ceiling gate). One agent at a time in `site/v3/fog2.js`, after guides 08B and 09B.
