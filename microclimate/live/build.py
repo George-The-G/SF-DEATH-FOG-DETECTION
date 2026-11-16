@@ -152,6 +152,11 @@ def fog3d_enabled(beta=False, promoted=False):
     return bool(C.BETA.get("fog3d", False)) if beta else (bool(C.FOG3D) and not promoted)
 
 
+def tile_from_3d_enabled(beta=False, promoted=False):
+    """The tile_from_3d switch (George 2026-11-16): BETA.get("tile_from_3d", False) for the beta build, C.TILE_FROM_3D for the public build (never in a promoted build)."""
+    return bool(C.BETA.get("tile_from_3d", False)) if beta else (bool(C.TILE_FROM_3D) and not promoted)
+
+
 def fog_base_2d_enabled(beta=False, promoted=False):
     """The fog_base_2d switch (George 2026-11-16): BETA.get("fog_base_2d", False) for the beta build, C.FOG_BASE_2D for the public build (never in a promoted build)."""
     return bool(C.BETA.get("fog_base_2d", False)) if beta else (bool(C.FOG_BASE_2D) and not promoted)
@@ -423,7 +428,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     # ---- outputs
     cs_hook = cloud_score.Hook()
     try:
-        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log, tiles_cb=cs_hook.tiles_cb, fog3d=fog3d_pack, fog_lid=fog_lid_enabled(beta, promoted), fog_base_2d=fog_base_2d_enabled(beta, promoted), fogbase=(dict(urban=ul_on) if (fog3d_pack and fb_on) else None))
+        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log, tiles_cb=cs_hook.tiles_cb, fog3d=fog3d_pack, fog_lid=fog_lid_enabled(beta, promoted), fog_base_2d=fog_base_2d_enabled(beta, promoted), tile_from_3d=tile_from_3d_enabled(beta, promoted), fogbase=(dict(urban=ul_on) if (fog3d_pack and fb_on) else None))
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"writing outputs failed: {e!r}")

@@ -36,7 +36,7 @@ class TestSettings(unittest.TestCase):
 
     def test_public_settings_are_unchanged_and_stage_1_is_the_beta(self):
         self.assertEqual((C.PHYSICS, C.NUDGE_ANCHORS, C.CARRY_STATE), ((), False, False))
-        self.assertEqual(C.BETA, dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, goes5=True, fog3d=True, fog_base=True, urban_lift=False, top_fusion=True, fog_lid=True, fog_base_2d=True))     # goes5 (multi-scale guide 07, beta only); cloud base (guide 08) on top of stage 3;  stage 3 (film + pavement, 2026-11-13) on top of stage 2 and east wind (guide 14)
+        self.assertEqual(C.BETA, dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, goes5=True, fog3d=True, fog_base=True, urban_lift=False, top_fusion=True, fog_lid=True, fog_base_2d=True, tile_from_3d=True))     # goes5 (multi-scale guide 07, beta only); cloud base (guide 08) on top of stage 3;  stage 3 (film + pavement, 2026-11-13) on top of stage 2 and east wind (guide 14)
         self.assertEqual(wetness.check_physics(C.BETA["physics"]), frozenset({"sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"}))
 
     def test_beta_settings_never_reach_the_public_build(self):

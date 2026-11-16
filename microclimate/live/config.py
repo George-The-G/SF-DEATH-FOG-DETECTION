@@ -16,7 +16,7 @@ PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS)
 # Beta preview channel (site/v3/live_beta/, opened with /v3/?beta=1): a second build of the same fetched inputs with these settings. It is applied ONLY by `build --beta`
 # (build.run(beta=True)); the public build never reads it. Staging order (user's decision 2026-11-12): stage 1 = station anchors + clear-sky sun, stage 2 = carry_state,
 # stage 3 = film + pavement. A stage goes to the public settings above only after the user has looked at the preview and approved it.
-BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, goes5=True, fog3d=True, fog_base=True, urban_lift=False, top_fusion=True, fog_lid=True, fog_base_2d=True)
+BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, goes5=True, fog3d=True, fog_base=True, urban_lift=False, top_fusion=True, fog_lid=True, fog_base_2d=True, tile_from_3d=True)
 # GOES5 (multi-scale guide 07): 5-minute GOES crop store + macro frames. The beta build reads BETA.get("goes5", False): on for beta since 2026-11-15 (George: "Deploy to beta whenever"); the 24 h gate of the guide is still to be reported. Never in PROMOTED without George.
 # WIND_EAST (guide 14): the east wind-direction fields (22.5 .. 135 deg; 157.5 is an accepted gap) feed the STREET WIND only: station-anchor wind fit and
 # the direction weights. Needs live_east.npz next to the static table; the fog tracer weight for east / offshore wind stays zero. False = the public model, bit for bit.
@@ -38,6 +38,9 @@ FOG_LID = False
 # FOG_BASE_2D (George 2026-11-16, realism): the flat 2D fog tile also gets the cloud floor, so it shows no fog where the air near the street is not saturated and the 3D and 2D views agree.
 # Street level = tile ground + STREET_Z_M. Needs fog3d and fog_base. Public: off; beta reads BETA.get("fog_base_2d"). It changes the 2D sheet, so the satellite score of the beta channel moves too.
 FOG_BASE_2D = False
+# TILE_FROM_3D (George 2026-11-16, one source of truth): with a 3D fog file for an hour, the flat 2D tile IS the lowest level (12.5 m) of that volume; an hour without a file has an empty tile.
+# Needs fog3d. Supersedes fog_base_2d where both are on. Public: off; beta reads BETA.get("tile_from_3d"). Moves the beta satellite score input.
+TILE_FROM_3D = False
 STREET_Z_M = 6.0
 LID_MARGIN_M = 50.0
 LID_FADE_M = 100.0

@@ -138,6 +138,24 @@ class TestSwitchesAndOutput(unittest.TestCase):
             C.BETA.clear()
             C.BETA.update(saved)
 
+    def test_tile_levels_are_the_lowest_level(self):
+        parts = asset_parts()
+        T = dict(schema=1, dirs=np.array([270.0]), tr3d=np.zeros((1, 11, 24, H, W), np.uint8), **parts)
+        T["tr3d"][0, :6] = 255
+        S, n = dict(dirs=np.array([270.0])), 2
+        amps, Wts, Fo = [np.ones((H, W), np.float32)] * n, [np.array([1.0])] * n, dict(fog_top=np.array([300.0, 0.0]))   # frame 1: no top -> no file
+        now = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+        th = [now + dt.timedelta(hours=k) for k in range(n)]
+        levels = [None] * n
+        with tempfile.TemporaryDirectory() as d:
+            f, names = outputs.write_fog3d(Path(d), (T, {}), S, Fo, amps, Wts, 1, th, now, log=lambda *_: None, tile_levels=levels)
+            from PIL import Image
+            a = np.asarray(Image.open(Path(d) / names[0])).astype(int)
+        self.assertIsNotNone(levels[0])
+        self.assertIsNone(levels[1])                                         # an hour without a file has no tile level
+        self.assertEqual(levels[0].shape, (H, W))
+        self.assertTrue(np.array_equal(levels[0].astype(int), a[:H, :W]))   # level 0 sits at atlas position (0, 0)
+
     def test_off_is_guide3_output_and_floor_only_removes_fog(self):
         parts = asset_parts()
         T = dict(schema=1, dirs=np.array([270.0]), tr3d=np.zeros((1, 11, 24, H, W), np.uint8), **parts)
