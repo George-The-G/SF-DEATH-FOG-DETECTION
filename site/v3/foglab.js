@@ -46,6 +46,7 @@ const ADVANCED = [
   ['motion', 'Cheaper while moving', 'check', null, null, null, 'Lower resolution and fewer steps while the camera moves'],
   ['motionSteps', 'Steps while moving', 'range', 0.3, 1, 0.05],
   ['taa', 'Trace 1 in 16 while moving', 'check', null, null, null, 'While moving, trace one pixel in 16 each frame and reuse the rest from earlier frames'],
+  ['edgeFade', 'Fog beyond the data edge (m)', 'range', 500, 8000, 250, 'How far fog carries on past the edge of the model area before fading out; shorter hides the straight seams of the old mirrored copy'],
   ['data3d', '3D fog data', 'check', null, null, null, 'Live data only: the fog gets its floor, top and holes from the 3D fog files instead of the 2D tile with a guessed top'],
   ['dither', 'Dither', 'range', 0, 1, 0.05],
   ['blur', 'Blur', 'check'],

@@ -69,6 +69,17 @@ class TestBase(unittest.TestCase):
         self.assertTrue(np.all(FB.guard(base, 1000.0, amp) == 400.0))
 
 
+class TestFloor2d(unittest.TestCase):
+    def test_floor_weight_2d(self):
+        base = np.full((2, 2), 200.0, np.float32)
+        ground = np.array([[0.0, 150.0], [150.0, 300.0]], np.float32)       # street at 6, 156, 156, 306 m
+        w = FB.floor_weight_2d(base, ground, 6.0)
+        self.assertEqual(w[0, 0], 0.0)                                       # 194 m below the base: out of cloud
+        self.assertTrue(0.0 < w[0, 1] < 1.0 and w[0, 1] == w[1, 0])         # 44 m below the base: inside the 60 m ramp
+        self.assertEqual(w[1, 1], 1.0)                                       # a hill top above the base is in cloud
+        self.assertTrue(np.all(w >= 0) and np.all(w <= 1))
+
+
 class TestLift(unittest.TestCase):
     def test_zero_cases_and_cap(self):
         urb = np.array([[0, 255]], np.uint8)

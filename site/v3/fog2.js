@@ -55,6 +55,7 @@ export const DEFAULTS = {
   flowSpeed: 0.042, // voxel: detail drift as a fraction of the real wind speed, in simulation time
   eddy: 0.2,       // voxel: curl-noise eddies added to the wind field (fraction of the wind speed)
   taa: 1,          // voxel: while the camera moves, trace 1 pixel in 16 per frame and reproject the rest
+  edgeFade: 3000,  // voxel: how far (m) past the edge of the data the fog carries on before it has faded out. It was 8000 with a mirrored copy of the volume, which drew straight seams and repeated panels far out at sea; shorter and with a noisy edge it reads as a cloud bank ending (the macro view of guide 09 is the real answer beyond the data)
   data3d: 1,       // voxel: 1 = the fog takes its shape from the live 3D fog files (index.json fog3d: a cloud floor, a data top, holes behind hills; an hour without a file has NO fog); 0 = the 2D tile with a guessed top. Live data only; replay nights have no 3D files and keep the 2D tile (George 2026-11-16: realism, no fog columns from sky to ground)
 };
 
@@ -201,7 +202,7 @@ const BAKE_B = `
 /* Voxel render: two hour volumes A and B blended by uMixT; with advection the two are shifted along the wind so the noise drifts
    instead of cross-fading. Rays jump over columns the coarse occupancy grid marks empty. */
 const VOX_FS = COMMON_U + `
-  uniform sampler3D uVolA, uVolB; uniform sampler2D uOcc; uniform vec2 uOccN, uDrift;
+  uniform sampler3D uVolA, uVolB; uniform sampler2D uOcc; uniform vec2 uOccN, uDrift; uniform float uEdge;
   uniform float uVHa, uVHb, uMixT, uK, uShadow, uSkip, uFlowOn, uFlowT, uWindScale, uDriftS;
   uniform sampler2D uWind;
 #ifdef MRT
@@ -249,7 +250,7 @@ const VOX_FS = COMMON_U + `
       if (p.y < gh) continue;
       float base = gh * uFollow, va = (p.y - base) / uVHa, vb = (p.y - base) / uVHb;
       if (va < 0. || min(va, vb) > 1.) continue;
-      float inside = 1. - smoothstep(0., 8000., og);
+      float inside = 1. - smoothstep(0., uEdge, og * (.55 + .9 * texture(uNoise, vec3(p.x / 2300., .37, p.z / 2300.)).r)); // noisy edge: no straight line where the data ends
       vec2 gm = g; // past the edge the volume wraps mirrored (fog over the ocean keeps its texture); wobble the mirror line so it shows no seam
       if (og > 0.) gm += (texture(uNoise, vec3(p.x / 1900., .5, p.z / 1900.)).rb - .5) * min(og, 1500.) / uGs * 1.4;
       vec2 dA = dA0, dB = dB0;
@@ -391,7 +392,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     uSubOn: { value: 0 }, uSub: { value: V2() }, uFull: { value: V2() },
     uDbg: { value: new URLSearchParams(location.search).has('fogdbg') ? 0.6 : 0 }, uNoise: { value: noiseTex }, uSunI: { value: 0 }, uCity: { value: 0 }, uEX: { value: EX },
     uSteps: { value: 8 }, uOct: { value: 2 }, uFollow: { value: 1 }, uSoft: { value: .35 }, uDetail: { value: 1 }, uWarp: { value: 1 }, uDither: { value: 1 },
-    uVolA: { value: null }, uVolB: { value: null }, uVHa: { value: 300 }, uVHb: { value: 300 }, uMixT: { value: 0 }, uDrift: { value: V2() },
+    uEdge: { value: 3000 }, uVolA: { value: null }, uVolB: { value: null }, uVHa: { value: 300 }, uVHb: { value: 300 }, uMixT: { value: 0 }, uDrift: { value: V2() },
     uWind: { value: null }, uWindScale: { value: 0.1 }, uDriftS: { value: 0 }, uFlowOn: { value: 0 }, uFlowT: { value: 0 },
     uOcc: { value: null }, uOccN: { value: new THREE.Vector2(1, 1) }, uSkip: { value: 1 }, uK: { value: .0231 }, uShadow: { value: 1 },
   };
@@ -613,7 +614,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   }
   function applyParams() {
     U.uFollow.value = P.follow; U.uSoft.value = P.soft; U.uDetail.value = P.detail; U.uWarp.value = P.warp; U.uDither.value = P.dither;
-    BA.uBump.value = P.bump; U.uShadow.value = P.shadow; U.uSkip.value = P.skip ? 1 : 0;
+    U.uEdge.value = P.edgeFade; BA.uBump.value = P.bump; U.uShadow.value = P.shadow; U.uSkip.value = P.skip ? 1 : 0;
     const K = .0105 / EX * 2.2 * 1.5; U.uK.value = K; BB.uK.value = K * .55; // shadow uses a lower extinction: forward scattering lets more sun through
     if (P.mode === 'sheets') { if (tier !== 0) setTier(0, 'lab'); }
     else if (tier === 0) setTier(baseTier, 'lab');

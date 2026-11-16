@@ -220,7 +220,7 @@ def sheet(tiles):
     return Image.fromarray(img, "L"), rows
 
 
-def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=print, tiles_cb=None, fog3d=None, fogbase=None, fog_lid=False):
+def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=print, tiles_cb=None, fog3d=None, fogbase=None, fog_lid=False, fog_base_2d=False):
     import datetime as dt
     out = Path(out)
     if Rb is None:
@@ -239,6 +239,22 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
         tiles, amps, Wts = fog_frames(S, diag, F, goes_hours, t_hours, spf, return_amp=True)
     else:
         tiles = fog_frames(S, diag, F, goes_hours, t_hours, spf)
+    fbo, fb_info = None, None
+    if fog3d is not None and fogbase is not None:   # guide 05: never fatal, any problem means no cloud floor
+        try:
+            from . import fogbase as _fb, forcing as _fc
+            xs_, ys_, _, _ = tile_lonlat()
+            fbo, fb_info = _fb.prepare(F, diag, fog3d[0], (replay.FOG_H, replay.FOG_W), (xs_, ys_), spf, fogbase.get("urban", False), _fc._xy_to_ll, nF)
+        except Exception as e:  # noqa: BLE001
+            fbo, fb_info = None, dict(applied=False, reason=repr(e)[:160])
+    if fbo is not None and fog_base_2d:   # the flat tile gets the same floor (at street level), so it cannot stand fog where the 3D data says there is none
+        from . import fogbase as _fb2
+        top_s = np.asarray(F["fog_top"], float)
+        for f in range(nF):
+            _, bst = fbo.frame(f, amps[f], top_s[min(f * spf, len(top_s) - 1)])
+            w2 = _fb2.floor_weight_2d(bst["base"], fog3d[0]["ground_m"], C.STREET_Z_M)
+            tiles[f] = np.clip(np.rint(tiles[f].astype(np.float32) * w2), 0, 255).astype(np.uint8)
+        fb_info = dict(fb_info or {}, tile_2d=True)
     if tiles_cb is not None:
         tiles_cb(tiles, t_hours)        # read-only hand-over for the cloud score (cloud_score.Hook)
     files = {}
@@ -256,14 +272,6 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
     local = [t.astimezone(PT) for t in t_hours]
     extra_fields, extra_files = write_extras(out, diag, Rb, ranges, idx, local)
     if fog3d is not None:
-        fbo, fb_info = None, None
-        if fogbase is not None:   # guide 05: never fatal, any problem means no cloud floor
-            try:
-                from . import fogbase as _fb, forcing as _fc
-                xs_, ys_, _, _ = tile_lonlat()
-                fbo, fb_info = _fb.prepare(F, diag, fog3d[0], (replay.FOG_H, replay.FOG_W), (xs_, ys_), spf, fogbase.get("urban", False), _fc._xy_to_ll, nF)
-            except Exception as e:  # noqa: BLE001
-                fbo, fb_info = None, dict(applied=False, reason=repr(e)[:160])
         obs_u = F.get("obs_until")
         dbg_f = max([f for f in range(nF) if obs_u is None or t_hours[f] <= obs_u] or [nF - 1])
         globals()["last_fogbase"] = fbo
