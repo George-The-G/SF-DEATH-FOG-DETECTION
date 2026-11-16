@@ -205,18 +205,22 @@ def build_dirs(cfg, grids_dir, lib_dir, directions, tol=0.01, schedule=(3, 6, 12
             print("DONE", d, bi, json.dumps(diag), flush=True)
 
 
-def build_bands3d(cfg, grids_dir, lib_dir, directions, bands, tol=0.01, schedule=(3, 6, 12, 24, 48), dry_run=False):
+def build_bands3d(cfg, grids_dir, lib_dir, directions, bands, tol=0.01, schedule=(3, 6, 12, 24, 48), dry_run=False, out_dir=None, lock_dir=None):
     """Guide 01: the 11 finer inflow bands (fog_bands3d_m) per direction -> fog3d_<dddd>_<bb>.npz/.json. Resumable (skips existing),
-    GPU lock held for the whole run, status in library/runs/fog3d_status.json. Does not touch the existing fog_<d>_<b> files."""
+    GPU lock held for the whole run, status in <out>/runs/fog3d_status.json. Does not touch the existing fog_<d>_<b> files.
+    lib_dir holds the wind fields; out_dir (default lib_dir) receives the tracer files (a scratch folder for a new wind library); lock_dir (default lib_dir) holds gpu.lock."""
     from . import fog3d
     grids_dir, lib_dir = Path(grids_dir), Path(lib_dir)
-    todo = fog3d.plan(cfg, lib_dir, directions, bands)
+    out_dir = Path(out_dir) if out_dir else lib_dir
+    lock_dir = Path(lock_dir) if lock_dir else lib_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    todo = fog3d.plan(cfg, out_dir, directions, bands)
     if dry_run:
         for d, bi, band, kr, ex in todo:
             print(f"dir {d:>5} band {bi:02d} {band} k={kr} {'EXISTS' if ex else 'todo'}")
         print(f"{sum(not t[4] for t in todo)} runs to do of {len(todo)}")
         return []
-    with fog3d.GpuLock(lib_dir, "fog3d"):
+    with fog3d.GpuLock(lock_dir, "fog3d"):
         spec = json.load(open(grids_dir / "grid_spec.json"))
         solid = np.load(grids_dir / "solid_20m.npz")["solid"]
         lib = cfg["library"]
@@ -229,7 +233,7 @@ def build_bands3d(cfg, grids_dir, lib_dir, directions, bands, tol=0.01, schedule
                 continue
             u = np.load(wf)["u"]
             for _, bi, band, _, _ in [t for t in pending if t[0] == d]:
-                fog3d.write_status(lib_dir, done=done, total=total, current=f"{d}/{bi}", started=t_start,
+                fog3d.write_status(out_dir, done=done, total=total, current=f"{d}/{bi}", started=t_start,
                                    eta_s=(time.time() - t_start) / done * (total - done) if done else None)
                 t0 = time.time()
                 c, diag, hist = converge_band(u, solid, spec, d, band, tol=tol, schedule=schedule, speed_ms=lib["ref_speed_ms"],
@@ -237,12 +241,12 @@ def build_bands3d(cfg, grids_dir, lib_dir, directions, bands, tol=0.01, schedule
                 diag["total_seconds_incl_retries"] = round(time.time() - t0, 1)
                 diag["attempts"] = [(h["transits"], h["drift_last_2000_steps"]) for h in hist]
                 stem = f"fog3d_{fog3d.stem(d)}_{bi:02d}"
-                tmp = lib_dir / f"{stem}.tmp.npz"
+                tmp = out_dir / f"{stem}.tmp.npz"
                 np.savez_compressed(tmp, c=c)
-                tmp.replace(lib_dir / f"{stem}.npz")  # atomic: a stopped run never leaves a half file
-                json.dump(diag, open(lib_dir / f"{stem}.json", "w"))
+                tmp.replace(out_dir / f"{stem}.npz")  # atomic: a stopped run never leaves a half file
+                json.dump(diag, open(out_dir / f"{stem}.json", "w"))
                 done += 1
                 res.append(diag)
                 print("DONE", d, bi, json.dumps(diag), flush=True)
-        fog3d.write_status(lib_dir, done=done, total=total, current=None, started=t_start, eta_s=0)
+        fog3d.write_status(out_dir, done=done, total=total, current=None, started=t_start, eta_s=0)
     return res

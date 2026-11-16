@@ -80,17 +80,25 @@ def geometry():
 
 
 def run(steps=30000):
+    import shutil
+    import tempfile
+
+    import warp as wp
     from microclimate import fog3d, wind
+    # the fix found by the wind-cube-check thread: a stale compiled XLB stepper from Warp's on-disk cache has no wall boundary conditions; compile fresh in an empty cache folder
+    cache = tempfile.mkdtemp(prefix="warp_fresh_")
+    wp.config.kernel_cache_dir = cache
     z = np.load(OUT / "solid5m.npz")
     solid = z["solid"]
     with fog3d.GpuLock(DATA / "library", "street5m"):
         t0 = time.time()
         u, diag = wind.run(solid, 270.0, steps=steps, avg_steps=5000, avg_every=100, check_every=1000, log=lambda s: print(s, flush=True))
         diag["total_seconds"] = round(time.time() - t0)
-        json.dump(diag, open(OUT / "mean5m.json", "w"), indent=1)
+        json.dump(diag, open(OUT / "mean5m_walls.json", "w"), indent=1)
         if u is not None:
-            np.savez_compressed(OUT / "mean5m.npz", u=u)
+            np.savez_compressed(OUT / "mean5m_walls.npz", u=u)
         print(json.dumps(diag), flush=True)
+    shutil.rmtree(cache, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -44,12 +44,13 @@ def main(argv):
         bands = opt("--bands", lambda v: [int(x) for x in v.split(",")], None)
         tol = opt("--tol", float, 0.01)
         if "--check" in argv:
-            res = fog3d.check(cfg, DATA / "library", DATA / "grids", Path("reports/fog3d"), tol, dirs)
+            res = fog3d.check(cfg, Path(opt("--out", str, str(DATA / "library"))), DATA / "grids", Path(opt("--report", str, "reports/fog3d")), tol, dirs, old_dir=Path(opt("--old", str, str(DATA / "library"))))   # --old none: skip the nesting test (a new wind library has no matching old 4-band files)
             print("PASS" if res["pass"] else "FAIL")
             sys.exit(0 if res["pass"] else 1)
         from . import fog
         try:
-            fog.build_bands3d(cfg, DATA / "grids", DATA / "library", dirs or fog3d.WEST_DIRS, bands, tol, dry_run="--dry-run" in argv)
+            fog.build_bands3d(cfg, DATA / "grids", Path(opt("--lib", str, str(DATA / "library"))), dirs or fog3d.WEST_DIRS, bands, tol, dry_run="--dry-run" in argv,
+                              out_dir=opt("--out", str, None), lock_dir=DATA / "library")
         except fog3d.GpuLockHeld as e:
             print(e)
             sys.exit(3)

@@ -96,8 +96,10 @@ def write_status(lib_dir, **kw):
 
 
 # ---- --check (CPU only) ----
-def check(cfg, lib_dir, grids_dir, report_dir, tol=0.01, directions=None):
+def check(cfg, lib_dir, grids_dir, report_dir, tol=0.01, directions=None, old_dir=None):
+    """lib_dir holds the fog3d_* files; old_dir (default lib_dir) the old 4-band fog_<d>_<B> files for the nesting test c (skipped, and noted, when they are missing)."""
     lib_dir, grids_dir = Path(lib_dir), Path(grids_dir)
+    old_dir = Path(old_dir) if old_dir else lib_dir
     fluid = ~np.load(grids_dir / "solid_20m.npz")["solid"]
     nb = len(cfg["library"]["fog_bands3d_m"])
     res = {"directions": {}, "pass": True}
@@ -121,7 +123,10 @@ def check(cfg, lib_dir, grids_dir, report_dir, tol=0.01, directions=None):
                 r["b_drift_ok"] = False
             new.append(c)
         for B, parts in OLD_TO_NEW.items():
-            O = np.load(lib_dir / f"fog_{s}_{B}.npz")["c"].astype(np.float32)
+            if not (old_dir / f"fog_{s}_{B}.npz").exists():
+                r["c_nesting"] = "skipped: no old 4-band files for this wind library"
+                break
+            O = np.load(old_dir / f"fog_{s}_{B}.npz")["c"].astype(np.float32)
             e = np.abs(sum(new[i] for i in parts) - O)[fluid]
             r["c_nesting"][B] = {"max": float(e.max()), "mean": float(e.mean()), "ok": bool(e.max() < NEST_MAX and e.mean() < NEST_MEAN)}
         low = [float(new[b][:, :, :5][fluid[:, :, :5]].mean()) for b in range(nb)]
@@ -137,7 +142,7 @@ def check(cfg, lib_dir, grids_dir, report_dir, tol=0.01, directions=None):
                            "k=39 is forced to 0 (clear air) and diffuses down (k=38 ~0.85, k=37 ~0.99), and the only 6 cells with error >0.02 on "
                            "row 5 lie within 8 cells (160 m) of the north/south lateral edge at the terrain.")
             d_ok = max(r["d_interior_maxerr"]) <= 0.02
-        r["pass"] = bool(r["a_range_ok"] and r["b_drift_ok"] and all(v["ok"] for v in r["c_nesting"].values()) and d_ok)
+        r["pass"] = bool(r["a_range_ok"] and r["b_drift_ok"] and (not isinstance(r["c_nesting"], dict) or all(v["ok"] for v in r["c_nesting"].values())) and d_ok)
         res["pass"] &= r["pass"]
         res["directions"][str(d)] = r
     Path(report_dir).mkdir(parents=True, exist_ok=True)
