@@ -160,7 +160,7 @@ class TestFogFrames(unittest.TestCase):
         self.assertTrue(build.fog3d_enabled(True))
         self.assertFalse(build.fog3d_enabled(False))
         self.assertFalse(build.fog3d_enabled(False, promoted=True))
-        self.assertEqual(sorted(build.settings(True)), ["carry_state", "nudge_anchors", "physics", "wind_east"])
+        self.assertEqual(sorted(build.settings(True)), ["carry_state", "nudge_anchors", "physics", "top_fusion", "wind_east"])
 
 
 if __name__ == "__main__":

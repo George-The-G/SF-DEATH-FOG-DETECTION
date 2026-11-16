@@ -273,6 +273,8 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
           "sun_el": np.round(diag["sun_el"][idx], 2).tolist(), "precip_mm": np.round(np.asarray(ser["precipitation"])[idx], 2).tolist(),
           "shortwave_wm2": np.round(np.asarray(ser["shortwave_radiation"])[idx], 1).tolist(),
           "fog_source": np.round(F["s_series"][idx], 3).tolist(), "fog_top_m": np.round(np.asarray(F["fog_top"])[idx], 0).tolist()}
+    if F.get("fog_top_sigma") is not None:   # guide 06 (switch top_fusion only)
+        wj["fog_top_sigma_m"] = np.round(np.asarray(F["fog_top_sigma"])[idx], 0).tolist()
     (out / "weather.json").write_text(json.dumps(wj, separators=(",", ":")))
     for fn in ("ribbons_city.bin", "ribbons_city_meta.json"):
         src = Path(static_dir) / fn
