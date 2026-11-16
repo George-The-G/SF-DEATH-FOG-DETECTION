@@ -1236,6 +1236,7 @@ async function bootLive() {
   fogGrid = { ...idx.fog_grid, rows: idx.fog_grid.rows[0] };
   setStatus('Loading fog…');
   if (fog.setData3d) fog.setData3d(BETA ? idx.fog3d || null : null, base, V); // beta only (guide 04): 3D fog files, used when the fog lab switch data3d is on
+  if (fog.setTravel) fog.setTravel(BETA && idx.fog5 && idx.fog5.index ? { url: base + idx.fog5.index, t0ms: Date.parse(idx.start_iso) } : null); // beta only (guide 08 B): 5-minute fog frames, used when the fog lab switch travel is on
   const ok = await fog.build(base + idx.fog_files[0] + V, fogGrid);
   $('fogtoggle').disabled = !ok; $('fogdens').disabled = !ok; if (!ok) $('fogtoggle').checked = false;
   fog.setVisible($('fogtoggle').checked);
@@ -1322,7 +1323,8 @@ let stSig = '';
 function ui2Clock(w, f) { // clock second line, status line, track
   const i = Math.round(f), fr = LV ? LV.idx.observed_until_frame : null, fc = !!LV && (fr == null || i > fr);
   // label: observed | estimated | forecast. 'estimated' appears only when the index marks this frame 'interpolated' (fog5 frame kinds, guide 08); today's data never does.
-  const kd = fc ? 'forecast' : (LV && LV.idx.kinds && LV.idx.kinds[i] === 'interpolated' ? 'estimated' : 'observed');
+  const tk = !fc && LV && fog.travelKind ? fog.travelKind((f * night.step_min) / fogGrid.frame_min) : null; // 5-minute fog frames (lab switch travel): the kind of the frame on screen
+  const kd = fc ? 'forecast' : ((LV && LV.idx.kinds && LV.idx.kinds[i] === 'interpolated') || tk === 'interpolated' ? 'estimated' : 'observed');
   $('clock-sub').textContent = LV ? `${w.day.split(' ')[0]} · ${kd}` : w.day + ' ' + tzName(night.start_iso);
   $('clock-sub').classList.toggle('fc', fc); $('clock-sub').classList.toggle('est', kd === 'estimated');
   let t = LV

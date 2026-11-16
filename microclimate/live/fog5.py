@@ -139,6 +139,7 @@ def write(out, F, S, T3, base, t0, now, scan_at, xs, ys, log=print):
         name = f"vol_{dt.datetime.fromtimestamp(int(t), tz=dt.timezone.utc):%Y%m%dT%H%M}_{_hash(data)}.png"
         (out / name).write_bytes(data)
         frames[k]["vol"] = name
+        frames[k]["top"] = int(f3.top_layer(u8))
         total += len(data)
         nvol += 1
     idx = dict(schema=1, step_min=5, generated_iso=now.isoformat(), nz=f3.NZ, dz_m=f3.DZ, cols=f3.COLS, rows=f3.ROWS, w=replay.FOG_W, h=replay.FOG_H, frames=frames)
