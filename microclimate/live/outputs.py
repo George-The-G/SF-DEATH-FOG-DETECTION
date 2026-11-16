@@ -100,7 +100,7 @@ FOG3D_PAST_H, FOG3D_FUTURE_H = 6, 30
 last_fogbase = None   # the FogBase of the latest write() (guide 08 reuses it for the 5-minute 3D files); None when fog_base is off
 
 
-def write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log=print, base=None, dbg_frame=None):
+def write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log=print, base=None, dbg_frame=None, lid=False):
     """fog3d = (T, info) from live.fog3d.load. Writes fog3d_<fff>.png for frames with any fog aloft. Returns (index field, file names)."""
     import datetime as dt
     from . import fog3d as f3
@@ -121,6 +121,9 @@ def write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log=print, base=
             base_m[f], lift_m[f] = bst["base_m"], bst["lift_m"]
             if f == dbg_frame:
                 dbg = bst["base"]
+        if lid:   # the lid at the fused top (multi-scale realism): no fog far above the layer the data gives
+            lw = f3.lid_weight(T["z_m"], top[min(f * spf, len(top) - 1)], C.LID_MARGIN_M, C.LID_FADE_M)
+            w3 = lw if w3 is None else w3 * lw
         u8 = f3.encode(f3.volume(T, rows, a, amps[f], weight3d=w3))
         tl = f3.top_layer(u8)
         if tl < 0:
@@ -217,7 +220,7 @@ def sheet(tiles):
     return Image.fromarray(img, "L"), rows
 
 
-def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=print, tiles_cb=None, fog3d=None, fogbase=None):
+def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=print, tiles_cb=None, fog3d=None, fogbase=None, fog_lid=False):
     import datetime as dt
     out = Path(out)
     if Rb is None:
@@ -264,7 +267,7 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
         obs_u = F.get("obs_until")
         dbg_f = max([f for f in range(nF) if obs_u is None or t_hours[f] <= obs_u] or [nF - 1])
         globals()["last_fogbase"] = fbo
-        f3, f3files = write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log, base=fbo, dbg_frame=dbg_f)
+        f3, f3files = write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log, base=fbo, dbg_frame=dbg_f, lid=fog_lid)
         extra_fields["fog3d"] = f3
         extra_files = list(extra_files) + f3files
     wj = {"t": [x.isoformat() for x in local], "temp_c": np.round(np.asarray(ser["temperature_2m"])[idx], 2).tolist(),

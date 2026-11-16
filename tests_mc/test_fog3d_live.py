@@ -73,6 +73,17 @@ class TestDirRows(unittest.TestCase):
         self.assertEqual(F3.dir_rows(dirs15, np.eye(15)[0], asset()["dirs"]), [])
 
 
+class TestLid(unittest.TestCase):
+    def test_lid_weight(self):
+        z = (np.arange(24) + 0.5) * 25.0
+        w = F3.lid_weight(z, 65.0, 50.0, 100.0)[:, 0, 0]
+        self.assertTrue(np.all(w[z <= 115.0] == 1.0))                 # up to top + margin
+        self.assertAlmostEqual(float(F3.lid_weight(np.array([165.0]), 65.0, 50.0, 100.0)[0, 0, 0]), 0.5, places=6)   # half way down the fade
+        self.assertTrue(np.all(w[z >= 215.0] == 0.0))                 # none above top + margin + fade
+        self.assertTrue(np.all(np.diff(w) <= 1e-9))                   # never increases with height
+        self.assertTrue(np.all(F3.lid_weight(z, float('nan')) == 0) and np.all(F3.lid_weight(z, 0.0) == 0))
+
+
 class TestAtlas(unittest.TestCase):
     def test_level_7_position_and_north_row(self):
         u8 = np.zeros((24, 203, 214), np.uint8)
@@ -152,6 +163,7 @@ class TestFogFrames(unittest.TestCase):
 
     def test_switch_defaults(self):
         self.assertFalse(C.FOG3D)
+        self.assertFalse(C.FOG_LID)
         self.assertTrue(C.BETA["fog3d"])
         self.assertNotIn("fog3d", C.PROMOTED)
 

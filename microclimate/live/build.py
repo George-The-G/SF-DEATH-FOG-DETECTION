@@ -152,6 +152,11 @@ def fog3d_enabled(beta=False, promoted=False):
     return bool(C.BETA.get("fog3d", False)) if beta else (bool(C.FOG3D) and not promoted)
 
 
+def fog_lid_enabled(beta=False, promoted=False):
+    """The fog_lid switch (George 2026-11-16): BETA.get("fog_lid", False) for the beta build, C.FOG_LID for the public build (never in a promoted build)."""
+    return bool(C.BETA.get("fog_lid", False)) if beta else (bool(C.FOG_LID) and not promoted)
+
+
 def fog_base_switches(beta=False, promoted=False):
     """(fog_base, urban_lift) of this build (multi-scale guide 05), read like fog3d_enabled. urban_lift without fog_base is an error (the lift moves the cloud floor)."""
     if beta:
@@ -413,7 +418,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     # ---- outputs
     cs_hook = cloud_score.Hook()
     try:
-        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log, tiles_cb=cs_hook.tiles_cb, fog3d=fog3d_pack, fogbase=(dict(urban=ul_on) if (fog3d_pack and fb_on) else None))
+        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log, tiles_cb=cs_hook.tiles_cb, fog3d=fog3d_pack, fog_lid=fog_lid_enabled(beta, promoted), fogbase=(dict(urban=ul_on) if (fog3d_pack and fb_on) else None))
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"writing outputs failed: {e!r}")

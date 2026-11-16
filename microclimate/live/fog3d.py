@@ -57,6 +57,14 @@ def dir_rows(dirs_used, Wt, asset_dirs):
     return out
 
 
+def lid_weight(z_m, top_m, margin=50.0, fade=100.0):
+    """[24, 1, 1] density weight of a lid at the fused fog top (m above sea level): 1 up to top + margin, falling linearly to 0 at top + margin + fade. top NaN or <= 0 -> no fog at all (weight 0)."""
+    z = np.asarray(z_m, float)
+    if top_m is None or not np.isfinite(top_m) or top_m <= 0:
+        return np.zeros((len(z), 1, 1), np.float32)
+    return np.clip(1.0 - (z - (float(top_m) + margin)) / fade, 0.0, 1.0).astype(np.float32).reshape(-1, 1, 1)
+
+
 def volume(T, rows, a, amp, weight3d=None):
     """-> float32 [24, H, W]. rows from dir_rows, a from band_weights, amp [H, W]; weight3d [24, H, W] (guide 05 hook) multiplies in at the end."""
     tr = T["tr3d"]

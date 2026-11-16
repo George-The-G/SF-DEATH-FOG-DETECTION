@@ -15,7 +15,7 @@
    A frame-time governor steps down tiers 3 -> 2 -> 1 -> 0; tier 0 is the old sheets (fog.js). */
 import { createFog as createSheets } from './fog.js';
 import { solveWind } from './fogflow.js';
-import { colMax, volumeHeight, usable, createLru } from './fog3dview.js';
+import { colMax, volumeHeight, usable, createLru, emptyEntry } from './fog3dview.js';
 
 const PX_REF = 16; // sprite value that maps to full density after the sqrt stretch (same as fog.js)
 const OCC_CELLS = 4; // occupancy cell = 4 x 4 fog cells (320 m)
@@ -55,7 +55,7 @@ export const DEFAULTS = {
   flowSpeed: 0.042, // voxel: detail drift as a fraction of the real wind speed, in simulation time
   eddy: 0.2,       // voxel: curl-noise eddies added to the wind field (fraction of the wind speed)
   taa: 1,          // voxel: while the camera moves, trace 1 pixel in 16 per frame and reproject the rest
-  data3d: 0,       // voxel: 1 = the fog takes its shape from the live 3D fog files (index.json fog3d: a cloud floor, a data top, holes behind hills); 0 = the 2D tile with a guessed top. Lab switch; live data only (guide 04)
+  data3d: 1,       // voxel: 1 = the fog takes its shape from the live 3D fog files (index.json fog3d: a cloud floor, a data top, holes behind hills; an hour without a file has NO fog); 0 = the 2D tile with a guessed top. Live data only; replay nights have no 3D files and keep the 2D tile (George 2026-11-16: realism, no fog columns from sky to ground)
 };
 
 const VERT = `varying vec2 vUv; void main(){ vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); }`;
@@ -500,12 +500,16 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   }
   /* ---- 3D fog data (guide 04): index.json fog3d atlases, decoded on demand, 3 hours kept (the two in use plus one ahead) */
   const d3 = { info: null, base: '', sfx: '', keep: [], pending: new Set(), missing: new Set(),
-    cache: createLru(3, (e) => { e.dead = true; if (e.tex) e.tex.dispose(); }) };
+    zero: null, cache: createLru(3, (e) => { e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); }) };
   const d3On = () => !!(P.data3d && d3.info && grid && usable(d3.info, grid));
   function d3Fail(k) { d3.pending.delete(k); d3.missing.add(k); }
   function d3Load(k) { // starts decoding hour k; the PNG is read through a canvas once (colMax for the occupancy) and its pixels become the texture, so no colour management or premultiply can touch them
     const I = d3.info; if (!I || k < 0 || k >= I.files.length || d3.cache.has(k) || d3.pending.has(k) || d3.missing.has(k)) return;
-    const fn = I.files[k]; if (!fn) { d3.missing.add(k); return; }
+    const fn = I.files[k];
+    if (!fn) { // no file for this hour = the data says no fog: an explicit empty hour (never the 2D fallback)
+      if (!d3.zero) { d3.zero = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType); d3.zero.needsUpdate = true; }
+      d3.cache.set(k, emptyEntry(k, I, d3.zero), d3.keep); return;
+    }
     d3.pending.add(k); const info = I, img = new Image();
     img.onload = () => {
       if (d3.info !== info) { d3.pending.delete(k); return; } // the data changed while loading
@@ -694,12 +698,13 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     if (!eA && eB) { eA = eB; mixT = 0; }
     if (!eA) return null;
     if (!eB) { eB = eA; if (eA.k !== kB) mixT = 0; }
+    if (d3A && eA.src3 !== eB.src3 && lastVsig) return lastVsig;   // never blend a 3D-baked hour with a 2D-baked one: keep the previous picture until the other hour is baked (next frame)
     U.uVolA.value = eA.rt.texture; U.uVolB.value = eB.rt.texture; U.uVHa.value = eA.vh; U.uVHb.value = eB.vh; U.uMixT.value = mixT;
     U.uYmax.value = U.uHtMax.value * P.follow + Math.max(eA.vh, eB.vh) + 2;
     const ds = grid ? 3600 * (grid.frame_min || 60) / 60 * P.advect : 0; U.uDriftS.value = ds;
     if (P.advect > 0 && wx && wx.wind && grid) U.uDrift.value.set(wx.wind[0] * ds / U.uGs.value.x, wx.wind[1] * ds / U.uGs.value.y);
     else U.uDrift.value.set(0, 0);
-    updateWind(eA.k); updateOcc(eA.k, eB.k, d3A && eA.src3 ? d3A : null, d3B && eB.src3 ? d3B : null);
+    updateWind(eA.k); updateOcc(eA.k, eB.k, d3A && d3B && eA.src3 && eB.src3 ? d3A : null, d3A && d3B && eA.src3 && eB.src3 ? d3B : null);
     return (lastVsig = `${U.uFlowOn.value}:${U.uFlowT.value.toFixed(2)}|${eA.k}:${eA.stamp}|${eB.k}:${eB.stamp}|${mixT.toFixed(4)}`);
   }
 
@@ -807,8 +812,8 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     /* guide 04: the index.json "fog3d" entry (or null), the folder of the files and the cache-busting suffix; live nights only (replay nights call it with null) */
     setData3d(info, base, sfx) {
       d3.info = info || null; d3.base = base || ''; d3.sfx = sfx || ''; d3.pending.clear(); d3.missing.clear(); lastVsig = null;
-      for (const k of d3.cache.keys()) { const e = d3.cache.get(k); e.dead = true; if (e.tex) e.tex.dispose(); }
-      d3.cache = createLru(3, (e) => { e.dead = true; if (e.tex) e.tex.dispose(); });
+      for (const k of d3.cache.keys()) { const e = d3.cache.get(k); e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); }
+      d3.cache = createLru(3, (e) => { e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); });
       if (info) { BA.uDz.value = info.dz_m; BA.uNz.value = info.nz; BA.uAt.value.set(info.cols, info.rows); BA.uT3.value.set(info.w, info.h); }
       bakeVer++; occKey = '';
     },

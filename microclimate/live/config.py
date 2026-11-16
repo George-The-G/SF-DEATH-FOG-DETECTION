@@ -16,7 +16,7 @@ PHYSICS = ()                          # physics switches (wetness.KNOWN_PHYSICS)
 # Beta preview channel (site/v3/live_beta/, opened with /v3/?beta=1): a second build of the same fetched inputs with these settings. It is applied ONLY by `build --beta`
 # (build.run(beta=True)); the public build never reads it. Staging order (user's decision 2026-11-12): stage 1 = station anchors + clear-sky sun, stage 2 = carry_state,
 # stage 3 = film + pavement. A stage goes to the public settings above only after the user has looked at the preview and approved it.
-BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, goes5=True, fog3d=True, fog_base=True, urban_lift=False, top_fusion=True)
+BETA = dict(physics=("sun_clear", "film", "pavement", "cloud_base", "lag_uniform", "drizzle", "insitu_fog"), nudge_anchors=True, carry_state=True, wind_east=True, goes5=True, fog3d=True, fog_base=True, urban_lift=False, top_fusion=True, fog_lid=True)
 # GOES5 (multi-scale guide 07): 5-minute GOES crop store + macro frames. The beta build reads BETA.get("goes5", False): on for beta since 2026-11-15 (George: "Deploy to beta whenever"); the 24 h gate of the guide is still to be reported. Never in PROMOTED without George.
 # WIND_EAST (guide 14): the east wind-direction fields (22.5 .. 135 deg; 157.5 is an accepted gap) feed the STREET WIND only: station-anchor wind fit and
 # the direction weights. Needs live_east.npz next to the static table; the fog tracer weight for east / offshore wind stays zero. False = the public model, bit for bit.
@@ -32,6 +32,11 @@ FOG3D = False
 # BETA.get("fog_travel", False): the key is added to BETA only after the guide's leave-one-scan-out gate (not run yet). Writes new files only.
 FOG_TRAVEL = False
 FOG_BASE = False
+# FOG_LID (George 2026-11-16, realism): the 3D fog files get a lid at the fused fog top. The wind fields are neutral (no inversion), so the tracer climbs slopes and leaks above the top the data
+# gives (a 65 m top showed fog to 200 m and traces to 590 m). Fog density fades to 0 between top + LID_MARGIN_M and top + LID_MARGIN_M + LID_FADE_M (first guesses). Public: off; beta reads BETA.get("fog_lid").
+FOG_LID = False
+LID_MARGIN_M = 50.0
+LID_FADE_M = 100.0
 URBAN_LIFT = False
 FOG3D_FILE = "live_tracer3d.npz"
 EAST_FILE = "live_east.npz"           # release asset of live-static-v1 (wind vectors at the stations for the 15 library directions); optional
