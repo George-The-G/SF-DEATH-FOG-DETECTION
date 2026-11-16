@@ -6,13 +6,14 @@
           [--promoted]   the public build with config.PROMOTED settings (status "promoted": true; what the page needs to show the data layers)
           [--beta [--inputs FILE]]   the beta preview channel: settings from config.BETA only (default out: site/v3/live_beta), fetched inputs from FILE (the
                                  public build's --save-inputs file) or its own fetch; never writes the run archive
-  compare --physics a,b|none [--base x,y] [--anchors] [--static PATH] [--out DIR]   same inputs, config.PHYSICS (or --base) versus the given switches; writes
+  compare [--top-fusion] --physics a,b|none [--base x,y] [--anchors] [--static PATH] [--out DIR]   same inputs, config.PHYSICS (or --base) versus the given switches; writes
                                                                        --anchors (guide 03): the given set (default config.PHYSICS) without versus with the station anchors on
                                                                        compare_<time>.md/.json (default out: reports/physics_compare)
   ribbons [--stride N] [--static PATH] [--out DIR]                     offline: city ribbons + column maps (out default: the static file's folder)
   stationwind [--data DIR] [--out FILE]                                offline (PC with the wind library): simulated wind vectors at the in-grid stations -> station_wind.npz (guide 03)
   tracer3d [--data DIR] [--out FILE] [--check]                         offline (PC with the tracer library): pack the 99 fog3d fields -> live_tracer3d.npz (guide 02)
   check   [--since 30d] [--out DIR]                                    compare the model with METAR / GOES / CO-OPS (section 7); guide 03: leave-one-station-out table
+  backup  [--data DIR] [--stale-min 30] [--force] [--dry-run]          PC backup (guide 10): if the published data is stale, build here (CPU only) and publish to R2 backup/ (never to git)
   cloudscore [--file cloud_score.json] [--since 14d] [--archive DIR]   print the satellite cloud score summary (guide 04)
 """
 import sys
@@ -42,12 +43,12 @@ def main(argv):
                            inputs_out=opt(argv, "--save-inputs"), promoted="--promoted" in argv and not beta))
     elif cmd == "compare":
         from . import compare
-        if "--physics" not in argv and "--anchors" not in argv and "--east" not in argv:
-            sys.exit("compare needs --physics a,b (or --physics none), or --anchors, or --east")
+        if "--physics" not in argv and "--anchors" not in argv and "--east" not in argv and "--top-fusion" not in argv:
+            sys.exit("compare needs --physics a,b (or --physics none), or --anchors, or --east, or --top-fusion")
         base = opt(argv, "--base")
         try:
             sys.exit(compare.run(compare.parse_physics(opt(argv, "--physics")), opt(argv, "--static"), opt(argv, "--ribbons"), opt(argv, "--cache"),
-                                 opt(argv, "--out", "reports/physics_compare"), anchors="--anchors" in argv, east="--east" in argv, base=None if base is None else compare.parse_physics(base)))
+                                 opt(argv, "--out", "reports/physics_compare"), anchors="--anchors" in argv, east="--east" in argv, top_fusion="--top-fusion" in argv, base=None if base is None else compare.parse_physics(base)))
         except ValueError as e:
             sys.exit(f"compare: {e}")
     elif cmd == "ribbons":
@@ -67,6 +68,9 @@ def main(argv):
     elif cmd == "cloudscore":
         from . import cloud_score
         sys.exit(cloud_score.run_cli(argv[1:]))
+    elif cmd == "backup":
+        from . import backup
+        sys.exit(backup.run(argv[1:]))
     else:
         print(__doc__)
 

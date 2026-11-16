@@ -138,13 +138,13 @@ def settings(beta=False, physics=None, carry_state=None, promoted=False):
     promoted=True (public build, `build --promoted`): reads ONLY C.PROMOTED, the approved set that went from beta to the public page."""
     if promoted and not beta:
         return dict(physics=tuple(C.PROMOTED["physics"] if physics is None else physics), nudge_anchors=bool(C.PROMOTED.get("nudge_anchors", False)),
-                    carry_state=bool(C.PROMOTED.get("carry_state", False) if carry_state is None else carry_state), wind_east=bool(C.PROMOTED.get("wind_east", False)))
+                    carry_state=bool(C.PROMOTED.get("carry_state", False) if carry_state is None else carry_state), wind_east=bool(C.PROMOTED.get("wind_east", False)), top_fusion=bool(C.PROMOTED.get("top_fusion", False)))
     if beta:
         b = dict(C.BETA)
         return dict(physics=tuple(C.BETA["physics"] if physics is None else physics), nudge_anchors=bool(b.get("nudge_anchors", False)),
-                    carry_state=bool(b.get("carry_state", False) if carry_state is None else carry_state), wind_east=bool(b.get("wind_east", False)))
+                    carry_state=bool(b.get("carry_state", False) if carry_state is None else carry_state), wind_east=bool(b.get("wind_east", False)), top_fusion=bool(b.get("top_fusion", False)))
     return dict(physics=tuple(C.PHYSICS if physics is None else physics), nudge_anchors=bool(C.NUDGE_ANCHORS), carry_state=bool(C.CARRY_STATE if carry_state is None else carry_state),
-                wind_east=bool(C.WIND_EAST))
+                wind_east=bool(C.WIND_EAST), top_fusion=bool(C.TOP_FUSION))
 
 
 def fog3d_enabled(beta=False, promoted=False):
@@ -184,6 +184,8 @@ def beta_label(s):
         parts.append("carried state")
     if s.get("wind_east"):
         parts.append("east wind (street wind only)")
+    if s.get("top_fusion"):
+        parts.append("fog top fusion")
     return ", ".join(parts) if parts else "no changes"
 
 
@@ -355,18 +357,19 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
             st.notes.append(f"fog3d is on but not applied: {fog3d_info['reason']}")
             log(st.notes[-1])
     # ---- forcing
-    nudge0, east0 = C.NUDGE_ANCHORS, C.WIND_EAST
+    nudge0, east0, tf0 = C.NUDGE_ANCHORS, C.WIND_EAST, C.TOP_FUSION
     try:
         extra = load_extra(static, S, P, st, log)
         attach_station_wind(obs, static, S, east=east_on)
         C.NUDGE_ANCHORS = S_set["nudge_anchors"]      # this build's setting only; restored below (the beta build must never leave its value behind)
+        C.TOP_FUSION = bool(S_set["top_fusion"])      # guide 06: fog top fusion for this build only
         C.WIND_EAST = east_on                         # same for the east wind switch (anchors carry directions in [180, 540) then)
         F = forcing.build(rr, t0, n, now, S["x"], S["y"], obs, sector_fn=sector_fn, log=log, physics=P, goes_hours=goes_hours, z=S["z"], dsr_hours=dsr_hours)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"forcing failed: {e!r}")
     finally:
-        C.NUDGE_ANCHORS, C.WIND_EAST = nudge0, east0
+        C.NUDGE_ANCHORS, C.WIND_EAST, C.TOP_FUSION = nudge0, east0, tf0
     if inputs_out and not beta:
         sz = save_inputs(inputs_out, now, snap, goes_hours, st)
         log(f"fetched inputs for the beta build: {sz} bytes")
@@ -508,7 +511,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     if beta:   # the preview channel says so in its own status (the page badge reads "beta")
         status["channel"] = "beta"
         status["beta"] = dict(label=beta_label(S_set), physics=list(S_set["physics"]), nudge_anchors=S_set["nudge_anchors"], carry_state=S_set["carry_state"],
-                              wind_east=bool(S_set["wind_east"]), sun_dsr=bool(C.SUN_DSR and "sun_clear" in P), inputs=inp_info)
+                              wind_east=bool(S_set["wind_east"]), top_fusion=bool(S_set["top_fusion"]), sun_dsr=bool(C.SUN_DSR and "sun_clear" in P), inputs=inp_info)
         if east_info is not None:
             status["wind_east"] = east_info
         if fog3d_info is not None:

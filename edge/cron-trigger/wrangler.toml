@@ -1,0 +1,18 @@
+# Cloudflare Worker: a reliable 10-minute trigger for the GitHub Action (multi-scale guide 10, part A). NO secrets here.
+# The GitHub token is a Worker secret named GH_DISPATCH_TOKEN: `npx wrangler secret put GH_DISPATCH_TOKEN` (fine-grained token, this repo only, "Actions: read and write").
+name = "deathfog-cron-trigger"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+workers_dev = true          # only the plain "ok" fetch handler lives here; it returns no data
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[vars]
+# Heartbeat: the v2 status.json is rebuilt by every scheduled run (10 min), so it shows whether the workflow ran at all.
+# (The v3 live status.json is built only on the 7,37 cron, i.e. every 30 min, so it cannot be the 14-minute heartbeat.)
+STATUS_URL = "https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/status.json"
+STALE_MIN = "14"            # dispatch when the newest build is older than this many minutes
+REPO = "George-The-G/SF-DEATH-FOG-DETECTION"
+WORKFLOW = "collect.yml"
+REF = "main"                # the branch that holds the scheduled workflow file (default branch)

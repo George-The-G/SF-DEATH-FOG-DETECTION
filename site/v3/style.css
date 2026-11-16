@@ -284,6 +284,7 @@ body.ui2 .clock { width: 82px; line-height: 1.1; }
 body.ui2 #clock { font: 650 19px var(--sans); letter-spacing: -.01em; }
 body.ui2 #clock-sub { font-size: 10.5px; color: var(--soft); }
 body.ui2 #clock-sub.fc { color: var(--cy-ink); }
+body.ui2 #clock-sub.est { color: var(--amber); }
 body.ui2 #st3 { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 8px; height: 14px; font-size: 10.5px; color: var(--soft); white-space: nowrap; }
 body.ui2 #st3 .stl { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 body.ui2 #poc { order: 0; flex: none; position: relative; display: inline-flex; justify-content: flex-end; padding: 0; margin: 0; border: 0; background: none; color: var(--warn); }
