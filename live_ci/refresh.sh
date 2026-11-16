@@ -88,6 +88,11 @@ beta_build() {
   [ -d "$OUTB/goes5" ] && cp -r "$OUTB/goes5" "$NEWB/goes5" && echo "carried the 5-minute GOES store ($(du -sk "$NEWB/goes5" | cut -f1) kB)" || echo "no 5-minute GOES store carried (switch off or cold start)"   # multi-scale guide 07, switch goes5
   if [ "$PROMOTED_RUN" = 1 ] && cp "$OUT"/dsr_cache.json "$NEWB"/ 2>/dev/null; then echo "beta uses the GOES sunlight cache of the public build (same hours, one fetch)"
   else cp "$OUTB"/dsr_cache.json "$NEWB"/ 2>/dev/null && echo "carried the GOES sunlight cache" || echo "no GOES sunlight cache carried"; fi
+  # walls wind (2026-11-16): the BETA build alone runs on the tables rebuilt from the new wind library. The *_walls.npz release assets are optional; this runs after the public build and its
+  # finalize, so the public output of this job is never affected (a fresh runner downloads the tables again next time).
+  for f in live_static station_wind live_east live_tracer3d; do
+    if [ -s "$STATIC/${f}_walls.npz" ]; then cp "$STATIC/${f}_walls.npz" "$STATIC/$f.npz" && echo "beta uses $f from the walls wind (${f}_walls.npz)"; fi
+  done
   local S0 RCB
   S0=$(date +%s)
   if [ -x /usr/bin/time ]; then
@@ -126,7 +131,7 @@ echo "::endgroup::"
 
 echo "::group::static tables (release live-static-v1)"
 mkdir -p "$STATIC"
-for f in live_static.npz live_ribbons.npz ribbons_city.bin ribbons_city_meta.json live_extra.npz station_wind.npz live_east.npz live_tracer3d.npz; do   # live_extra.npz (guide 06): fetched when missing, also on a cache hit; a failed download only means flat asphalt streets. station_wind.npz (guide 03): optional, the wind anchors stay off without it. live_tracer3d.npz (guide 03): optional, only the beta build with fog3d reads it (no 3D fog files without it). live_east.npz (guide 14): optional, only the beta build with wind_east reads it (the old live_static.npz stays valid; the switch is simply not applied without it)
+for f in live_static.npz live_ribbons.npz ribbons_city.bin ribbons_city_meta.json live_extra.npz station_wind.npz live_east.npz live_tracer3d.npz live_static_walls.npz station_wind_walls.npz live_east_walls.npz live_tracer3d_walls.npz; do   # live_extra.npz (guide 06): fetched when missing, also on a cache hit; a failed download only means flat asphalt streets. station_wind.npz (guide 03): optional, the wind anchors stay off without it. live_tracer3d.npz (guide 03): optional, only the beta build with fog3d reads it (no 3D fog files without it). live_east.npz (guide 14): optional, only the beta build with wind_east reads it (the old live_static.npz stays valid; the switch is simply not applied without it)
   [ -s "$STATIC/$f" ] || gh release download live-static-v1 -p "$f" -D "$STATIC" --repo "$REPO" --clobber || echo "download of $f failed (live_extra.npz: flat asphalt streets; station_wind.npz: the wind anchors stay off; live_east.npz: east wind not applied)"
 done
 ls -l "$STATIC"
