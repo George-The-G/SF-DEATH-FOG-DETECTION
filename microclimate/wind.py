@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import warp as wp
 import xlb
-from scipy.ndimage import binary_erosion
+from scipy.ndimage import binary_dilation, binary_erosion
 from xlb.compute_backend import ComputeBackend
 from .slipbc import SlipFloorBC, SlipWallBC
 from xlb.grid import grid_factory
@@ -67,7 +67,9 @@ def _run(solid, direction_deg, steps, avg_steps, avg_every, omega, log, check_ev
     th = math.radians(direction_deg)
     ux, uy = -math.sin(th) * U_LAT, -math.cos(th) * U_LAT  # wind FROM direction -> flow vector
     solid = solid.copy()
-    sea = (~solid[:, :, 1:4].any(axis=2)) if sea_slip else np.zeros(solid.shape[:2], bool)  # columns with nothing above the floor: open sea
+    # free-slip only where no wall is within 2 cells horizontally (a slip node that also touches a terrain wall blows up some rotated frames)
+    sea = (~binary_dilation(solid[:, :, 1:4].any(axis=2), structure=np.ones((3, 3), bool), iterations=2)) if sea_slip else np.zeros(solid.shape[:2], bool)  # columns with nothing above the floor: open sea
+    sea[:3, :] = sea[-3:, :] = sea[:, :3] = sea[:, -3:] = False  # keep the slip floor off the box faces (BC overlap with inlet, outlet and far field)
     solid[:, :, 0] = True  # ground / sea surface as a no-slip floor (free-slip over open sea when sea_slip)
 
     interior = {}

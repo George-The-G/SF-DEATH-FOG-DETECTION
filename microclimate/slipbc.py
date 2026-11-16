@@ -30,8 +30,8 @@ class SlipWallBC(HalfwayBounceBackBC):
             _f = f_post
             for l in range(_q):
                 if missing_mask[l] == wp.uint8(1):
-                    if missing_mask[_opp[l]] == wp.uint8(1):
-                        _f[l] = f_pre[_opp[l]]  # a solid floor node itself (both sides missing): plain bounce-back keeps it inert
+                    if missing_mask[_opp[l]] == wp.uint8(1) or _mir[l] == l:
+                        _f[l] = f_pre[_opp[l]]  # a solid wall node itself (both sides missing), or a direction parallel to the slip plane that is missing because of another wall: plain bounce-back
                     else:
                         _f[l] = f_pre[_mir[l]]
             return _f
