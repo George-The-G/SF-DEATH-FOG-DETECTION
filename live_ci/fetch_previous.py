@@ -74,6 +74,21 @@ for n in (("stations.json", "dsr_cache.json", "fog_base_dbg.png") if EXTRAS else
         print("fetched", n)
     except Exception as e:  # noqa: BLE001
         print(n, "not fetched:", e)
+# Guide 08: the 5-minute fog folder fog5/ named in index.json "fog5" (beta), best effort: without it the viewer falls back to the hourly fog. Only names of the exact shapes the build writes.
+if EXTRAS and idx.get("fog5"):
+    try:
+        raw5 = get("fog5/index.json")
+        d5 = json.loads(raw5)
+        n5 = [f.get(k) for f in d5.get("frames", []) for k in ("tile", "vol")]
+        n5 = [n for n in dict.fromkeys(n5) if n and re.fullmatch(r"(tile_\d{8}T\d{2}|vol_\d{8}T\d{4})_[0-9a-f]{8}\.png", n)]
+        (out / "fog5").mkdir(parents=True, exist_ok=True)
+        for n in n5:
+            (out / "fog5" / n).write_bytes(get("fog5/" + n))
+        (out / "fog5" / "index.json").write_bytes(raw5)
+        print(f"fetched fog5/: {len(n5)} files")
+    except Exception as e:  # noqa: BLE001
+        shutil.rmtree(out / "fog5", ignore_errors=True)
+        print("fog5/ not fetched:", e)
 # Carried model state (state_*.npz, listed in index.json "state_files"): best effort, a missing file only means a cold start, never a failure.
 for n in idx.get("state_files", []) or []:
     try:
