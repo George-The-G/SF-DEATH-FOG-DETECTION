@@ -58,6 +58,11 @@ def weight3d(base, z_m, fluid):
     return w * (np.asarray(fluid) > 0)
 
 
+def floor_weight_2d(base, ground_m, street_z=6.0):
+    """[H, W] in-cloud weight of the street (ground + street_z, m above sea level) under the cloud base: the 2D tile is multiplied by this."""
+    return fogtop.cloud_base_ramp(np.asarray(base, np.float32), np.asarray(ground_m, np.float32) + float(street_z)).astype(np.float32)
+
+
 class FogBase:
     """Per run: the tile table, the heat series and the per-frame base. frame(f, amp, top) -> (weight3d, stats)."""
 

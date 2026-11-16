@@ -15,7 +15,7 @@
    A frame-time governor steps down tiers 3 -> 2 -> 1 -> 0; tier 0 is the old sheets (fog.js). */
 import { createFog as createSheets } from './fog.js';
 import { solveWind } from './fogflow.js';
-import { colMax, volumeHeight, usable, createLru } from './fog3dview.js';
+import { colMax, volumeHeight, usable, createLru, emptyEntry } from './fog3dview.js';
 import { parseIndex, buildLine, bracket, strideFor, kindAt, swapIsInvisible, isNewer } from './fogtravel.js';
 
 const PX_REF = 16; // sprite value that maps to full density after the sqrt stretch (same as fog.js)
@@ -56,8 +56,9 @@ export const DEFAULTS = {
   flowSpeed: 1.0, // voxel: detail drift as a fraction of the real wind speed, in simulation time (1 = real speed; was 0.042)
   eddy: 0.2,       // voxel: curl-noise eddies added to the wind field (fraction of the wind speed)
   taa: 1,          // voxel: while the camera moves, trace 1 pixel in 16 per frame and reproject the rest
-  travel: 0,       // voxel: 1 = inside the 5-minute window of fog5/index.json (guide 08) the fog is blended between 5-minute frames; outside it the hourly data as before. Lab switch, live data only
-  data3d: 0,       // voxel: 1 = the fog takes its shape from the live 3D fog files (index.json fog3d: a cloud floor, a data top, holes behind hills); 0 = the 2D tile with a guessed top. Lab switch; live data only (guide 04)
+  edgeFade: 3000,  // voxel: how far (m) past the edge of the data the fog carries on before it has faded out. It was 8000 with a mirrored copy of the volume, which drew straight seams and repeated panels far out at sea; shorter and with a noisy edge it reads as a cloud bank ending (the macro view of guide 09 is the real answer beyond the data)
+  travel: 1,       // voxel: 1 = inside the 5-minute window of fog5/index.json (guide 08) the fog is blended between 5-minute frames; outside it the hourly data as before. On in beta (George 2026-11-16); when the build has no fog5/ folder it changes nothing. Live data only
+  data3d: 1,       // voxel: 1 = the fog takes its shape from the live 3D fog files (index.json fog3d: a cloud floor, a data top, holes behind hills; an hour without a file has NO fog); 0 = the 2D tile with a guessed top. Live data only; replay nights have no 3D files and keep the 2D tile (George 2026-11-16: realism, no fog columns from sky to ground)
 };
 
 const VERT = `varying vec2 vUv; void main(){ vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); }`;
@@ -203,7 +204,7 @@ const BAKE_B = `
 /* Voxel render: two hour volumes A and B blended by uMixT; with advection the two are shifted along the wind so the noise drifts
    instead of cross-fading. Rays jump over columns the coarse occupancy grid marks empty. */
 const VOX_FS = COMMON_U + `
-  uniform sampler3D uVolA, uVolB; uniform sampler2D uOcc; uniform vec2 uOccN, uDrift;
+  uniform sampler3D uVolA, uVolB; uniform sampler2D uOcc; uniform vec2 uOccN, uDrift; uniform float uEdge;
   uniform float uVHa, uVHb, uMixT, uK, uShadow, uSkip, uFlowOn, uFlowT, uWindScale, uDriftS;
   uniform sampler2D uWind;
 #ifdef MRT
@@ -251,7 +252,7 @@ const VOX_FS = COMMON_U + `
       if (p.y < gh) continue;
       float base = gh * uFollow, va = (p.y - base) / uVHa, vb = (p.y - base) / uVHb;
       if (va < 0. || min(va, vb) > 1.) continue;
-      float inside = 1. - smoothstep(0., 8000., og);
+      float inside = 1. - smoothstep(0., uEdge, og * (.55 + .9 * texture(uNoise, vec3(p.x / 2300., .37, p.z / 2300.)).r)); // noisy edge: no straight line where the data ends
       vec2 gm = g; // past the edge the volume wraps mirrored (fog over the ocean keeps its texture); wobble the mirror line so it shows no seam
       if (og > 0.) gm += (texture(uNoise, vec3(p.x / 1900., .5, p.z / 1900.)).rb - .5) * min(og, 1500.) / uGs * 1.4;
       vec2 dA = dA0, dB = dB0;
@@ -393,7 +394,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     uSubOn: { value: 0 }, uSub: { value: V2() }, uFull: { value: V2() },
     uDbg: { value: new URLSearchParams(location.search).has('fogdbg') ? 0.6 : 0 }, uNoise: { value: noiseTex }, uSunI: { value: 0 }, uCity: { value: 0 }, uEX: { value: EX },
     uSteps: { value: 8 }, uOct: { value: 2 }, uFollow: { value: 1 }, uSoft: { value: .35 }, uDetail: { value: 1 }, uWarp: { value: 1 }, uDither: { value: 1 },
-    uVolA: { value: null }, uVolB: { value: null }, uVHa: { value: 300 }, uVHb: { value: 300 }, uMixT: { value: 0 }, uDrift: { value: V2() },
+    uEdge: { value: 3000 }, uVolA: { value: null }, uVolB: { value: null }, uVHa: { value: 300 }, uVHb: { value: 300 }, uMixT: { value: 0 }, uDrift: { value: V2() },
     uWind: { value: null }, uWindScale: { value: 0.1 }, uDriftS: { value: 0 }, uFlowOn: { value: 0 }, uFlowT: { value: 0 },
     uOcc: { value: null }, uOccN: { value: new THREE.Vector2(1, 1) }, uSkip: { value: 1 }, uK: { value: .0231 }, uShadow: { value: 1 },
   };
@@ -503,13 +504,19 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   }
   /* ---- 3D fog data (guide 04): index.json fog3d atlases, decoded on demand, 3 hours kept (the two in use plus one ahead) */
   const d3 = { info: null, base: '', sfx: '', keep: [], pending: new Set(), missing: new Set(),
-    cache: createLru(3, (e) => { e.dead = true; if (e.tex) e.tex.dispose(); }) };
+    zero: null, cache: createLru(3, (e) => { e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); }) };
   const d3On = () => !!(P.data3d && d3.info && grid && usable(d3.info, grid));
   function d3Fail(id) { d3.pending.delete(id); d3.missing.add(id); }
   const d3Url = (kf) => (kf.src === 'f' ? tv.dir : d3.base) + kf.vol + (kf.src === 'f' ? '' : d3.sfx); // fog5 file names carry a content hash, no suffix needed
   function d3Load(kf) { // starts decoding key frame kf; the PNG is read through a canvas once (colMax for the occupancy) and its pixels become the texture, so no colour management or premultiply can touch them
     const I = d3.info; if (!kf || !I || d3.cache.has(kf.id) || d3.pending.has(kf.id) || d3.missing.has(kf.id)) return;
-    if (!kf.vol || (kf.src === 'f' && !tvInfoOk())) { d3.missing.add(kf.id); return; }
+    if (kf.src === 'f' && kf.vol && !tvInfoOk()) { d3.missing.add(kf.id); return; }
+    if (!kf.vol) {
+      if (kf.src === 'f' && !kf.empty) { d3.missing.add(kf.id); return; }
+      // no file for this hour or 5-minute frame = the data says no fog: an explicit empty entry (never the 2D fallback)
+      if (!d3.zero) { d3.zero = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType); d3.zero.needsUpdate = true; }
+      d3.cache.set(kf.id, emptyEntry(kf.id, I, d3.zero), d3.keep); return;
+    }
     const id = kf.id, top = kf.top != null ? kf.top : I.nz - 1;
     d3.pending.add(id); const info = I, img = new Image();
     img.onload = () => {
@@ -540,10 +547,10 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   const tvInfoOk = () => !!(tv.parsed && d3.info && ['nz', 'dz_m', 'cols', 'rows', 'w', 'h'].every((q) => tv.parsed.info[q] === d3.info[q]));
   const tvOn = () => !!(P.travel && tv.parsed && !tv.bad && grid && (grid.frame_min || 60) === 60);
   function tvLine() { // the key frames for the current stride (hourly frames outside the window, 5-minute frames inside it)
-    const n = U.uNT.value, sig = [tv.parsed.generated, tv.parsed.frames.length, n, tv.stride, d3.info ? 1 : 0, d3.base].join('|');
+    const n = U.uNT.value, v3 = d3On(), sig = [tv.parsed.generated, tv.parsed.frames.length, n, tv.stride, d3.info ? 1 : 0, d3.base, v3 ? 1 : 0].join('|');
     if (sig !== tv.lineSig) { tv.lines.clear(); tv.lineSig = sig; }
     let L = tv.lines.get(tv.stride);
-    if (!L) { L = buildLine({ n, files: d3.info ? d3.info.files : null, top_layer: d3.info ? d3.info.top_layer : null }, tv.parsed, tv.stride); tv.lines.set(tv.stride, L); }
+    if (!L) { L = buildLine({ n, files: d3.info ? d3.info.files : null, top_layer: d3.info ? d3.info.top_layer : null }, tv.parsed, tv.stride, v3); tv.lines.set(tv.stride, L); }
     return L;
   }
   function tvSheet(kf) { // the decoded tile sheet of a fog5 frame, or null while it loads
@@ -673,7 +680,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   }
   function applyParams() {
     U.uFollow.value = P.follow; U.uSoft.value = P.soft; U.uDetail.value = P.detail; U.uWarp.value = P.warp; U.uDither.value = P.dither;
-    BA.uBump.value = P.bump; U.uShadow.value = P.shadow; U.uSkip.value = P.skip ? 1 : 0;
+    U.uEdge.value = P.edgeFade; BA.uBump.value = P.bump; U.uShadow.value = P.shadow; U.uSkip.value = P.skip ? 1 : 0;
     const K = .0105 / EX * 2.2 * 1.5; U.uK.value = K; BB.uK.value = K * .55; // shadow uses a lower extinction: forward scattering lets more sun through
     if (P.mode === 'sheets') { if (tier !== 0) setTier(0, 'lab'); }
     else if (tier === 0) setTier(baseTier, 'lab');
@@ -754,7 +761,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
       const want = strideFor(tv.hps, tv.parsed.stepMin); // every 5-minute frame, or every third while playing faster than one frame per 0.5 s (with a little hysteresis)
       if (want !== tv.stride && (want === 3 ? strideFor(tv.hps * 1.2, tv.parsed.stepMin) === 3 : strideFor(tv.hps * 0.8, tv.parsed.stepMin) === 1)) tv.stride = want;
       if (tv.pendingIdx) { // a newer index: swap when the two frames on screen are the same in it (hashed names), so nothing visibly changes
-        const old = tv.stride, np = tv.pendingIdx, L2 = buildLine({ n: U.uNT.value, files: d3.info ? d3.info.files : null, top_layer: d3.info ? d3.info.top_layer : null }, np, old);
+        const old = tv.stride, np = tv.pendingIdx, L2 = buildLine({ n: U.uNT.value, files: d3.info ? d3.info.files : null, top_layer: d3.info ? d3.info.top_layer : null }, np, old, d3On());
         if (swapIsInvisible(tv.shown, L2, hnow)) { tv.pendingIdx = null; tvApply(np); }
       }
       const L = tvLine(), br = bracket(L, hnow, P.travelEase || 0);
@@ -780,9 +787,10 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     if (!eA && eB) { eA = eB; mixT = 0; }
     if (!eA) return null;
     if (!eB) { eB = eA; if (eA.k !== kfB.id) mixT = 0; }
+    if (d3A && eA.src3 !== eB.src3 && lastVsig) return lastVsig;   // never blend a 3D-baked hour with a 2D-baked one: keep the previous picture until the other hour is baked (next frame)
     U.uVolA.value = eA.rt.texture; U.uVolB.value = eB.rt.texture; U.uVHa.value = eA.vh; U.uVHb.value = eB.vh; U.uMixT.value = mixT;
     U.uYmax.value = U.uHtMax.value * P.follow + Math.max(eA.vh, eB.vh) + 2;
-    const span = eB.hk > eA.hk ? eB.hk - eA.hk : (grid ? (grid.frame_min || 60) / 60 : 1); // hours between the two volumes: the drift between them is the wind over that time
+    const span = eB.hk > eA.hk ? eB.hk - eA.hk : (trav && eA.kf && eA.kf.src === 'f' ? tv.parsed.stepMin / 60 : (grid ? (grid.frame_min || 60) / 60 : 1)); // hours between the two volumes: the drift between them is the wind over that time
     const ds = grid ? 3600 * span * P.advect : 0; U.uDriftS.value = ds;
     if (P.advect > 0 && wx && wx.wind && grid) U.uDrift.value.set(wx.wind[0] * ds / U.uGs.value.x, wx.wind[1] * ds / U.uGs.value.y);
     else U.uDrift.value.set(0, 0);
@@ -902,8 +910,8 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     /* guide 04: the index.json "fog3d" entry (or null), the folder of the files and the cache-busting suffix; live nights only (replay nights call it with null) */
     setData3d(info, base, sfx) {
       d3.info = info || null; d3.base = base || ''; d3.sfx = sfx || ''; d3.pending.clear(); d3.missing.clear(); lastVsig = null;
-      for (const k of d3.cache.keys()) { const e = d3.cache.get(k); e.dead = true; if (e.tex) e.tex.dispose(); }
-      d3.cache = createLru(3, (e) => { e.dead = true; if (e.tex) e.tex.dispose(); });
+      for (const k of d3.cache.keys()) { const e = d3.cache.get(k); e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); }
+      d3.cache = createLru(3, (e) => { e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); });
       if (info) { BA.uDz.value = info.dz_m; BA.uNz.value = info.nz; BA.uAt.value.set(info.cols, info.rows); BA.uT3.value.set(info.w, info.h); }
       bakeVer++; occKey = '';
     },

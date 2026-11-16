@@ -66,7 +66,7 @@ def prior_factory(F, xs, ys, t0_unix):
     return prior
 
 
-def write(out, F, S, T3, base, t0, now, scan_at, xs, ys, log=print):
+def write(out, F, S, T3, base, t0, now, scan_at, xs, ys, log=print, lid=False):
     """Build the cycle and write fog5/. scan_at(t_unix) -> (p, c) on the tile grid or None. T3 = the guide 03 asset dict; base = fogbase.FogBase or None.
     Returns the status dict (frames, bytes, kinds)."""
     out = Path(out) / "fog5"
@@ -132,6 +132,9 @@ def write(out, F, S, T3, base, t0, now, scan_at, xs, ys, log=print):
         w3 = None
         if base is not None:
             w3, _ = base.frame(int(round(iof(t) / (60.0 / C.STEP_MIN))), A[k], top[int(round(iof(t)))])
+        if lid:   # the same lid at the fused top as the hourly 3D files (fog_lid), so the 5-minute and hourly frames agree
+            lw = f3.lid_weight(T3["z_m"], top[int(round(iof(t)))], C.LID_MARGIN_M, C.LID_FADE_M)
+            w3 = lw if w3 is None else w3 * lw
         u8 = f3.encode(f3.volume(T3, rows, a, A[k], weight3d=w3))
         if f3.top_layer(u8) < 0:
             continue

@@ -152,6 +152,21 @@ def fog3d_enabled(beta=False, promoted=False):
     return bool(C.BETA.get("fog3d", False)) if beta else (bool(C.FOG3D) and not promoted)
 
 
+def tile_from_3d_enabled(beta=False, promoted=False):
+    """The tile_from_3d switch (George 2026-11-16): BETA.get("tile_from_3d", False) for the beta build, C.TILE_FROM_3D for the public build (never in a promoted build)."""
+    return bool(C.BETA.get("tile_from_3d", False)) if beta else (bool(C.TILE_FROM_3D) and not promoted)
+
+
+def fog_base_2d_enabled(beta=False, promoted=False):
+    """The fog_base_2d switch (George 2026-11-16): BETA.get("fog_base_2d", False) for the beta build, C.FOG_BASE_2D for the public build (never in a promoted build)."""
+    return bool(C.BETA.get("fog_base_2d", False)) if beta else (bool(C.FOG_BASE_2D) and not promoted)
+
+
+def fog_lid_enabled(beta=False, promoted=False):
+    """The fog_lid switch (George 2026-11-16): BETA.get("fog_lid", False) for the beta build, C.FOG_LID for the public build (never in a promoted build)."""
+    return bool(C.BETA.get("fog_lid", False)) if beta else (bool(C.FOG_LID) and not promoted)
+
+
 def fog_base_switches(beta=False, promoted=False):
     """(fog_base, urban_lift) of this build (multi-scale guide 05), read like fog3d_enabled. urban_lift without fog_base is an error (the lift moves the cloud floor)."""
     if beta:
@@ -265,7 +280,7 @@ def fetch_dsr(st, t0, now, out, log=print):
         return None, dict(error=repr(e)[:200])
 
 
-def _run_fog5(out, F, S, fog3d_pack, t0, now, log):
+def _run_fog5(out, F, S, fog3d_pack, t0, now, log, lid=False):
     """Guide 08 part A: the scans of the 5-minute store on the tile grid (parallax-corrected nearest sample), then the cycle (live/fog5.py)."""
     import numpy as np
     from . import fog5
@@ -284,7 +299,7 @@ def _run_fog5(out, F, S, fog3d_pack, t0, now, log):
             sp, sc, _ = goes5.sample_macro(crop, j, p, c, top, lon, lat)
             cache[j] = (np.nan_to_num(sp).astype(np.float32), np.nan_to_num(sc).astype(np.float32))
         return cache[j]
-    return fog5.write(out, F, S, fog3d_pack[0], outputs.last_fogbase, t0, now, scan_at, xs, ys, log=log)
+    return fog5.write(out, F, S, fog3d_pack[0], outputs.last_fogbase, t0, now, scan_at, xs, ys, log=log, lid=lid)
 
 
 def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, physics=None, carry_state=None, archive_dir=None, beta=False, inputs=None, inputs_out=None, promoted=False):
@@ -413,7 +428,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
     # ---- outputs
     cs_hook = cloud_score.Hook()
     try:
-        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log, tiles_cb=cs_hook.tiles_cb, fog3d=fog3d_pack, fogbase=(dict(urban=ul_on) if (fog3d_pack and fb_on) else None))
+        meta = outputs.write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static.parent, log=log, tiles_cb=cs_hook.tiles_cb, fog3d=fog3d_pack, fog_lid=fog_lid_enabled(beta, promoted), fog_base_2d=fog_base_2d_enabled(beta, promoted), tile_from_3d=tile_from_3d_enabled(beta, promoted), fogbase=(dict(urban=ul_on) if (fog3d_pack and fb_on) else None))
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         return _abort(out, st, now, t_run, f"writing outputs failed: {e!r}")
@@ -474,7 +489,7 @@ def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, phy
             fog5_info = dict(applied=False, reason="needs goes5 and fog3d applied in this build")
         else:
             try:
-                fog5_info = _run_fog5(out, F, S, fog3d_pack, t0, now, log)
+                fog5_info = _run_fog5(out, F, S, fog3d_pack, t0, now, log, lid=fog_lid_enabled(beta, promoted))
                 idx_p = out / "index.json"
                 idx = json.loads(idx_p.read_text())
                 idx["fog5"] = dict(index="fog5/index.json")

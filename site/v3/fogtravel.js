@@ -16,21 +16,25 @@ export function parseIndex(idx, t0ms) {
     frames.push({ hk, kind: KINDS.includes(f.kind) ? f.kind : 'observed', tile: f.tile, slot: f.slot, vol: f.vol || null, top: Number.isInteger(f.top) ? f.top : null });
   }
   frames.sort((a, b) => a.hk - b.hk);
-  return frames.length ? { frames, stepMin: idx.step_min, info: { nz: idx.nz, dz_m: idx.dz_m, cols: idx.cols, rows: idx.rows, w: idx.w, h: idx.h }, generated: idx.generated_iso || '' } : null;
+  const withVol = frames.filter((f) => f.vol);
+  return frames.length ? { v0: withVol.length ? withVol[0].hk : null, v1: withVol.length ? withVol[withVol.length - 1].hk : null, frames, stepMin: idx.step_min, info: { nz: idx.nz, dz_m: idx.dz_m, cols: idx.cols, rows: idx.rows, w: idx.w, h: idx.h }, generated: idx.generated_iso || '' } : null;
 }
 
 /* the key frame list. hourly = { n, files, top_layer } of the hourly data (files may be null); frames from parseIndex; stride 1 = every 5-minute frame, 3 = every third (15 min).
    key frame: { id, hk, src: 'h' | 'f', k (hourly), tile, slot, vol, top, kind }; id is a number for hourly frames and a string for fog5 frames (names carry a content hash, so equal ids = equal content) */
-export function buildLine(hourly, parsed, stride = 1) {
+export function buildLine(hourly, parsed, stride = 1, vol3 = false) {
   const line = [];
   let lo = Infinity, hi = -Infinity;
   if (parsed) {
-    const fr = parsed.frames, s = Math.max(1, stride | 0);
-    fr.forEach((f, i) => {
-      if (s > 1 && i % s !== 0 && i !== fr.length - 1) return;
-      line.push({ id: `${f.tile}#${f.slot}|${f.vol || ''}`, hk: f.hk, src: 'f', k: -1, tile: f.tile, slot: f.slot, vol: f.vol, top: f.top, kind: f.kind });
-    });
-    lo = fr[0].hk; hi = fr[fr.length - 1].hk;
+    // vol3 (the 3D fog data is on): only the span that has 3D files; inside it a frame without a file means "no fog aloft" (empty), as an hourly frame without a file does
+    const only3 = vol3 && parsed.v0 !== null, fr = only3 ? parsed.frames.filter((f) => f.hk >= parsed.v0 - 1e-9 && f.hk <= parsed.v1 + 1e-9) : parsed.frames, s = Math.max(1, stride | 0);
+    if (fr.length) {
+      fr.forEach((f, i) => {
+        if (s > 1 && i % s !== 0 && i !== fr.length - 1) return;
+        line.push({ id: `${f.tile}#${f.slot}|${f.vol || ''}`, hk: f.hk, src: 'f', k: -1, tile: f.tile, slot: f.slot, vol: f.vol, top: f.top, kind: f.kind, empty: only3 && !f.vol });
+      });
+      lo = fr[0].hk; hi = fr[fr.length - 1].hk;
+    }
   }
   for (let k = 0; k < hourly.n; k++) {
     if (k >= lo - 1e-6 && k <= hi + 1e-6) continue;

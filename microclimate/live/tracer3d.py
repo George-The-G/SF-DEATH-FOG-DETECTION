@@ -75,8 +75,10 @@ def urban_map(bldg_mean_h, x, y, spec, shape):
     return np.rint(255 * np.clip(URBAN_W_BLDG * bf + URBAN_W_ROAD * rf, 0, 1)).astype(np.uint8)
 
 
-def build(data_dir, out_path, log=print):
+def build(data_dir, out_path, log=print, static=None, lib=None):
     D = Path(data_dir)
+    static = Path(static) if static else D / "live" / "live_static.npz"
+    lib = Path(lib) if lib else D / "library"
     t0 = time.time()
     spec = json.load(open(D / "grids" / "grid_spec.json"))
     solid = np.load(D / "grids" / "solid_20m.npz")["solid"]
@@ -89,13 +91,13 @@ def build(data_dir, out_path, log=print):
     tr = np.zeros((len(dirs), nb, NZ3, fh, fw), np.uint8)
     for di, d in enumerate(dirs):
         for b in range(nb):
-            c = np.load(D / "library" / f"fog3d_{fog3d.stem(d)}_{b:02d}.npz")["c"]
+            c = np.load(lib / f"fog3d_{fog3d.stem(d)}_{b:02d}.npz")["c"]
             tr[di, b] = np.rint(255 * np.clip(tracer_levels(c, air80, solid), 0, 1)).astype(np.uint8)
             del c
         log(f"direction {d} done ({time.time() - t0:.0f}s)")
     terr = np.load(D / "grids" / "terrain_20m.npy").astype(np.float32)
     ground = (block80(terr) / 16.0).astype(np.float32)
-    st = np.load(D / "live" / "live_static.npz")   # street point table (x, y of 285 809 points); city_points.csv is not on this PC
+    st = np.load(static)   # street point table (x, y of 285 809 points); city_points.csv is not on this PC
     bm = np.load(D / "grids" / "bldg_mean_h_20m.npy")
     urban = urban_map(bm, st["x"], st["y"], spec, (fh, fw))
     np.savez_compressed(out_path, schema=np.int64(SCHEMA), dirs=dirs, band_edges_m=np.array(BAND_EDGES, np.float32), z_m=Z_M, tr3d=tr,
@@ -103,7 +105,7 @@ def build(data_dir, out_path, log=print):
     log(f"wrote {out_path} ({Path(out_path).stat().st_size / 1e6:.1f} MB, {time.time() - t0:.0f}s)")
 
 
-def check(data_dir, path, report_dir):
+def check(data_dir, path, report_dir, static=None):
     from ..city import load_static
     D = Path(data_dir)
     rep = {}
@@ -117,7 +119,7 @@ def check(data_dir, path, report_dir):
     keys_ok = set(z.files) == {"schema", "dirs", "band_edges_m", "z_m", "tr3d", "fluid", "ground_m", "urban", "static_dirs_check"}
     rep["a_shapes_ok"] = bool(keys_ok and all(z[k].shape == s and str(z[k].dtype) == want_dt[k] for k, s in shapes.items()) and int(z["schema"]) == 1)
     # b: old-tile agreement
-    st = load_static(D / "live" / "live_static.npz")
+    st = load_static(Path(static) if static else D / "live" / "live_static.npz")
     rep["b_old_tile"] = {}
     lvl = np.argmax(fluid >= 128, axis=0)               # lowest level with fluid >= 128 (0 where none: masked below)
     has = (fluid >= 128).any(axis=0)
@@ -190,8 +192,8 @@ def run(argv):
     D = Path(opt(argv, "--data", Path.home() / "deathfog-data"))
     out = Path(opt(argv, "--out", D / "live" / "live_tracer3d.npz"))
     if "--check" in argv:
-        rep = check(D, out, "reports/fog3d")
+        rep = check(D, out, opt(argv, "--report", "reports/fog3d"), static=opt(argv, "--static"))
         print(json.dumps(rep, indent=1))
         return 0 if rep["pass"] else 1
-    build(D, out)
+    build(D, out, static=opt(argv, "--static"), lib=opt(argv, "--lib"))
     return 0

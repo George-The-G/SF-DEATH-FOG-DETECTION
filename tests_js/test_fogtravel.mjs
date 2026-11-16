@@ -82,4 +82,14 @@ assert.ok(isNewer(P, parseIndex(idx2, t0)));
 assert.ok(!isNewer(P, P));
 assert.ok(isNewer(null, P));
 
+// 3D data on: only the span that has 3D files; inside it a frame without a file is explicitly empty
+const idx3 = JSON.parse(JSON.stringify(idx)); idx3.frames.forEach((f, i) => { f.vol = i >= 4 && i <= 20 && i !== 10 ? `v${i}.png` : null; });
+const P3 = parseIndex(idx3, t0);
+assert.ok(Math.abs(P3.v0 - (10 + 4 / 12)) < 1e-9 && Math.abs(P3.v1 - (10 + 20 / 12)) < 1e-9);
+const L3d = buildLine(hourly, P3, 1, true);
+assert.equal(L3d.filter((e) => e.src === 'f').length, 17);
+assert.ok(L3d.find((e) => e.src === 'f' && e.vol === null).empty === true);
+assert.equal(L3d.filter((e) => e.src === 'h').length, 24 - 1); // hour 11 is inside the 3D span; hours 10 and 12 are outside it and stay hourly
+assert.equal(buildLine(hourly, P3, 1, false).filter((e) => e.src === 'f').length, 25);
+
 console.log('test_fogtravel: ok');

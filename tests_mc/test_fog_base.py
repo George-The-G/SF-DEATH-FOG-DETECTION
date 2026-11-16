@@ -69,6 +69,17 @@ class TestBase(unittest.TestCase):
         self.assertTrue(np.all(FB.guard(base, 1000.0, amp) == 400.0))
 
 
+class TestFloor2d(unittest.TestCase):
+    def test_floor_weight_2d(self):
+        base = np.full((2, 2), 200.0, np.float32)
+        ground = np.array([[0.0, 150.0], [150.0, 300.0]], np.float32)       # street at 6, 156, 156, 306 m
+        w = FB.floor_weight_2d(base, ground, 6.0)
+        self.assertEqual(w[0, 0], 0.0)                                       # 194 m below the base: out of cloud
+        self.assertTrue(0.0 < w[0, 1] < 1.0 and w[0, 1] == w[1, 0])         # 44 m below the base: inside the 60 m ramp
+        self.assertEqual(w[1, 1], 1.0)                                       # a hill top above the base is in cloud
+        self.assertTrue(np.all(w >= 0) and np.all(w <= 1))
+
+
 class TestLift(unittest.TestCase):
     def test_zero_cases_and_cap(self):
         urb = np.array([[0, 255]], np.uint8)
@@ -126,6 +137,24 @@ class TestSwitchesAndOutput(unittest.TestCase):
         finally:
             C.BETA.clear()
             C.BETA.update(saved)
+
+    def test_tile_levels_are_the_lowest_level(self):
+        parts = asset_parts()
+        T = dict(schema=1, dirs=np.array([270.0]), tr3d=np.zeros((1, 11, 24, H, W), np.uint8), **parts)
+        T["tr3d"][0, :6] = 255
+        S, n = dict(dirs=np.array([270.0])), 2
+        amps, Wts, Fo = [np.ones((H, W), np.float32)] * n, [np.array([1.0])] * n, dict(fog_top=np.array([300.0, 0.0]))   # frame 1: no top -> no file
+        now = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+        th = [now + dt.timedelta(hours=k) for k in range(n)]
+        levels = [None] * n
+        with tempfile.TemporaryDirectory() as d:
+            f, names = outputs.write_fog3d(Path(d), (T, {}), S, Fo, amps, Wts, 1, th, now, log=lambda *_: None, tile_levels=levels)
+            from PIL import Image
+            a = np.asarray(Image.open(Path(d) / names[0])).astype(int)
+        self.assertIsNotNone(levels[0])
+        self.assertIsNone(levels[1])                                         # an hour without a file has no tile level
+        self.assertEqual(levels[0].shape, (H, W))
+        self.assertTrue(np.array_equal(levels[0].astype(int), a[:H, :W]))   # level 0 sits at atlas position (0, 0)
 
     def test_off_is_guide3_output_and_floor_only_removes_fog(self):
         parts = asset_parts()

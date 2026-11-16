@@ -75,8 +75,8 @@ class TestFog5(unittest.TestCase):
 
     def test_switch_defaults(self):
         self.assertFalse(C.FOG_TRAVEL)
-        self.assertNotIn("fog_travel", C.BETA)                       # added only after the gate
-        self.assertFalse(build.fog_travel_enabled(True))
+        self.assertTrue(C.BETA["fog_travel"])                        # beta only (George 2026-11-16); the gate runs on beta data afterwards
+        self.assertTrue(build.fog_travel_enabled(True))
         self.assertFalse(build.fog_travel_enabled(False))
         saved = dict(C.BETA)
         try:

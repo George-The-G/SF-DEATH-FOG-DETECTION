@@ -25,7 +25,7 @@ def pick(c: wp.array3d(dtype=wp.float32), s: wp.array3d(dtype=wp.int32), i: int,
 @wp.kernel
 def step(c: wp.array3d(dtype=wp.float32), cn: wp.array3d(dtype=wp.float32), ux: wp.array3d(dtype=wp.float32),
          uy: wp.array3d(dtype=wp.float32), uz: wp.array3d(dtype=wp.float32), s: wp.array3d(dtype=wp.int32),
-         fixed: wp.array3d(dtype=wp.float32), fixed_on: wp.array3d(dtype=wp.int32), dt: float, dx: float, kd: float,
+         fixed: wp.array3d(dtype=wp.float32), fixed_on: wp.array3d(dtype=wp.int32), dt: float, dx: float, kd: float, kdv: float,
          vd: float, loss: float, nx: int, ny: int, nz: int):
     i, j, k = wp.tid()
     if s[i, j, k] != 0:
@@ -55,8 +55,9 @@ def step(c: wp.array3d(dtype=wp.float32), cn: wp.array3d(dtype=wp.float32), ux: 
         adv += w * (c0 - zm) / dx
     else:
         adv += w * (zp - c0) / dx
-    lap = (xm + xp + ym + yp + zm + zp - 6.0 * c0) / (dx * dx)
-    out = c0 + dt * (kd * lap - adv) - dt * loss * c0
+    lap_h = (xm + xp + ym + yp - 4.0 * c0) / (dx * dx)      # sideways spreading kd, up-down mixing kdv (separate: a fog layer under an inversion mixes upward far less than sideways)
+    lap_v = (zm + zp - 2.0 * c0) / (dx * dx)
+    out = c0 + dt * (kd * lap_h + kdv * lap_v - adv) - dt * loss * c0
     below_solid = (k == 0) or (k > 0 and s[i, j, k - 1] != 0)
     if below_solid:
         out = out - dt * vd / dx * c0
@@ -69,13 +70,15 @@ def inflow_faces(direction_deg):
     return [n for n, v in (("left", ux > 1e-6), ("right", ux < -1e-6), ("front", uy > 1e-6), ("back", uy < -1e-6)) if v]
 
 
-def run_band(u, solid, spec, direction_deg, band, speed_ms=5.0, kd=2.0, vd=0.02, loss_per_km=0.0, transits=3.0, log=print, max_steps=120000):
+def run_band(u, solid, spec, direction_deg, band, speed_ms=5.0, kd=2.0, kdv=None, vd=0.02, loss_per_km=0.0, transits=3.0, log=print, max_steps=120000):
     """u: [3,nx,ny,nz] velocity ratio (float16 ok). Returns steady concentration [nx,ny,nz] float16 and diagnostics."""
     nx, ny, nz = solid.shape
     dx = float(spec["cell_m"])
     uf = [(u[a].astype(np.float32) * speed_ms) for a in range(3)]
     umax = float(max(np.abs(x).max() for x in uf))
     dt = 0.4 * dx / max(umax, 1.0)
+    kdv = kd if kdv is None else kdv
+    dt = min(dt, 0.3 * dx * dx / (6.0 * max(kd, kdv, 1e-9)))   # explicit diffusion limit (inactive for kd = 2: the old runs are unchanged); a large kd needs a smaller step or the field blows up (kd 50 sums above 1)
     fixed = np.zeros((nx, ny, nz), np.float32)
     on = np.zeros((nx, ny, nz), np.int32)
     zc = (np.arange(nz) + 0.5) * dx
@@ -100,7 +103,7 @@ def run_band(u, solid, spec, direction_deg, band, speed_ms=5.0, kd=2.0, vd=0.02,
     steps = min(max(steps, 4000), max_steps)
     t0, prev = time.time(), None
     for s_ in range(steps):
-        wp.launch(step, dim=(nx, ny, nz), inputs=[c, cn, UX, UY, UZ, S, F, ON, dt, dx, kd, vd, loss_per_km / 1000.0, nx, ny, nz], device=dev)
+        wp.launch(step, dim=(nx, ny, nz), inputs=[c, cn, UX, UY, UZ, S, F, ON, dt, dx, kd, kdv, vd, loss_per_km / 1000.0, nx, ny, nz], device=dev)
         c, cn = cn, c
         if s_ == steps - 2001:
             wp.synchronize()
@@ -237,7 +240,7 @@ def build_bands3d(cfg, grids_dir, lib_dir, directions, bands, tol=0.01, schedule
                                    eta_s=(time.time() - t_start) / done * (total - done) if done else None)
                 t0 = time.time()
                 c, diag, hist = converge_band(u, solid, spec, d, band, tol=tol, schedule=schedule, speed_ms=lib["ref_speed_ms"],
-                                              kd=lib["eddy_diffusivity_m2s"], vd=lib["deposition_velocity_ms"], loss_per_km=lib["fog_loss_per_km"])
+                                              kd=lib["eddy_diffusivity_m2s"], kdv=lib.get("eddy_diffusivity_v_m2s"), vd=lib["deposition_velocity_ms"], loss_per_km=lib["fog_loss_per_km"])
                 diag["total_seconds_incl_retries"] = round(time.time() - t0, 1)
                 diag["attempts"] = [(h["transits"], h["drift_last_2000_steps"]) for h in hist]
                 stem = f"fog3d_{fog3d.stem(d)}_{bi:02d}"

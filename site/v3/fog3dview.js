@@ -32,6 +32,12 @@ export function usable(info, grid) {
     && grid && info.w === grid.w && info.h === grid.h);
 }
 
+/* an hour the data says has no fog at all (index.json fog3d.files[k] is null): an explicit empty entry, so the viewer draws NO fog for it instead of falling back to the flat 2D map
+   (which knows no height and would stand fog from the sky to the ground). The shared texture is never disposed. */
+export function emptyEntry(k, info, tex) {
+  return { k, tex, colMax: new Uint8Array(info.w * info.h), topLayer: 3, empty: true };
+}
+
 /* tiny LRU for decoded hours: get(k) -> entry | undefined (marks it used); set(k, v) evicts the least recently used beyond max and calls onEvict(v) */
 export function createLru(max, onEvict) {
   const m = new Map();

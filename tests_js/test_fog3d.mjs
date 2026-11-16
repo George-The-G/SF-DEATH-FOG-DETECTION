@@ -1,6 +1,6 @@
 // node tests_js/test_fog3d.mjs   (no dependencies): pure helpers of the beta 3D fog data (site/v3/fog3dview.js)
 import assert from 'node:assert/strict';
-import { atlasOffset, colMax, volumeHeight, usable, createLru } from '../site/v3/fog3dview.js';
+import { atlasOffset, colMax, volumeHeight, usable, createLru, emptyEntry } from '../site/v3/fog3dview.js';
 
 const info = { files: ['a.png'], nz: 24, dz_m: 25, cols: 6, rows: 4, w: 214, h: 203 };
 // level 7 sits at column 1, row 1
@@ -44,4 +44,10 @@ assert.deepEqual(c.keys(), [3, 1, 4]);
 c.set(5, 'e', [3]);            // 3 is protected: 1 goes
 assert.deepEqual(gone, [2, 1]);
 assert.equal(c.size, 3);
+// an hour without a file is an explicit empty hour: no columns have fog, flagged empty, never disposed
+const em = emptyEntry(5, info, { id: 'shared' });
+assert.equal(em.empty, true);
+assert.equal(em.colMax.length, info.w * info.h);
+assert.ok(em.colMax.every((v) => v === 0));
+assert.equal(em.k, 5);
 console.log('test_fog3d ok');
