@@ -27,9 +27,9 @@ const FRAG = `
   void main(){
     vec3 ro = cameraPosition, rd = normalize(vW - cameraPosition);
     // top of the layer where the ray crosses the middle of the default layer (the satellite top where it has one, else the fused fog top)
-    float tm = uTopDef * .85 * uEX, t = rd.y > 1e-4 ? (tm - ro.y) / rd.y : -1.;
+    float tm = uTopDef * .85 * uEX, t = abs(rd.y) > 1e-4 ? (tm - ro.y) / rd.y : -1.;
     float top = uTopDef * uEX;
-    if (t > 0. && t < 3.0e5) { vec4 c0 = cov(ro.xz + rd.xz * t); if (c0.b > 0.) top = c0.b * 8. * uEX; }
+    if (t > 0. && t < 3.0e5) { vec4 c0 = cov(ro.xz + rd.xz * t); if (c0.b > 0.) top = c0.b * 2040. * uEX; }
     float base = max(top - ${BASE_THICK_M}. * uEX, 0.);
     // analytic slab
     float a, b;
