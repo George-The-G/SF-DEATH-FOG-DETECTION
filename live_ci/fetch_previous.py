@@ -89,6 +89,21 @@ if EXTRAS and idx.get("fog5"):
     except Exception as e:  # noqa: BLE001
         shutil.rmtree(out / "fog5", ignore_errors=True)
         print("fog5/ not fetched:", e)
+# Guide 09: the macro cloud frames (macro/index.json + <yyyymmddThhmm>.png) named in index.json goes5.macro (beta), best effort like fog5/: a skipped or failed build must not leave an index that names a missing folder.
+if EXTRAS and (idx.get("goes5") or {}).get("macro") == "macro/index.json":
+    try:
+        rawm = get("macro/index.json")
+        dm = json.loads(rawm)
+        nm = [f.get("file") for f in dm.get("frames", [])]
+        nm = [n for n in dict.fromkeys(nm) if n and re.fullmatch(r"\d{8}T\d{4}\.png", n)]
+        (out / "macro").mkdir(parents=True, exist_ok=True)
+        for n in nm:
+            (out / "macro" / n).write_bytes(get("macro/" + n))
+        (out / "macro" / "index.json").write_bytes(rawm)
+        print(f"fetched macro/: {len(nm)} files")
+    except Exception as e:  # noqa: BLE001
+        shutil.rmtree(out / "macro", ignore_errors=True)
+        print("macro/ not fetched:", e)
 # Carried model state (state_*.npz, listed in index.json "state_files"): best effort, a missing file only means a cold start, never a failure.
 for n in idx.get("state_files", []) or []:
     try:
