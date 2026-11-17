@@ -13,7 +13,7 @@ const VERT = `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position
 const FRAG = `
   precision highp float;
   varying vec3 vW; uniform mat4 projectionMatrix;
-  uniform sampler2D uA, uB; uniform float uMix, uHasB, uOn, uEX, uTopDef, uK, uNoiseR, uTime;
+  uniform sampler2D uA, uB; uniform float uMix, uHasB, uOn, uEX, uTopDef, uK, uNoiseR, uTime, uSky;
   uniform vec4 uBox;            // wide grid in scene metres: x0, z0 (north edge), width, height
   uniform vec4 uCity;           // city grid rectangle: xmin, zmin, xmax, zmax
   uniform vec3 uAmb, uSun, uSunCol; uniform float uSunI;
@@ -45,7 +45,10 @@ const FRAG = `
       float dens = c.r * mix(.35, 1., c.g);                       // low confidence: less opaque, never invented
       dens = clamp((dens - (1. - nz) * .35 * near) * (1. + .6 * near), 0., 1.) * mix(1., .6 + .8 * nz, near * .5);   // erode the edges with the noise
       float hh = clamp((p.y - base) / max(top - base, 1.), 0., 1.);
-      float w = dens * seam(p.xz); od += w * seg; sumd += w; sumh += w * hh;
+      // sky layers (guide 13, lab switch sky): inside the city grid keep cloud the satellite puts well above the fog top (a deck above the fog, not the fog itself, which the voxels draw); cirrus-high tops fade out
+      float sm = seam(p.xz);
+      if (uSky > .5) { float tm8 = c.b * 2040.; float up = smoothstep(0., 1., (tm8 - uTopDef - 100.) / 150.) * (1. - smoothstep(3000., 4000., tm8)); sm = max(sm, up); }
+      float w = dens * sm; od += w * seg; sumd += w; sumh += w * hh;
     }
     od *= uK; float hmean = sumd > 0. ? sumh / sumd : .5;
     float al = (1. - exp(-od)) * uOn; if (al < .004) discard;
@@ -62,7 +65,7 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
   const TARGET = () => (st.wide ? { x0: st.wide.x0, y0: st.wide.y0, cell: st.wide.cell, nx: st.wide.nx, ny: st.wide.ny } : null);
 
   const U = {
-    uA: { value: null }, uB: { value: null }, uMix: { value: 0 }, uHasB: { value: 0 }, uOn: { value: 0 }, uEX: { value: EX }, uTopDef: { value: 200 }, uK: { value: 2.6 / (BASE_THICK_M * EX) }, uNoiseR: { value: 1 }, uTime: { value: 0 },
+    uA: { value: null }, uB: { value: null }, uMix: { value: 0 }, uHasB: { value: 0 }, uOn: { value: 0 }, uEX: { value: EX }, uTopDef: { value: 200 }, uK: { value: 2.6 / (BASE_THICK_M * EX) }, uNoiseR: { value: 1 }, uTime: { value: 0 }, uSky: { value: 0 },
     uBox: { value: new THREE.Vector4() }, uCity: { value: new THREE.Vector4() }, uAmb: { value: new THREE.Vector3(.3, .36, .5) }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Vector3() }, uSunI: { value: 0 },
   };
 
@@ -162,7 +165,7 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
     camera.getWorldDirection(sample); if (camH < 1200 && sample.y < -0.45) show = false;
     const g = getFogGrid(), m = getMeta();
     if (g && m) { const ox = g.x0 - m.x0, oz = -(g.y0 - m.y0), hm = g.h * g.cell_m; U.uCity.value.set(ox, oz - hm, ox + g.w * g.cell_m, oz); }
-    U.uTopDef.value = Math.max(150, fog.topM || 200); U.uOn.value = show ? 1 : 0; U.uTime.value = performance.now() / 1000;
+    U.uTopDef.value = Math.max(150, fog.topM || 200); U.uSky.value = fog.params && fog.params.sky ? 1 : 0; U.uOn.value = show ? 1 : 0; U.uTime.value = performance.now() / 1000;
     st.slab.visible = show;
   }
 
