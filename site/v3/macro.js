@@ -2,7 +2,7 @@
    Only the 3D scene changes: a wide terrain mesh (data/terrain_wide.bin, 400 m cells, one draw call), a cloud slab drawn analytically from the macro frames
    (live_beta/macro/index.json: R = probability, G = confidence, B = top / 8 m, every 5 minutes) and a longer camera range. Near the city the voxel fog is the truth:
    the macro layer fades out over the outer 2 km of the city fog grid, and the wide terrain sinks 30 m under the detailed terrain.
-   Nothing is loaded until the camera is pulled back (> 6 km from its target) with the switch on. Pure parts: macrocalc.js. */
+   The wide terrain loads as soon as the switch is on and is always drawn; the cloud frames are fetched once the camera is pulled back (> 6 km from its target). Pure parts: macrocalc.js. */
 import { parseWide, wideHeight, inHole, resampleMacro, macroBracket } from './macrocalc.js';
 
 const BASE_THICK_M = 250;      // the base is a guess: top - 250 m (said so in the guide)
@@ -147,9 +147,11 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
     const camH = camera.position.y / EX;
     // near plane rises with the camera height so the buildings keep their depth precision with the far plane at 300 km
     const nearWant = Math.max(8, Math.min(250, camH / 100)); if (Math.abs(nearWant - camera.near) > camera.near * .15) { camera.near = nearWant; camera.updateProjectionMatrix(); }
-    if (dist > 6000 || camH > 4000) { if (!st.wide) loadWide(); if (!st.idx || performance.now() - st.idxAt > 300000) fetchIndex(); }
+    // the wide terrain is always there (it loads as soon as the view is on, 0.2 MB, and stays drawn even when the camera is down in the city); the satellite frames are fetched once the camera is pulled back
+    if (!st.wide) loadWide();
+    if ((dist > 6000 || camH > 4000) && (!st.idx || performance.now() - st.idxAt > 300000)) fetchIndex();
     if (!st.wideMesh) return;
-    st.wideMesh.visible = dist > 3000 || camH > 1500;
+    st.wideMesh.visible = true;
     const br = st.idx ? macroBracket(st.idx, st.tMs) : null;
     let show = !!br;
     if (br) {
