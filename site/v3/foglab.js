@@ -47,6 +47,7 @@ const ADVANCED = [
   ['motionSteps', 'Steps while moving', 'range', 0.3, 1, 0.05],
   ['taa', 'Trace 1 in 16 while moving', 'check', null, null, null, 'While moving, trace one pixel in 16 each frame and reuse the rest from earlier frames'],
   ['macro', 'Wide-area view', 'check', null, null, null, 'Beta: wide terrain and the satellite cloud bank out to 60 km when the camera is pulled back; also lets the camera go higher'],
+  ['sky', 'Sky layers (guide 13)', 'check', null, null, null, 'Beta, work in progress: thin and multi-level clouds above the fog. The switch is wired and saved; nothing is drawn until the satellite thin deck is built'],
   ['travel', '5-minute fog frames', 'check', null, null, null, 'Live data only: inside the 5-minute window of fog5/index.json the fog is blended between 5-minute frames (fog carried by the wind and corrected by each satellite scan); outside it the hourly data'],
   ['edgeFade', 'Fog beyond the data edge (m)', 'range', 500, 8000, 250, 'How far fog carries on past the edge of the model area before fading out; shorter hides the straight seams of the old mirrored copy'],
   ['data3d', '3D fog data', 'check', null, null, null, 'Live data only: the fog gets its floor, top and holes from the 3D fog files instead of the 2D tile with a guessed top'],
@@ -54,7 +55,7 @@ const ADVANCED = [
   ['blur', 'Blur', 'check'],
   ['auto', 'Auto quality drop', 'check', null, null, null, 'Lowers quality by itself when the frame rate falls'],
 ];
-const NUMERIC_CHECK = new Set(['blur', 'skip', 'motion', 'flow', 'taa', 'data3d', 'travel', 'macro']);
+const NUMERIC_CHECK = new Set(['blur', 'skip', 'motion', 'flow', 'taa', 'data3d', 'travel', 'macro', 'sky']);
 
 const CLOUD = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M7.5 19h10a4.5 4.5 0 0 0 .6-8.96A6 6 0 0 0 6.6 8.1 5.5 5.5 0 0 0 7.5 19Z"/></svg>';
 

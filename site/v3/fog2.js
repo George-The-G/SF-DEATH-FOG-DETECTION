@@ -58,6 +58,7 @@ export const DEFAULTS = {
   taa: 1,          // voxel: while the camera moves, trace 1 pixel in 16 per frame and reproject the rest
   edgeFade: 3000,  // voxel: how far (m) past the edge of the data the fog carries on before it has faded out. It was 8000 with a mirrored copy of the volume, which drew straight seams and repeated panels far out at sea; shorter and with a noisy edge it reads as a cloud bank ending (the macro view of guide 09 is the real answer beyond the data)
   macro: 1,        // beta: the wide-area view (macro.js, guide 09): wide terrain, the satellite cloud bank out to 60 km, longer camera range; the voxel fog stays the truth inside the city grid. Live data only; the camera range and the wide data load only when the camera is pulled back
+  sky: 0,          // beta (guide 13): sky layers above the fog. Off by default; wired only, nothing is drawn yet
   travel: 1,       // voxel: 1 = inside the 5-minute window of fog5/index.json (guide 08) the fog is blended between 5-minute frames; outside it the hourly data as before. On in beta (George 2026-11-16); when the build has no fog5/ folder it changes nothing. Live data only
   data3d: 1,       // voxel: 1 = the fog takes its shape from the live 3D fog files (index.json fog3d: a cloud floor, a data top, holes behind hills; an hour without a file has NO fog); 0 = the 2D tile with a guessed top. Live data only; replay nights have no 3D files and keep the 2D tile (George 2026-11-16: realism, no fog columns from sky to ground)
 };
