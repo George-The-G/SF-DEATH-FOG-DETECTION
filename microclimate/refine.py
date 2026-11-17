@@ -460,6 +460,12 @@ def refine(cfg, direction, zone="potrero", dx=5.0, steps=15000, avg_steps=4000, 
         f = pdir / f"{p['id']}.npz"
         if f.exists() and not force:
             continue
+        pause = out / "PAUSE"       # low-priority batch: while this file exists, wait between patches (a safe checkpoint) so the GPU is free
+        if pause.exists():
+            log(f"paused ({pause} exists)")
+            while pause.exists():
+                time.sleep(30)
+            log("resumed")
         log(f"[{n + 1}/{len(patches)}] {p['id']} zone={p['zone']} cand={p['n_cand']}")
         res, diag, _ = run_patch(spec, p, dx, direction, u_c, solid_c, ref, raw, out / "cache", raw / "dem_n38w123.tif", steps,
                                  avg_steps, log, omega=omega)
