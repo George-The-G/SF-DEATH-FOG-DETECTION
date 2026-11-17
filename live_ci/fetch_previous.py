@@ -1,21 +1,39 @@
 """Download the last published live output (site/v3/live on GitHub Pages) so a failed or skipped run never leaves the page empty.
 usage: fetch_previous.py <pages live url> <out dir>. Nothing is written unless every file arrived (all or nothing)."""
+import http.client
 import json
 import re
 import shutil
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
 base, out = sys.argv[1].rstrip("/"), Path(sys.argv[2])
 
 
+ATTEMPTS, BACKOFF_S = 4, (2.0, 5.0, 10.0)   # a transient 503 on one file must not cold-start the whole beta state
+
+
+def _transient(e):
+    if isinstance(e, urllib.error.HTTPError):
+        return e.code >= 500          # 404 and other 4xx are real answers: no retry
+    return isinstance(e, (OSError, http.client.HTTPException))   # timeouts, connection resets, URLError, truncated reads
+
+
 def get(name):
-    req = urllib.request.Request(f"{base}/{name}?cb={int(time.time())}", headers={"User-Agent": "deathfog-live-ci", "Cache-Control": "no-cache"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return r.read()
+    for attempt in range(ATTEMPTS):
+        req = urllib.request.Request(f"{base}/{name}?cb={int(time.time())}", headers={"User-Agent": "deathfog-live-ci", "Cache-Control": "no-cache"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return r.read()
+        except Exception as e:  # noqa: BLE001
+            if attempt == ATTEMPTS - 1 or not _transient(e):
+                raise
+            print(f"{name}: {type(e).__name__}: {e}; retry {attempt + 1}/{ATTEMPTS - 1}")
+            time.sleep(BACKOFF_S[attempt])
 
 
 EXTRAS = "--extras" in sys.argv[3:]   # beta channel: also the on-demand files of the switches that are on (sun / road temperature / film files named in index.json)
