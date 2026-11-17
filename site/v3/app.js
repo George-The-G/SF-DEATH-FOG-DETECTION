@@ -664,7 +664,6 @@ const LAB = FOGV; // fog menu (foglab.js): a small cloud button on beta to play 
 let labParams = null; if (LAB) { try { labParams = JSON.parse(localStorage.getItem('foglab.v2') || 'null'); } catch (e) { labParams = null; } }
 let MACRO = null, MACROSRC = null; // beta (guide 09): the wide-area view; loaded after the fog, used when the fog lab switch macro is on
 const fog = (FOGV ? createFogVol : createFog)({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast, params: labParams || undefined });
-if (BETA && fog && fog.setParams && QP.get('sky') === '1') fog.setParams({ sky: 1 }); // guide 13 (beta): ?beta=1&sky=1 turns the sky layers on; URL only, no panel entry
 if (BETA && FOGV && fog.params) import('./macro.js').then((m) => { MACRO = m.createMacro({ THREE, scene, camera, controls, EX, getMeta: () => meta, getFogGrid: () => fogGrid, fog, invalidate }); if (MACROSRC) MACRO.setSource(MACROSRC); if (SKY && SKY.light) MACRO.setLight(SKY.light); invalidate(); }).catch((e) => console.warn('macro view unavailable', e));
 if (LAB) window.__fogLab = { fog, renderer, scene, camera, get macro() { return MACRO; } }; // benchmark handle (tools/fogbench.cjs)
 if (LAB) import('./foglab.js').then((m) => m.mountFogLab({ fog, densEl: document.getElementById('fogdens') })).catch((e) => console.warn('fog menu unavailable', e));
