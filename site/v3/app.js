@@ -153,7 +153,7 @@ let BUSES = null;
   return import('./buses.js').then((m) => m.createBuses({ THREE, scene, camera, controls, canvas, EX, getJSON, ground: (x, z) => (terrainH ? terrainH.at(x, z) : null), getTerrain: () => terrainH, getCol: () => buildingsMesh && buildingsMesh.userData.col, getG: () => G, getDist: () => camera.position.distanceTo(controls.target), QP, toast, replay: NEWPB }))
     .then((b) => { BUSES = b; if (dbgEl) { const show = () => { dbgEl.textContent = 'buses: loaded\n' + JSON.stringify(b.debug(), null, 1).replace(/[{}\\"]/g, ''); }; show(); setInterval(show, 1500); } });
 })().catch((e) => { console.warn('buses unavailable', e); const d = document.getElementById('busdbg'); if (d) d.textContent = 'buses: FAILED ' + (e && e.message); });
-function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) fog.setLight(SKY.light); } }
+function skyTime(f) { if (SKY && night) { SKY.setTime(Date.parse(night.start_iso) + f * night.step_min * 60000); if (FOGV && SKY.light) { fog.setLight(SKY.light); if (MACRO) MACRO.setLight(SKY.light); } } }
 
 let meta = null, pts = null, terrainH = null, T = null;
 const CITY = { target: new THREE.Vector3(8300, 0, -8000), pos: new THREE.Vector3(3900, 8800, 7600) };
@@ -662,8 +662,10 @@ function applyUrlRoute() { // ?route=<id> selects and flies to it, &fly=1 starts
 /* ------------------------------------------------------------------ fog layer (see fog.js) */
 const LAB = FOGV; // fog menu (foglab.js): a small cloud button on beta to play with the fog look; its settings stay in this browser only
 let labParams = null; if (LAB) { try { labParams = JSON.parse(localStorage.getItem('foglab.v2') || 'null'); } catch (e) { labParams = null; } }
+let MACRO = null, MACROSRC = null; // beta (guide 09): the wide-area view; loaded after the fog, used when the fog lab switch macro is on
 const fog = (FOGV ? createFogVol : createFog)({ THREE, scene, EX, isTouch, getMeta: () => meta, getTerrainH: () => terrainH, toast, params: labParams || undefined });
-if (LAB) window.__fogLab = { fog, renderer, scene, camera }; // benchmark handle (tools/fogbench.cjs)
+if (BETA && FOGV && fog.params) import('./macro.js').then((m) => { MACRO = m.createMacro({ THREE, scene, camera, controls, EX, getMeta: () => meta, getFogGrid: () => fogGrid, fog, invalidate }); if (MACROSRC) MACRO.setSource(MACROSRC); if (SKY && SKY.light) MACRO.setLight(SKY.light); invalidate(); }).catch((e) => console.warn('macro view unavailable', e));
+if (LAB) window.__fogLab = { fog, renderer, scene, camera, get macro() { return MACRO; } }; // benchmark handle (tools/fogbench.cjs)
 if (LAB) import('./foglab.js').then((m) => m.mountFogLab({ fog, densEl: document.getElementById('fogdens') })).catch((e) => console.warn('fog menu unavailable', e));
 if (FOGV) { // volumetric fog looks right at a lower density: slider 5 to 60 percent, starting at 33 (the sheets keep 30 to 200 at 100)
   const fd = document.getElementById('fogdens'); if (fd) { fd.min = 5; fd.max = 60; fd.value = 33; } fog.setDensity(0.33);
@@ -1102,6 +1104,7 @@ function frame(ts) {
   if (BX) BX.render(ts);
   if (SKY) SKY.update(ts);
   if (BUSES) BUSES.update(NEWPB && night ? { t: simEpoch(), speed: playing ? speed : 0 } : undefined); // beta: buses follow the simulation clock (replay), public: wall clock
+  if (MACRO) { if (night) MACRO.setTime(simEpoch() * 1000); MACRO.update(dist); }
   if (FOGV) fog.renderFrame(renderer, scene, camera, PERFON && PERF.aa ? aaRender : undefined); else if (PERFON && PERF.aa) aaRender(); else renderer.render(scene, camera);
   if (PERFON) { lastRenderT = ts; if (dirty > 0) dirty--; }
 }
@@ -1237,6 +1240,7 @@ async function bootLive() {
   setStatus('Loading fog…');
   if (fog.setData3d) fog.setData3d(BETA ? idx.fog3d || null : null, base, V); // beta only (guide 04): 3D fog files, used when the fog lab switch data3d is on
   if (fog.setTravel) fog.setTravel(BETA && idx.fog5 && idx.fog5.index ? { url: base + idx.fog5.index, t0ms: Date.parse(idx.start_iso) } : null); // beta only (guide 08 B): 5-minute fog frames, used when the fog lab switch travel is on
+  MACROSRC = BETA && idx.goes5 && idx.goes5.macro ? base + idx.goes5.macro : null; if (MACRO) MACRO.setSource(MACROSRC); // guide 09: macro cloud frames (live_beta/macro/index.json)
   const ok = await fog.build(base + idx.fog_files[0] + V, fogGrid);
   $('fogtoggle').disabled = !ok; $('fogdens').disabled = !ok; if (!ok) $('fogtoggle').checked = false;
   fog.setVisible($('fogtoggle').checked);
