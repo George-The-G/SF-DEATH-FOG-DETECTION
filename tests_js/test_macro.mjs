@@ -48,6 +48,14 @@ let inside = 0, outside = 0, monotone = true;
 for (let r = 0; r < T.ny; r++) { let last = -1; for (let c = 0; c < T.nx; c++) { const k = (r * T.nx + c) * 4; if (o[k + 3]) { inside++; assert.equal(o[k + 1], 200); assert.equal(o[k + 2], 7); if (o[k] < last) monotone = false; last = o[k]; } else outside++; } }
 assert.ok(inside > 20 && outside > 20 && monotone);
 
+// smoothing: one hard cloud pixel (R 255, top 35 -> B 35) is spread over its neighbours, and the top is not diluted by the empty pixels around it
+const sw = 9, sh = 9, sf = new Uint8Array(sw * sh * 4); sf[(4 * sw + 4) * 4] = 255; sf[(4 * sw + 4) * 4 + 1] = 200; sf[(4 * sw + 4) * 4 + 2] = 35;
+const sb = [-122.9, 37.6, -122.5, 38.0], tt = { x0: 515000, y0: 4215000, cell: 400, nx: 80, ny: 80 };
+const so = resampleMacro(sf, sw, sh, sb, tt);
+let rmax = 0, cells = 0, topBad = false;
+for (let k = 0; k < tt.nx * tt.ny; k++) { if (!so[k * 4 + 3]) continue; if (so[k * 4] > rmax) rmax = so[k * 4]; if (so[k * 4] > 8) { cells++; if (Math.abs(so[k * 4 + 2] - 35) > 1) topBad = true; } }
+assert.ok(rmax < 140 && rmax > 40, 'peak is spread: ' + rmax); assert.ok(cells > 20, 'covers more than one source pixel: ' + cells); assert.ok(!topBad, 'top stays 35 where there is cloud');
+
 // bracket
 const idx = { schema: 1, frames: [{ t: '2026-11-16T10:00:00Z', file: 'a.png' }, { t: '2026-11-16T10:05:00Z', file: 'b.png' }, { t: '2026-11-16T10:10:00Z', file: 'c.png' }] };
 const t = (s) => Date.parse('2026-11-16T' + s + 'Z');

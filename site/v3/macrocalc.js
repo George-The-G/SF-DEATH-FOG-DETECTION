@@ -51,20 +51,39 @@ export function utm10ToLonLat(e, n) {
   return [lon * 180 / Math.PI, lat * 180 / Math.PI];
 }
 
-/* macro frame (RGBA, w x h, row 0 = north, lon/lat box [lon0, lat0, lon1, lat1] inclusive of both edges) -> RGBA on a UTM grid (row 0 = north), bilinear.
-   Cells outside the box are 0,0,0,0. target = { x0 (west edge), y0 (north edge), cell, nx, ny }. R = probability, G = confidence, B = top / 8 m. */
+/* Catmull-Rom weights for the four samples around a position with fraction t */
+const crw = (t) => [(-t * t * t + 2 * t * t - t) / 2, (3 * t * t * t - 5 * t * t + 2) / 2, (-3 * t * t * t + 4 * t * t + t) / 2, (t * t * t - t * t) / 2];
+
+/* macro frame (RGBA, w x h, row 0 = north, lon/lat box [lon0, lat0, lon1, lat1] inclusive of both edges) -> RGBA on a UTM grid (row 0 = north).
+   The frames are about 1 km per pixel, so the source is smoothed first (a 3 x 3 binomial blur of R and G) and sampled bicubically (Catmull-Rom, clamped), which removes the blocky look
+   of stretching 1 km pixels over 400 m cells. B (top / 8 m) is not blurred into empty pixels: it is the average of the neighbours that have cloud, weighted by R.
+   Cells outside the box are 0,0,0,0; inside, alpha is 255. R = probability, G = confidence, B = top / 8 m. */
 export function resampleMacro(rgba, w, h, box, target) {
+  const R = new Float32Array(w * h), G = new Float32Array(w * h), T = new Float32Array(w * h), TN = new Float32Array(w * h), K = [1, 2, 1];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let r = 0, g = 0, tt = 0, ws = 0, wr = 0;
+    for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+      const xx = Math.min(w - 1, Math.max(0, x + i)), yy = Math.min(h - 1, Math.max(0, y + j)), k = (yy * w + xx) * 4, wt = K[i + 1] * K[j + 1];
+      r += rgba[k] * wt; g += rgba[k + 1] * wt; ws += wt; tt += rgba[k + 2] * wt * rgba[k]; wr += wt * rgba[k];
+    }
+    const o = y * w + x; R[o] = r / ws; G[o] = g / ws; T[o] = wr > 0 ? tt / wr : 0; TN[o] = T[o] * R[o];
+  }
+  const at = (A, x, y) => A[Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))];
+  const bicubic = (A, fx, fy, mx = 255) => {
+    const x0 = Math.floor(fx), y0 = Math.floor(fy), wx = crw(fx - x0), wy = crw(fy - y0);
+    let v = 0; for (let j = 0; j < 4; j++) { let row = 0; for (let i = 0; i < 4; i++) row += wx[i] * at(A, x0 - 1 + i, y0 - 1 + j); v += wy[j] * row; }
+    return Math.min(mx, Math.max(0, v));
+  };
   const out = new Uint8Array(target.nx * target.ny * 4);
   const dx = (box[2] - box[0]) / (w - 1), dy = (box[3] - box[1]) / (h - 1);
   for (let r = 0; r < target.ny; r++) for (let c = 0; c < target.nx; c++) {
     const [lon, lat] = utm10ToLonLat(target.x0 + (c + 0.5) * target.cell, target.y0 - (r + 0.5) * target.cell);
     const fx = (lon - box[0]) / dx, fy = (box[3] - lat) / dy;
     if (fx < 0 || fy < 0 || fx > w - 1 || fy > h - 1) continue;
-    const x0 = Math.min(Math.floor(fx), w - 2), y0 = Math.min(Math.floor(fy), h - 2), tx = fx - x0, ty = fy - y0, o = (r * target.nx + c) * 4;
-    for (let k = 0; k < 3; k++) {
-      const v00 = rgba[(y0 * w + x0) * 4 + k], v10 = rgba[(y0 * w + x0 + 1) * 4 + k], v01 = rgba[((y0 + 1) * w + x0) * 4 + k], v11 = rgba[((y0 + 1) * w + x0 + 1) * 4 + k];
-      out[o + k] = Math.round((v00 * (1 - tx) + v10 * tx) * (1 - ty) + (v01 * (1 - tx) + v11 * tx) * ty);
-    }
+    const o = (r * target.nx + c) * 4;
+    const rr = bicubic(R, fx, fy);
+    out[o] = Math.round(rr); out[o + 1] = Math.round(bicubic(G, fx, fy));
+    out[o + 2] = rr > 0.5 ? Math.round(Math.min(255, bicubic(TN, fx, fy, 255 * 255) / rr)) : 0; // the top is interpolated weighted by cloud, so empty neighbours do not pull it down
     out[o + 3] = 255;
   }
   return out;

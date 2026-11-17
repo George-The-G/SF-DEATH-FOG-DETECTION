@@ -36,18 +36,21 @@ const FRAG = `
     if (abs(rd.y) < 1e-5) { if (ro.y < base || ro.y > top) discard; a = 0.; b = 3.0e5; }
     else { a = (base - ro.y) / rd.y; b = (top - ro.y) / rd.y; if (a > b) { float s = a; a = b; b = s; } if (b < 0.) discard; a = max(a, 0.); b = min(b, 2.6e5); }
     if (b <= a) discard;
-    const int N = 8; float seg = (b - a) / float(N), od = 0., dist0 = a;
+    const int N = 8; float seg = (b - a) / float(N), od = 0., sumd = 0., sumh = 0.;
     for (int i = 0; i < N; i++) {
       float ts = a + (float(i) + .5) * seg; vec3 p = ro + rd * ts; vec4 c = cov(p.xz);
+      float near = uNoiseR * (1. - smoothstep(10000., 15000., ts));  // detail only close to the camera: far away the smooth satellite field stands alone
+      // fine noise at three scales, so the bank has billows and ragged edges instead of 1 km blocks
+      float nz = vn(p.xz / 1200.) * .5 + vn(p.xz / 400.) * .3 + vn(p.xz / 130. + p.y / 90.) * .2;
       float dens = c.r * mix(.35, 1., c.g);                       // low confidence: less opaque, never invented
-      float nz = vn(p.xz / 900.) * .6 + vn(p.xz / 300.) * .4;     // the existing kind of noise, only near the camera
-      dens *= mix(1., .55 + .9 * nz, uNoiseR * (1. - smoothstep(10000., 15000., ts)));
-      od += dens * seam(p.xz) * seg;
+      dens = clamp((dens - (1. - nz) * .35 * near) * (1. + .6 * near), 0., 1.) * mix(1., .6 + .8 * nz, near * .5);   // erode the edges with the noise
+      float hh = clamp((p.y - base) / max(top - base, 1.), 0., 1.);
+      float w = dens * seam(p.xz); od += w * seg; sumd += w; sumh += w * hh;
     }
-    od *= uK;
+    od *= uK; float hmean = sumd > 0. ? sumh / sumd : .5;
     float al = (1. - exp(-od)) * uOn; if (al < .004) discard;
     float ph = .75 + .25 * pow(max(dot(rd, uSun), 0.), 4.);
-    vec3 L = uAmb * (.7 + .3 * clamp(rd.y + .5, 0., 1.)) + uSunCol * uSunI * .55 * ph;
+    vec3 L = (uAmb * (.7 + .3 * clamp(rd.y + .5, 0., 1.)) + uSunCol * uSunI * .55 * ph) * (.78 + .3 * hmean);   // brighter towards the top of the layer, greyer in the thick base
     gl_FragColor = linearToOutputTexel(vec4(L, al));
     vec4 cp = projectionMatrix * viewMatrix * vec4(ro + rd * a, 1.); gl_FragDepth = clamp(cp.z / cp.w * .5 + .5, 0., 1.); // depth of the nearest point of the layer, so terrain and buildings in front hide it
   }`;
