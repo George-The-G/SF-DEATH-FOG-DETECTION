@@ -135,3 +135,42 @@ class TestCycle(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSmoothBlend(unittest.TestCase):
+    """Calm the 5-minute series and blend it with the hourly frames (fog jumped forward and back between noisy scans)."""
+
+    def series(self, n=40, seed=3):
+        rng = np.random.default_rng(seed)
+        base = np.linspace(0.2, 0.6, n)[:, None, None] * np.ones((n, 6, 7), np.float32)
+        return np.clip(base + rng.normal(0, 0.15, base.shape), 0, 1).astype(np.float32)
+
+    def test_jitter_drops_and_mean_is_kept(self):
+        F = self.series()
+        G = T.smooth_blend(F, 30)
+        d0, d1 = np.abs(np.diff(F, axis=0)).mean(), np.abs(np.diff(G, axis=0)).mean()
+        self.assertLess(d1, 0.5 * d0)
+        self.assertAlmostEqual(float(G.mean()), float(F.mean()), delta=0.02)
+        self.assertLessEqual(float(G.max()), float(F.max()) + 1e-6)
+        self.assertGreaterEqual(float(G.min()), float(F.min()) - 1e-6)
+
+    def test_constant_stays_constant(self):
+        F = np.full((30, 4, 4), 0.4, np.float32)
+        np.testing.assert_allclose(T.smooth_blend(F, 20), F, atol=1e-6)
+
+    def test_off_and_no_scan_unchanged(self):
+        F = self.series()
+        np.testing.assert_array_equal(T.smooth_blend(F, 30, sigma=0), F)
+        np.testing.assert_array_equal(T.smooth_blend(F, 0), F)
+
+    def test_step_at_newest_scan_is_smoothed(self):
+        F = np.concatenate([np.full((20, 3, 3), 0.8, np.float32), np.full((20, 3, 3), 0.2, np.float32)])
+        G = T.smooth_blend(F, 19)
+        self.assertLess(float(np.abs(np.diff(G, axis=0)).max()), 0.5 * float(np.abs(np.diff(F, axis=0)).max()))
+
+    def test_deterministic_and_shape(self):
+        F = self.series()
+        a, b = T.smooth_blend(F, 30), T.smooth_blend(F, 30)
+        np.testing.assert_array_equal(a, b)
+        self.assertEqual(a.shape, F.shape)
+        self.assertEqual(a.dtype, np.float32)

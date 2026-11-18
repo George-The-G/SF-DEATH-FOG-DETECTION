@@ -19,6 +19,9 @@ TRAVEL_SPEED_FACTOR = 1.3    # 10 m wind to the fog layer (first guess; the fron
 GUIDE_BOX = 25               # cells of the 2 km box filter on the 80 m grid
 GUIDE_FLOOR = 0.02
 GUIDE_MAX = 2.0
+SMOOTH_SIGMA = 2.5            # frames: Gaussian temporal smoothing of the observed and interpolated frames (0 = off); a noisy scan can no longer move the fog by itself - first guess
+HOURLY_MIX = 0.3              # weight of the hourly line (the smoothed series sampled on the hour and joined linearly) against the 5-minute series - first guess
+FRAMES_PER_HOUR = 12
 SCAN_TOL_S = 150.0           # a scan corrects the step it is within this many seconds of
 
 
@@ -110,7 +113,40 @@ def run(times, prior_fn, trb_fn, wind_fn, scan_fn, A0, tol_s=SCAN_TOL_S, backwar
         for i in range(newest):                       # the newest step keeps the forward value
             frames[i] = ((fwd[i] + bwd[i]) * 0.5).astype(np.float32)
     kinds = np.array(["forecast" if i > newest else ("observed" if scans[i] is not None else "interpolated") for i in range(n)])
-    return np.stack(frames).astype(np.float32), kinds
+    return smooth_blend(np.stack(frames), newest), kinds
+
+def smooth_blend(frames, newest, sigma=None, mix=None, per_hour=FRAMES_PER_HOUR):
+    """Calm the whole 5-minute series and blend it with the hourly frames (the fog jumped from one noisy scan to the next).
+    1. Gaussian smoothing along time, sigma frames, truncated at 3 sigma and renormalised at both ends (zero-phase: no lag). It runs across the newest scan
+       into the forecast frames too, so the step from the last corrected frame to the first forecast frame is smoothed as well.
+    2. The hourly line: the smoothed series sampled every `per_hour` frames (and at the last frame) and joined linearly. The result is
+       (1 - mix) * smoothed + mix * hourly line, so the large-scale amount follows the hourly frames and the 5-minute frames add the detail.
+    Linear in the frames, so a tile (255 * A * trb) and a volume (A * C3 * w) treated the same way agree; values stay inside the range of the input.
+    sigma <= 0, or no scan (newest < 1), returns the frames unchanged."""
+    sg = SMOOTH_SIGMA if sigma is None else sigma
+    mx = HOURLY_MIX if mix is None else mix
+    F = np.asarray(frames, np.float32)
+    if sg <= 0 or newest < 1 or len(F) < 3:
+        return F
+    n = len(F)
+    X = F.astype(np.float64)
+    r = int(np.ceil(3 * sg))
+    idx = np.arange(n)
+    sm = np.empty_like(X)
+    for i in range(n):
+        lo, hi = max(0, i - r), min(n, i + r + 1)
+        w = np.exp(-0.5 * ((idx[lo:hi] - i) / sg) ** 2)
+        sm[i] = np.tensordot(w / w.sum(), X[lo:hi], axes=1)
+    marks = sorted(set(list(range(0, n, per_hour)) + [n - 1]))
+    out = sm
+    if len(marks) >= 2 and mx > 0:
+        hl = np.empty_like(sm)
+        for a, b in zip(marks[:-1], marks[1:]):
+            for i in range(a, b + 1):
+                t = (i - a) / (b - a)
+                hl[i] = sm[a] * (1 - t) + sm[b] * t
+        out = (1.0 - mx) * sm + mx * hl
+    return out.astype(np.float32)
 
 
 def window(now_unix, past_h=TRAVEL_PAST_H, fwd_h=TRAVEL_FWD_H, step_s=STEP_S):
