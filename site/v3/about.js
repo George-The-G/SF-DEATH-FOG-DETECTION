@@ -36,6 +36,7 @@ const CSS = `
 .ab-tbl th{color:var(--dim,#9db0c9);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 .ab-tbl td:first-child{white-space:nowrap;font-weight:650}
 .ab-src{line-height:1.7}
+.ab-pipe{padding:9px 11px;border:1px solid var(--accent,#5ef2ff);border-radius:10px;background:rgba(94,242,255,.07)}
 .ab-date{color:var(--dim,#9db0c9);font-size:12px;margin-top:12px!important}
 .ab-msg{color:var(--dim,#9db0c9)}
 @media (min-width:700px){
@@ -138,6 +139,8 @@ const promoHtml = () => '<h3 id="ab-layers">Data layers</h3>' +
   '<li><b>Wet and water depth:</b> the amount of water on the street, not how slippery it is (grip matters too).</li>' +
   '<li><b>Road temp:</b> modelled surface temperature of the street, 40 to 80°F. It keeps heat from earlier hours and days, so it needs about three days to warm up after a restart.</li></ul>' +
   '<p>Sunshine, street wetness, water depth and road temperature are modelled, not measured, and have not been checked against real wet-road reports yet. This is a guide, not a forecast guarantee.</p>';
+/* first block of the pop-up: link to the full pipeline write-up (pipeline.html, one self-contained page next to index.html) */
+const PIPELINE_HTML = '<p class="ab-pipe"><a href="pipeline.html" target="_blank" rel="noopener"><b>Fog pipeline atlas</b></a>: every stage from city geometry and wind simulation to the fog on screen, with real data in and out, every setting, and the sources.</p>';
 const BETA_CSS = '.ab-btag{display:inline-block;margin-right:6px;vertical-align:1px;font:650 9px/12px var(--sans,system-ui,sans-serif);letter-spacing:.07em;text-transform:uppercase;color:var(--cy-ink,#7fe3f0);border:1px solid rgba(94,242,255,.55);border-radius:4px;padding:0 4px}';
 const LIVE_REPLACE = ['A replay of nine recent nights (7 foggy, 2 dry) showing how wet streets may have been along a few skate routes.', 'Modelled street wetness for tonight and the next two days across San Francisco, with detail on a few skate routes. The nine past-night replays are in the Night list.'];
 
@@ -193,7 +196,7 @@ export async function openAbout() {
   if (state.trigger) state.trigger.setAttribute('aria-expanded', 'true');
 
   const html = await loadHtml();
-  if (state.root === root) { body.innerHTML = (BETA_ABOUT ? betaHtml() : window.__bxPromo ? promoHtml() : '') + (LIVE_ABOUT ? LIVE_HTML + html.replace(LIVE_REPLACE[0], LIVE_REPLACE[1]) : html); body.scrollTop = 0; }
+  if (state.root === root) { body.innerHTML = PIPELINE_HTML + (BETA_ABOUT ? betaHtml() : window.__bxPromo ? promoHtml() : '') + (LIVE_ABOUT ? LIVE_HTML + html.replace(LIVE_REPLACE[0], LIVE_REPLACE[1]) : html); body.scrollTop = 0; }
 }
 
 export function closeAbout() {
