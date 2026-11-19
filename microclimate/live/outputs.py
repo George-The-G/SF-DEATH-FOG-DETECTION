@@ -23,6 +23,7 @@ PT = ZoneInfo("America/Los_Angeles")
 N_DAYS = 3
 
 
+# @sec: ribbon column slicing & 3D fog/tile writers
 def smooth_strips(a, strip_start, passes=2, edge=25.0):
     """Edge-preserving [1,2,1]/4 smoothing along every ribbon strip, per frame (same filter as reslice_replay.smooth). a: uint8 [F, S]."""
     out = a.copy()

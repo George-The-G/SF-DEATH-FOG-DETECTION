@@ -25,6 +25,7 @@ POROUS_FACTOR = 0.6
 SITE = dict(lat=37.76, lon=-122.40, tz="America/Los_Angeles")
 
 
+# @sec: 2m fine surface & horizon ray march
 def ray_distances():
     d, out = 2.0, []
     while d <= RAY_MAX_M:

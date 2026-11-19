@@ -25,6 +25,7 @@ const TIERS = [null, // 0 = old sheets
   { scale: 0.5, steps: 10, vsteps: 18, oct: 2, ms: 0 },
   { scale: 1.0, steps: 12, vsteps: 26, oct: 3, ms: 4 }];
 
+// @sec: settings & defaults
 /* Settings. DEFAULTS is what beta shows (George's chosen look, 2026-11-14); foglab.js offers presets and edits them live. */
 export const DEFAULTS = {
   mode: 'voxel',   // 'march' | 'voxel' | 'sheets'
@@ -63,6 +64,7 @@ export const DEFAULTS = {
   data3d: 1,       // voxel: 1 = the fog takes its shape from the live 3D fog files (index.json fog3d: a cloud floor, a data top, holes behind hills; an hour without a file has NO fog); 0 = the 2D tile with a guessed top. Live data only; replay nights have no 3D files and keep the 2D tile (George 2026-11-16: realism, no fog columns from sky to ground)
 };
 
+// @sec: shaders (ray setup, march, voxel bake, TAA, composite)
 const VERT = `varying vec2 vUv; void main(){ vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); }`;
 
 const TILE = `
@@ -379,6 +381,8 @@ export function topAt(series, h, P) {
   return acc / ws;
 }
 
+// @sec: createFogVol controller
+/// Create the volumetric fog controller (march + 3D voxel bake + TAA + occupancy skipping).
 export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, toast, tier0, params }) {
   const P = { ...DEFAULTS, ...(params || {}) };
   const noiseTex = makeNoise3D(THREE);

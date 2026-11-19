@@ -16,6 +16,7 @@ const JOIN_R = 4.5, JOIN_DOT = -0.7; // two strip ends closer than this and head
 const CAP_N = 4;                    // round cap: vertices on the half circle
 const TILE_M = 2500, FULL_D = 6000; // beyond this camera distance one draw per layer; closer, per-tile draws that frustum-cull
 
+// @sec: ribbon shaders (wetness, route dash/highlight, sun & road-temp ramps)
 const VERT_T = `
   attribute vec2 aOff;      // normal offset in xz (metres at width scale 1): nrm * sign * width/2 * class factor
   attribute vec4 aInfo;     // sample A id, across (-1..1), class (0 route, 1 district street), t = weight toward sample B
@@ -108,6 +109,8 @@ const altFrag = (f) => f.replace('uniform float uDistFade, uDistVis, uDash, uWid
   .replace('void main(){', SUN_GLSL + 'void main(){')
   .replace('vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : ramp(vWet);', 'vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : (uMode > 1.5 ? tempramp(vWet) : uMode > .5 ? sunramp(vWet) : ramp(vWet));');
 
+// @sec: ribbon geometry builder & controller
+/// Build the single-draw-call street and route ribbon mesh with frame-interpolated wetness textures.
 export function createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, alt = false }) {
   const uniforms = {
     uWet: { value: null }, uRows: { value: 1 }, uFa: { value: 0 }, uFb: { value: 0 }, uU: { value: 0 },

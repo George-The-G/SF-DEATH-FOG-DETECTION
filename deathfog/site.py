@@ -10,6 +10,7 @@ from .detectors import build_detector
 from .collect import build_sources
 from .util import dc_to_f, hour_label, iso, local_hour, local_str, parse_iso
 
+# @sec: styles & auto-refresh script
 LEVEL_TEXT = {"none": "Quiet", "watch": "Watch", "likely": "Likely", "strong": "Strong"}
 
 CSS = """

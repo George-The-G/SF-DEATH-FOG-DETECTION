@@ -18,6 +18,7 @@ LOC = {"outer_sunset": (37.753, -122.495), "mission": (37.760, -122.419)}
 results = []
 
 
+# @sec: validation checks & ablations
 def rec(name, status, detail, **data):
     results.append(dict(check=name, status=status, detail=detail, **data))
     print(f"[{status}] {name}: {detail}", flush=True)

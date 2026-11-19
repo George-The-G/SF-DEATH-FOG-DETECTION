@@ -9,6 +9,7 @@ Last verified: 2026-11-18
 ## Core Entry Points
 - [`../README.md`](../README.md) — Project overview, live URLs, quickstart commands, and data sources.
 - [`../AGENTS.md`](../AGENTS.md) — Rules for AI agents, self-contained directory layout, frozen production paths, and test commands.
+- [`AGENT_ERGONOMICS_PLAN.md`](AGENT_ERGONOMICS_PLAN.md) — Plan for drift-safe code navigation (`tools/codemap.py`), token efficiency, local previewing, and agent skills.
 - [`STATUS.md`](STATUS.md) — Current production/beta status and active engineering backlog.
 - [`PIPELINE_DISCREPANCIES.md`](PIPELINE_DISCREPANCIES.md) — Graded audit (H1–H5, M1–M4, L1–L3) of code and data vs. guides and config.
 - [`../data/MANIFEST.md`](../data/MANIFEST.md) — Inventory of the local `data/` directory (`$DEATHFOG_DATA`), file hashes, and regeneration commands.

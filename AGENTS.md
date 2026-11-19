@@ -47,15 +47,38 @@ Never reorganize or force-push the service branches `data` (v2 rolling state) or
 
 ---
 
-## 3. Running Tests
+## 3. Fast, Token-Efficient Navigation & Local Preview
+
+Before reading large files (`site/v3/app.js`, `site/v3/fog2.js`, `microclimate/wetness.py`, `microclimate/live/forcing.py`), use the on-demand code & contract inspector:
+
+1. **Repo or file outline with live `[Lstart-Lend]` line numbers:**
+   ```powershell
+   .\.venv\Scripts\python.exe tools/codemap.py
+   .\.venv\Scripts\python.exe tools/codemap.py site/v3/app.js
+   ```
+2. **Live feature switches (`PROMOTED` vs `BETA`) and `.npz` schemas:**
+   ```powershell
+   .\.venv\Scripts\python.exe tools/codemap.py --contracts
+   ```
+3. **Local viewer server & headless Playwright verification:**
+   ```powershell
+   .\.venv\Scripts\python.exe tools/preview.py --serve
+   .\.venv\Scripts\python.exe tools/preview.py --check "?beta=1&night=2026-10-01"
+   ```
+4. **Comment convention (enforced by `tests/test_repo_hygiene.py`):**
+   - Add concise 1-line docstrings (Python) or `///` / `/** ... */` comments (JS) on functions, and `# @sec: <name>` / `// @sec: <name>` section markers in files over 350 lines so `tools/codemap.py` always indexes them with zero drift.
+
+---
+
+## 4. Running Tests
 
 Run both test suites before committing or merging to `v3-dev`:
 
-1. **Python tests (v2 + v3 microclimate):**
+1. **Python + repo hygiene tests (v2 + v3 microclimate):**
    ```powershell
-   .\.venv\Scripts\pytest.exe tests tests_mc
+   .\.venv\Scripts\pytest.exe
    ```
-   *(Note: Cloud sessions without `data/` skip data-dependent tests automatically; unit tests use synthetic fixtures.)*
+   *(Configured via `pyproject.toml`; runs `tests/` and `tests_mc/`, including `tests/test_repo_hygiene.py`.)*
 2. **JavaScript tests (viewer + Cloudflare workers):**
    ```powershell
    node --test tests_js/*.mjs
@@ -63,8 +86,9 @@ Run both test suites before committing or merging to `v3-dev`:
 
 ---
 
-## 4. Branch & Worktree Discipline
+## 5. Branch, Worktree & Deploy Discipline (`deathfog-agent-brief` & `deathfog-ship`)
 
+- **Skills:** Follow [`.claude/skills/deathfog-agent-brief/SKILL.md`](.claude/skills/deathfog-agent-brief/SKILL.md) and [`.claude/skills/deathfog-ship/SKILL.md`](.claude/skills/deathfog-ship/SKILL.md).
 - **Active trunk:** `v3-dev`. Create short-lived branches (`feat/<topic>`, `sim/<NN>-<topic>`, `fix/<topic>`) off `v3-dev`, and delete them after merging.
 - **Worktrees:** Do not create worktrees in `AppData\Local\Temp` or as sibling folders in `source\repos\`. If parallel work requires a worktree, place it in `_worktrees/wt_<topic>` and remove it (`git worktree remove`) immediately after merge.
 - **Large files:** No binary over 5 MB or new daily generated output in git. Store simulation data in `data/` (`$DEATHFOG_DATA`) and document it in `data/MANIFEST.md`.
