@@ -24,9 +24,9 @@ import numpy as np
 from ..paths import data_dir
 
 # @sec: constants & binary schema
-MAGIC = 0x31444152  # 'ROAD1' little-endian
-VERSION = 1
-HEADER_FMT = "<9I"
+MAGIC = 0x32444152  # 'ROAD2' little-endian
+VERSION = 2
+HEADER_FMT = "<13I"
 HEADER_BYTES = struct.calcsize(HEADER_FMT)
 
 X0, Y0 = 540100.0, 4171500.0  # scene origin in EPSG:32610 (matches site/v3/data/meta.json)
@@ -66,6 +66,7 @@ MAX_CROSS_SLOPE = 0.06    # max cross-slope camber/banking across ribbon width (
 TERRAIN_CLEAR_M = 0.30    # min vertical clearance above viewer's rendered 60 m terrain mesh (m)
 MAX_SPAN_M = 12.0         # max along-road segment span (m) so 60 m terrain triangles never swallow mid-span
 SKIRT_DROP_M = 1.6        # curb/embankment skirt depth below terrain (m) so roads never float
+SKIRT_THRESH_M = 0.65     # per-segment height above 60 m terrain required to emit a skirt quad
 MAX_MITER = 1.8           # max miter scale 1/cos(half_angle) at interior corners
 HORIZ_EPS_M = 0.40        # 2D horizontal Douglas-Peucker tolerance (m) to drop collinear OSM nodes
 FILLET_PTS = 2            # interior points on curb fillet arc at intersections
@@ -277,6 +278,78 @@ def make_terrain60_sampler(grids_dir: Path, step: int = 3):
         return meshes.mesh_height(spec, ter, np.asarray(xs) - x0, np.asarray(ys) - y0, step=step).astype(np.float64)
 
     return sample, ter, spec
+
+
+def nudge_terrain60_for_roads(
+    ter: np.ndarray,
+    spec: dict,
+    edges: list[dict],
+    dem_fn: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    step: int = 3,
+    clear_m: float = 0.15,
+    max_dist_m: float = 12.0,
+    blend: float = 0.65,
+) -> np.ndarray:
+    """Gently pull existing 60 m terrain vertices under surface roads (layer == 0) toward road_z - clear_m."""
+    out = np.array(ter, dtype=np.float32, copy=True)
+    nx, ny = out.shape
+    x0, y0 = float(spec["x0"]), float(spec["y0"])
+    cell_m = float(spec["cell_m"])
+    grid_m = cell_m * step
+
+    w_sum = np.zeros_like(out, dtype=np.float64)
+    z_sum = np.zeros_like(out, dtype=np.float64)
+
+    for e in edges:
+        if int(e.get("layer", 0)) != 0:
+            continue
+        xy = np.asarray(e["xy"], dtype=np.float64)
+        if len(xy) < 2:
+            continue
+        r_max = max(max_dist_m, 0.5 * float(e.get("width", 7.0)) + 4.0)
+        pad_cells = int(math.ceil(r_max / grid_m)) + 1
+
+        for k in range(len(xy) - 1):
+            ax, ay = float(xy[k, 0]), float(xy[k, 1])
+            bx, by = float(xy[k + 1, 0]), float(xy[k + 1, 1])
+            dx, dy = bx - ax, by - ay
+            l2 = dx * dx + dy * dy
+            if l2 < 1e-6:
+                continue
+
+            gx0 = max(0, int(math.floor((min(ax, bx) - x0) / grid_m)) - pad_cells)
+            gx1 = min((nx - 1) // step, int(math.floor((max(ax, bx) - x0) / grid_m)) + pad_cells)
+            gy0 = max(0, int(math.floor((min(ay, by) - y0) / grid_m)) - pad_cells)
+            gy1 = min((ny - 1) // step, int(math.floor((max(ay, by) - y0) / grid_m)) + pad_cells)
+            if gx1 < gx0 or gy1 < gy0:
+                continue
+
+            ix = np.arange(gx0, gx1 + 1) * step
+            iy = np.arange(gy0, gy1 + 1) * step
+            gxx, gyy = np.meshgrid(ix, iy, indexing="ij")
+            vx = x0 + gxx * cell_m
+            vy = y0 + gyy * cell_m
+            t = np.clip(((vx - ax) * dx + (vy - ay) * dy) / l2, 0.0, 1.0)
+            px = ax + t * dx
+            py = ay + t * dy
+            dist = np.hypot(vx - px, vy - py)
+            land = out[gxx, gyy] > 0.5
+            mask = land & (dist <= r_max)
+            if not np.any(mask):
+                continue
+
+            road_z = dem_fn(px[mask], py[mask])
+            target_z = road_z - clear_m
+            w = blend * (1.0 - dist[mask] / r_max)
+            np.add.at(w_sum, (gxx[mask], gyy[mask]), w)
+            np.add.at(z_sum, (gxx[mask], gyy[mask]), w * target_z)
+
+    hit = w_sum > 1e-6
+    if np.any(hit):
+        avg_target = z_sum[hit] / w_sum[hit]
+        alpha = np.clip(w_sum[hit], 0.0, blend)
+        out[hit] = (out[hit] + alpha * (avg_target - out[hit])).astype(np.float32)
+    return out
 
 
 # @sec: osm road graph & degree-2 chaining
@@ -858,7 +931,7 @@ class SampleBinder:
         return idxs[:, 0].astype(np.int32), idxs[:, 1].astype(np.int32), t
 
 
-# @sec: mesh assembly & ROAD1 serialization
+# @sec: mesh assembly & ROAD2 serialization
 def build_road_mesh(
     nodes: list[dict],
     edges: list[dict],
@@ -870,7 +943,7 @@ def build_road_mesh(
 ) -> tuple[dict, dict]:
     """Assemble watertight continuous road ribbons, intersection polygons, and game road graph.
 
-    Returns (mesh_dict, graph_dict) ready for pack_road1().
+    Returns (mesh_dict, graph_dict) ready for pack_road2().
     """
     if t20_fn is None:
         t20_fn = dem_fn
@@ -923,13 +996,16 @@ def build_road_mesh(
         else:
             sorted_node_arms[ni] = sorted(arms, key=lambda a: math.atan2(a["dir"][1], a["dir"][0]))
 
-    # Growable vertex lists
+    # Growable compact top-roadbed vertex lists (28 B/vert)
     v_pos: list[tuple[float, float, float]] = []
-    v_nrm: list[tuple[float, float, float]] = []
-    v_info: list[tuple[float, float, float, float]] = []  # ida, across, cls, t
-    v_b: list[float] = []
-    v_rt: list[tuple[float, float, float]] = []           # arc, mask, routeIdx
+    v_nrm: list[tuple[int, int, int, int]] = []
+    v_samples: list[tuple[float, float]] = []
+    v_attr: list[tuple[int, int]] = []
     tile_street_idx: dict[tuple[int, int], list[int]] = defaultdict(list)
+
+    # Position-only close-up skirt vertex/index lists (12 B/vert)
+    sk_pos: list[tuple[float, float, float]] = []
+    tile_skirt_idx: dict[tuple[int, int], list[int]] = defaultdict(list)
 
     # Track exact left/right end vertex indices at each arm end so junctions share vertices watertightly
     arm_end_verts: dict[tuple[int, int], tuple[int, int, np.ndarray, np.ndarray]] = {}
@@ -948,10 +1024,22 @@ def build_road_mesh(
     ) -> int:
         vi = len(v_pos)
         v_pos.append((wx - x0, wz, -(wy - y0)))
-        v_nrm.append((nx_, ny_, nz_))
-        v_info.append((float(ida), across, cls_, t_))
-        v_b.append(float(idb))
-        v_rt.append((arc_m, mask_, rt_idx))
+        v_nrm.append((
+            int(round(max(-1.0, min(1.0, nx_)) * 127.0)),
+            int(round(max(-1.0, min(1.0, ny_)) * 127.0)),
+            int(round(max(-1.0, min(1.0, nz_)) * 127.0)),
+            0,
+        ))
+        v_samples.append((float(ida), float(idb)))
+        v_attr.append((
+            int(round(max(-1.0, min(1.0, across)) * 32767.0)),
+            int(round(max(0.0, min(1.0, t_)) * 32767.0)),
+        ))
+        return vi
+
+    def add_skirt_vert(wx: float, wy: float, wz: float) -> int:
+        vi = len(sk_pos)
+        sk_pos.append((wx - x0, wz, -(wy - y0)))
         return vi
 
     def tile_key(wx: float, wy: float) -> tuple[int, int]:
@@ -1114,30 +1202,40 @@ def build_road_mesh(
             v0 = base_v + 2 * q
             tlist.extend((v0, v0 + 1, v0 + 2, v0 + 1, v0 + 3, v0 + 2))
 
-        # Emit grounded curb/embankment skirts on sides that rise > 0.45 m above terrain.glb (across=2.0)
-        if float(np.max(yl_arr - zl_t60)) > 0.45:
-            sk_l = len(v_pos)
-            for q in range(m):
-                yb = min(float(yl_arr[q]) - 0.6, float(zl_t60[q]) - SKIRT_DROP_M)
-                ln_len = math.hypot(float(mnx[q]), float(mny[q])) or 1.0
-                sxn, szn = float(mnx[q]) / ln_len, -float(mny[q]) / ln_len
-                add_vert(float(left_xy[q, 0]), float(left_xy[q, 1]), float(yl_arr[q]), sxn, 0.25, szn, 0, 2.0, 1.0, 0.0, 0, 0.0)
-                add_vert(float(left_xy[q, 0]), float(left_xy[q, 1]), yb, sxn, 0.25, szn, 0, 2.0, 1.0, 0.0, 0, 0.0)
-            for q in range(m - 1):
-                v0 = sk_l + 2 * q
-                tlist.extend((v0, v0 + 2, v0 + 1, v0 + 1, v0 + 2, v0 + 3))
+        # Emit per-segment, position-only curb/embankment skirts only where segment rises > SKIRT_THRESH_M above 60 m terrain
+        sk_tlist = tile_skirt_idx[tk]
+        prev_l_pair: int | None = None
+        prev_r_pair: int | None = None
+        for q in range(m - 1):
+            if max(float(yl_arr[q] - zl_t60[q]), float(yl_arr[q + 1] - zl_t60[q + 1])) > SKIRT_THRESH_M:
+                if prev_l_pair is None:
+                    yb0 = min(float(yl_arr[q]) - 0.6, float(zl_t60[q]) - SKIRT_DROP_M)
+                    v_q0 = add_skirt_vert(float(left_xy[q, 0]), float(left_xy[q, 1]), float(yl_arr[q]))
+                    add_skirt_vert(float(left_xy[q, 0]), float(left_xy[q, 1]), yb0)
+                else:
+                    v_q0 = prev_l_pair
+                yb1 = min(float(yl_arr[q + 1]) - 0.6, float(zl_t60[q + 1]) - SKIRT_DROP_M)
+                v_q1 = add_skirt_vert(float(left_xy[q + 1, 0]), float(left_xy[q + 1, 1]), float(yl_arr[q + 1]))
+                add_skirt_vert(float(left_xy[q + 1, 0]), float(left_xy[q + 1, 1]), yb1)
+                sk_tlist.extend((v_q0, v_q1, v_q0 + 1, v_q0 + 1, v_q1, v_q1 + 1))
+                prev_l_pair = v_q1
+            else:
+                prev_l_pair = None
 
-        if float(np.max(yr_arr - zr_t60)) > 0.45:
-            sk_r = len(v_pos)
-            for q in range(m):
-                yb = min(float(yr_arr[q]) - 0.6, float(zr_t60[q]) - SKIRT_DROP_M)
-                ln_len = math.hypot(float(mnx[q]), float(mny[q])) or 1.0
-                sxn, szn = -float(mnx[q]) / ln_len, float(mny[q]) / ln_len
-                add_vert(float(right_xy[q, 0]), float(right_xy[q, 1]), float(yr_arr[q]), sxn, 0.25, szn, 0, 2.0, 1.0, 0.0, 0, 0.0)
-                add_vert(float(right_xy[q, 0]), float(right_xy[q, 1]), yb, sxn, 0.25, szn, 0, 2.0, 1.0, 0.0, 0, 0.0)
-            for q in range(m - 1):
-                v0 = sk_r + 2 * q
-                tlist.extend((v0, v0 + 1, v0 + 2, v0 + 1, v0 + 3, v0 + 2))
+            if max(float(yr_arr[q] - zr_t60[q]), float(yr_arr[q + 1] - zr_t60[q + 1])) > SKIRT_THRESH_M:
+                if prev_r_pair is None:
+                    yb0 = min(float(yr_arr[q]) - 0.6, float(zr_t60[q]) - SKIRT_DROP_M)
+                    v_q0 = add_skirt_vert(float(right_xy[q, 0]), float(right_xy[q, 1]), float(yr_arr[q]))
+                    add_skirt_vert(float(right_xy[q, 0]), float(right_xy[q, 1]), yb0)
+                else:
+                    v_q0 = prev_r_pair
+                yb1 = min(float(yr_arr[q + 1]) - 0.6, float(zr_t60[q + 1]) - SKIRT_DROP_M)
+                v_q1 = add_skirt_vert(float(right_xy[q + 1, 0]), float(right_xy[q + 1, 1]), float(yr_arr[q + 1]))
+                add_skirt_vert(float(right_xy[q + 1, 0]), float(right_xy[q + 1, 1]), yb1)
+                sk_tlist.extend((v_q0, v_q0 + 1, v_q1, v_q0 + 1, v_q1 + 1, v_q1))
+                prev_r_pair = v_q1
+            else:
+                prev_r_pair = None
 
         g_edge_meta.append((na, nb, poly_start, len(g_poly_pts) - poly_start))
         g_edge_props.append((float(e["width"]), t_len, max_grade, float(e["street"])))
@@ -1204,32 +1302,43 @@ def build_road_mesh(
                 tlist.extend((c_v, ring_verts[r], ring_verts[(r + 1) % nr]))
             n_junctions += 1
 
-    # 3. Pack spatially-tiled index buffer & tile bounding spheres
+    # 3. Pack spatially-tiled index buffers & tile bounding spheres
     pos_arr = np.asarray(v_pos, dtype=np.float32) if v_pos else np.zeros((0, 3), dtype=np.float32)
-    nrm_arr = np.asarray(v_nrm, dtype=np.float32) if v_nrm else np.zeros((0, 3), dtype=np.float32)
-    info_arr = np.asarray(v_info, dtype=np.float32) if v_info else np.zeros((0, 4), dtype=np.float32)
-    b_arr = np.asarray(v_b, dtype=np.float32) if v_b else np.zeros((0,), dtype=np.float32)
-    rt_arr = np.asarray(v_rt, dtype=np.float32) if v_rt else np.zeros((0, 3), dtype=np.float32)
+    nrm_arr = np.asarray(v_nrm, dtype=np.int8) if v_nrm else np.zeros((0, 4), dtype=np.int8)
+    samples_arr = np.asarray(v_samples, dtype=np.float32) if v_samples else np.zeros((0, 2), dtype=np.float32)
+    attr_arr = np.asarray(v_attr, dtype=np.int16) if v_attr else np.zeros((0, 2), dtype=np.int16)
+    sk_pos_arr = np.asarray(sk_pos, dtype=np.float32) if sk_pos else np.zeros((0, 3), dtype=np.float32)
 
     street_idx_parts: list[np.ndarray] = []
+    skirt_idx_parts: list[np.ndarray] = []
     tile_bounds: list[tuple[float, float, float, float]] = []
     tile_ranges: list[tuple[int, int, int, int]] = []
+    skirt_tile_ranges: list[tuple[int, int]] = []
     cur_off = 0
-    for tk in sorted(tile_street_idx):
-        idxs = np.asarray(tile_street_idx[tk], dtype=np.uint32)
-        if len(idxs) == 0:
+    cur_sk_off = 0
+    all_tiles = sorted(set(tile_street_idx) | set(tile_skirt_idx))
+    for tk in all_tiles:
+        idxs = np.asarray(tile_street_idx.get(tk, ()), dtype=np.uint32)
+        sk_idxs = np.asarray(tile_skirt_idx.get(tk, ()), dtype=np.uint32)
+        if len(idxs) == 0 and len(sk_idxs) == 0:
             continue
-        pts = pos_arr[idxs]
+        pts = pos_arr[idxs] if len(idxs) > 0 else sk_pos_arr[sk_idxs]
         pmin = pts.min(axis=0)
         pmax = pts.max(axis=0)
         ctr = 0.5 * (pmin + pmax)
         rad = float(np.max(np.linalg.norm(pts - ctr, axis=1))) + 15.0
         tile_bounds.append((float(ctr[0]), float(ctr[1]), float(ctr[2]), rad))
         tile_ranges.append((cur_off, int(len(idxs)), 0, 0))
-        street_idx_parts.append(idxs)
-        cur_off += int(len(idxs))
+        skirt_tile_ranges.append((cur_sk_off, int(len(sk_idxs))))
+        if len(idxs) > 0:
+            street_idx_parts.append(idxs)
+            cur_off += int(len(idxs))
+        if len(sk_idxs) > 0:
+            skirt_idx_parts.append(sk_idxs)
+            cur_sk_off += int(len(sk_idxs))
 
     street_idx = np.concatenate(street_idx_parts) if street_idx_parts else np.zeros((0,), dtype=np.uint32)
+    skirt_idx = np.concatenate(skirt_idx_parts) if skirt_idx_parts else np.zeros((0,), dtype=np.uint32)
     route_idx = np.zeros((0,), dtype=np.uint32)
 
     # 4. Pack compact game road graph
@@ -1259,13 +1368,15 @@ def build_road_mesh(
     mesh = {
         "pos": pos_arr,
         "nrm": nrm_arr,
-        "aInfo": info_arr,
-        "aB": b_arr,
-        "aRt": rt_arr,
+        "aSamples": samples_arr,
+        "aAttr": attr_arr,
         "tileBounds": np.asarray(tile_bounds, dtype=np.float32) if tile_bounds else np.zeros((0, 4), dtype=np.float32),
         "tileRanges": np.asarray(tile_ranges, dtype=np.uint32) if tile_ranges else np.zeros((0, 4), dtype=np.uint32),
         "streetIdx": street_idx,
         "routeIdx": route_idx,
+        "skirtPos": sk_pos_arr,
+        "skirtTileRanges": np.asarray(skirt_tile_ranges, dtype=np.uint32) if skirt_tile_ranges else np.zeros((0, 2), dtype=np.uint32),
+        "skirtIdx": skirt_idx,
         "S1": binder.S1 if binder is not None else 0,
         "nJunctions": n_junctions,
     }
@@ -1281,35 +1392,39 @@ def build_road_mesh(
     return mesh, graph
 
 
-def pack_road1(mesh: dict, graph: dict) -> bytes:
-    """Serialize mesh and game road-graph dicts into a pre-baked ROAD1 binary buffer."""
+def pack_road2(mesh: dict, graph: dict) -> bytes:
+    """Serialize mesh and game road-graph dicts into a pre-baked ROAD2 binary buffer."""
     n_verts = len(mesh["pos"])
     n_sidx = len(mesh["streetIdx"])
     n_ridx = len(mesh["routeIdx"])
     n_tiles = len(mesh["tileBounds"])
+    n_sk_verts = len(mesh["skirtPos"])
+    n_sk_idx = len(mesh["skirtIdx"])
     n_nodes = len(graph["nodePos"])
     n_edges = len(graph["edgeMeta"])
     s1 = int(mesh.get("S1", 0))
+    n_adj = len(graph["nodeAdj"])
+    n_poly = len(graph["polyPts"])
 
     header = struct.pack(
         HEADER_FMT,
-        MAGIC, VERSION, n_verts, n_sidx, n_ridx, n_tiles, n_nodes, n_edges, s1,
+        MAGIC, VERSION, n_verts, n_sidx, n_ridx, n_tiles,
+        n_sk_verts, n_sk_idx, n_nodes, n_edges, s1, n_adj, n_poly,
     )
-    # Graph sub-header: nAdj, nPoly
-    g_sub = struct.pack("<2I", len(graph["nodeAdj"]), len(graph["polyPts"]))
 
     parts = [
         header,
-        g_sub,
         _pad4(mesh["pos"].astype("<f4", copy=False).tobytes()),
-        _pad4(mesh["nrm"].astype("<f4", copy=False).tobytes()),
-        _pad4(mesh["aInfo"].astype("<f4", copy=False).tobytes()),
-        _pad4(mesh["aB"].astype("<f4", copy=False).tobytes()),
-        _pad4(mesh["aRt"].astype("<f4", copy=False).tobytes()),
+        _pad4(mesh["nrm"].astype("<i1", copy=False).tobytes()),
+        _pad4(mesh["aSamples"].astype("<f4", copy=False).tobytes()),
+        _pad4(mesh["aAttr"].astype("<i2", copy=False).tobytes()),
         _pad4(mesh["tileBounds"].astype("<f4", copy=False).tobytes()),
         _pad4(mesh["tileRanges"].astype("<u4", copy=False).tobytes()),
         _pad4(mesh["streetIdx"].astype("<u4", copy=False).tobytes()),
         _pad4(mesh["routeIdx"].astype("<u4", copy=False).tobytes()),
+        _pad4(mesh["skirtPos"].astype("<f4", copy=False).tobytes()),
+        _pad4(mesh["skirtTileRanges"].astype("<u4", copy=False).tobytes()),
+        _pad4(mesh["skirtIdx"].astype("<u4", copy=False).tobytes()),
         _pad4(graph["nodePos"].astype("<f4", copy=False).tobytes()),
         _pad4(graph["nodeEdgeSpan"].astype("<u4", copy=False).tobytes()),
         _pad4(graph["nodeAdj"].astype("<u4", copy=False).tobytes()),
@@ -1321,14 +1436,15 @@ def pack_road1(mesh: dict, graph: dict) -> bytes:
     return b"".join(parts)
 
 
-def unpack_road1(blob: bytes) -> tuple[dict, dict]:
-    """Parse a ROAD1 binary buffer back into (mesh_dict, graph_dict) for verification and tests."""
-    magic, ver, n_verts, n_sidx, n_ridx, n_tiles, n_nodes, n_edges, s1 = struct.unpack_from(HEADER_FMT, blob, 0)
+def unpack_road2(blob: bytes) -> tuple[dict, dict]:
+    """Parse a ROAD2 binary buffer back into (mesh_dict, graph_dict) for verification and tests."""
+    (
+        magic, ver, n_verts, n_sidx, n_ridx, n_tiles,
+        n_sk_verts, n_sk_idx, n_nodes, n_edges, s1, n_adj, n_poly,
+    ) = struct.unpack_from(HEADER_FMT, blob, 0)
     if magic != MAGIC or ver != VERSION:
-        raise ValueError(f"Invalid ROAD1 header: magic=0x{magic:08x}, version={ver}")
+        raise ValueError(f"Invalid ROAD2 header: magic=0x{magic:08x}, version={ver}")
     off = HEADER_BYTES
-    n_adj, n_poly = struct.unpack_from("<2I", blob, off)
-    off += 8
 
     def take(dt: str, shape: tuple[int, ...]) -> np.ndarray:
         nonlocal off
@@ -1341,14 +1457,16 @@ def unpack_road1(blob: bytes) -> tuple[dict, dict]:
     mesh = {
         "S1": s1,
         "pos": take("<f4", (n_verts, 3)),
-        "nrm": take("<f4", (n_verts, 3)),
-        "aInfo": take("<f4", (n_verts, 4)),
-        "aB": take("<f4", (n_verts,)),
-        "aRt": take("<f4", (n_verts, 3)),
+        "nrm": take("<i1", (n_verts, 4)),
+        "aSamples": take("<f4", (n_verts, 2)),
+        "aAttr": take("<i2", (n_verts, 2)),
         "tileBounds": take("<f4", (n_tiles, 4)),
         "tileRanges": take("<u4", (n_tiles, 4)),
         "streetIdx": take("<u4", (n_sidx,)),
         "routeIdx": take("<u4", (n_ridx,)),
+        "skirtPos": take("<f4", (n_sk_verts, 3)),
+        "skirtTileRanges": take("<u4", (n_tiles, 2)),
+        "skirtIdx": take("<u4", (n_sk_idx,)),
     }
     graph = {
         "nodePos": take("<f4", (n_nodes, 3)),
@@ -1425,7 +1543,7 @@ def build_city_roadnet(
     binder = SampleBinder.from_ribbons(ribbons_a, ribbons_city) if ribbons_a.exists() else None
 
     mesh, graph = build_road_mesh(nodes, edges, dem_fn, t20_fn, binder)
-    blob = pack_road1(mesh, graph)
+    blob = pack_road2(mesh, graph)
     (out / "roadnet_city.bin").write_bytes(blob)
 
     meta = {
@@ -1433,6 +1551,10 @@ def build_city_roadnet(
         "source": source,
         "nVerts": int(len(mesh["pos"])),
         "nStreetIdx": int(len(mesh["streetIdx"])),
+        "nTopTris": int(len(mesh["streetIdx"]) // 3),
+        "nSkirtVerts": int(len(mesh["skirtPos"])),
+        "nSkirtIdx": int(len(mesh["skirtIdx"])),
+        "nSkirtTris": int(len(mesh["skirtIdx"]) // 3),
         "nRouteIdx": int(len(mesh["routeIdx"])),
         "nTiles": int(len(mesh["tileBounds"])),
         "nNodes": int(len(graph["nodePos"])),

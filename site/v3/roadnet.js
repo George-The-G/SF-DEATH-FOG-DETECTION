@@ -1,35 +1,38 @@
-/* Pre-baked city-wide continuous SF road ribbon & intersection renderer (ROAD1).
-   Zero runtime geometry rebuild: uploads pre-baked vertex/index streams directly to WebGL
+/* Pre-baked city-wide continuous SF road ribbon & intersection renderer (ROAD2).
+   Zero runtime geometry rebuild: uploads pre-baked compact vertex/index streams directly to WebGL
    and exposes a connected topological road graph (worldRoad) for games (skate.js, etc.).
    Retains exact smooth microclimate color blending (wetness, sun, road temperature). */
 
-const MAGIC = 0x31444152; // 'ROAD1'
-const VERSION = 1;
+const MAGIC = 0x32444152; // 'ROAD2'
+const VERSION = 2;
 const TEXW = 4096;
 const SENTINEL = 255;
 const FULL_D = 6000;
+const SKIRT_MAX_D = 2500;
 const CELL = 32;
 
-// @sec: ROAD1 binary parser (zero-copy TypedArray views)
-/// Parse a pre-baked ROAD1 ArrayBuffer into zero-copy TypedArray mesh and graph views.
-export function parseRoad1(buffer) {
+// @sec: ROAD2 binary parser (zero-copy TypedArray views)
+/// Parse a pre-baked ROAD2 ArrayBuffer into zero-copy TypedArray mesh and graph views.
+export function parseRoad2(buffer) {
   const dv = new DataView(buffer);
   const magic = dv.getUint32(0, true);
   const version = dv.getUint32(4, true);
   if (magic !== MAGIC || version !== VERSION) {
-    throw new Error(`bad ROAD1 header: magic=0x${magic.toString(16)}, ver=${version}`);
+    throw new Error(`bad ROAD2 header: magic=0x${magic.toString(16)}, ver=${version}`);
   }
   const nVerts = dv.getUint32(8, true);
   const nStreetIdx = dv.getUint32(12, true);
   const nRouteIdx = dv.getUint32(16, true);
   const nTiles = dv.getUint32(20, true);
-  const nNodes = dv.getUint32(24, true);
-  const nEdges = dv.getUint32(28, true);
-  const S1 = dv.getUint32(32, true);
-  const nAdj = dv.getUint32(36, true);
-  const nPoly = dv.getUint32(40, true);
+  const nSkirtVerts = dv.getUint32(24, true);
+  const nSkirtIdx = dv.getUint32(28, true);
+  const nNodes = dv.getUint32(32, true);
+  const nEdges = dv.getUint32(36, true);
+  const S1 = dv.getUint32(40, true);
+  const nAdj = dv.getUint32(44, true);
+  const nPoly = dv.getUint32(48, true);
 
-  let off = 44;
+  let off = 52;
   const take = (T, count) => {
     const arr = new T(buffer, off, count);
     const nb = count * T.BYTES_PER_ELEMENT;
@@ -43,15 +46,19 @@ export function parseRoad1(buffer) {
     nStreetIdx,
     nRouteIdx,
     nTiles,
+    nSkirtVerts,
+    nSkirtIdx,
     pos: take(Float32Array, nVerts * 3),
-    nrm: take(Float32Array, nVerts * 3),
-    aInfo: take(Float32Array, nVerts * 4),
-    aB: take(Float32Array, nVerts),
-    aRt: take(Float32Array, nVerts * 3),
+    nrm: take(Int8Array, nVerts * 4),
+    aSamples: take(Float32Array, nVerts * 2),
+    aAttr: take(Int16Array, nVerts * 2),
     tileBounds: take(Float32Array, nTiles * 4),
     tileRanges: take(Uint32Array, nTiles * 4),
     streetIdx: take(Uint32Array, nStreetIdx),
     routeIdx: take(Uint32Array, nRouteIdx),
+    skirtPos: take(Float32Array, nSkirtVerts * 3),
+    skirtTileRanges: take(Uint32Array, nTiles * 2),
+    skirtIdx: take(Uint32Array, nSkirtIdx),
   };
 
   const graph = {
@@ -68,7 +75,7 @@ export function parseRoad1(buffer) {
     polySample: take(Uint32Array, nPoly),
   };
 
-  return { header: { version, nVerts, nStreetIdx, nRouteIdx, nTiles, nNodes, nEdges, S1 }, mesh, graph };
+  return { header: { version, nVerts, nStreetIdx, nRouteIdx, nTiles, nSkirtVerts, nSkirtIdx, nNodes, nEdges, S1 }, mesh, graph };
 }
 
 // @sec: connected road graph & game surface query API
@@ -246,32 +253,30 @@ export function createRoadGraph(graph, streets = [], EX = 1.5) {
 
 // @sec: shaders (smooth wetness/sun/temp blending + subtle SF hill shading)
 const VERT_T = `
-  attribute vec4 aInfo;     // ida, across (-1..1), cls (0 route, 1 street), t
-  attribute float aB;       // idb
-  attribute vec3 aRt;       // arc, mask, routeIdx
+  attribute vec2 aSamples;  // ida, idb
+  attribute vec2 aAttr;     // across (-1..1), t (0..1)
   uniform sampler2D uWet;
   uniform float uRows, uFa, uFb, uU, uEx, uDepthK, uMaxS;
-  varying float vWet, vMiss, vAcross, vCls, vSlopeShade;
+  varying float vWet, vMiss, vAcross, vSlopeShade;
   float wetAt(int s, float fr){
     if (s < 0 || float(s) >= uMaxS) return 255.;
     return WETEXPR;
   }
   void main(){
-    int sa = int(aInfo.x + .5), sb = int(aB + .5);
+    int sa = int(aSamples.x + .5), sb = int(aSamples.y + .5);
     float a0 = wetAt(sa, uFa), a1 = wetAt(sa, uFb);
     bool am = a0 > 254.5 && a1 > 254.5;
     float wv = a0 > 254.5 ? a1 : (a1 > 254.5 ? a0 : mix(a0, a1, uU));
     bool miss = am;
-    if (aInfo.w > .001) {
+    if (aAttr.y > .001) {
       float b0 = wetAt(sb, uFa), b1 = wetAt(sb, uFb);
       bool bm = b0 > 254.5 && b1 > 254.5;
       float bv = b0 > 254.5 ? b1 : (b1 > 254.5 ? b0 : mix(b0, b1, uU));
-      if (am) { wv = bv; miss = bm; } else if (!bm) wv = mix(wv, bv, aInfo.w);
+      if (am) { wv = bv; miss = bm; } else if (!bm) wv = mix(wv, bv, aAttr.y);
     }
     vMiss = miss ? 1. : 0.;
     vWet = wv;
-    vAcross = aInfo.y;
-    vCls = aInfo.z;
+    vAcross = aAttr.x;
     // Subtle directional hill shading so steep Potrero Hill lips read cleanly in 3D
     vSlopeShade = 0.93 + 0.07 * clamp(dot(normalize(normal), normalize(vec3(0.35, 0.85, 0.40))), 0., 1.);
     vec3 p = vec3(position.x, position.y * uEx, position.z);
@@ -284,20 +289,32 @@ const VERT = VERT_T.replace('WETEXPR', fetchTex('uWet'));
 
 const frag = (glslRamp) => `
   precision highp float;
-  varying float vWet, vMiss, vAcross, vCls, vSlopeShade;
+  varying float vWet, vMiss, vAcross, vSlopeShade;
   uniform float uDistFade, uDistVis;
   ${glslRamp}
   void main(){
-    if (vAcross > 1.5) {
-      gl_FragColor = vec4(vec3(.11, .14, .20) * vSlopeShade, 1.);
-      return;
-    }
     vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : ramp(vWet);
     c *= 0.95 * vSlopeShade;
     float ea = abs(vAcross);
     float a = 0.88 * uDistFade * uDistVis * (1. - .28 * smoothstep(.82, 1., ea));
     if (a < .02) discard;
     gl_FragColor = vec4(c, a);
+  }`;
+
+const SKIRT_VERT = `
+  uniform float uEx, uDepthK;
+  void main(){
+    vec3 p = vec3(position.x, position.y * uEx, position.z);
+    gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(p, 1.);
+    gl_Position.z -= uDepthK * (1. + 0.003 * gl_Position.w) / gl_Position.w;
+  }`;
+
+const SKIRT_FRAG = `
+  precision highp float;
+  uniform float uDistVis;
+  void main(){
+    if (uDistVis < .02) discard;
+    gl_FragColor = vec4(.11, .14, .20, 1.);
   }`;
 
 const SUN_GLSL = `
@@ -315,8 +332,8 @@ const altFrag = (f) => f
   .replace('void main(){', SUN_GLSL + 'void main(){')
   .replace('vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : ramp(vWet);', 'vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : (uMode > 1.5 ? tempramp(vWet) : uMode > .5 ? sunramp(vWet) : ramp(vWet));');
 
-// @sec: WebGL controller (direct-upload pre-baked ROAD1 mesh)
-/// Create a pre-baked ROAD1 city-wide road renderer with drop-in ribbons API compatibility.
+// @sec: WebGL controller (direct-upload pre-baked ROAD2 mesh)
+/// Create a pre-baked ROAD2 city-wide road renderer with drop-in ribbons API compatibility.
 export function createRoadnet({ THREE, scene, EX = 1.5, glslRamp, alt = false }) {
   const uniforms = {
     uWet: { value: null }, uRows: { value: 1 }, uFa: { value: 0 }, uFb: { value: 0 }, uU: { value: 0 },
@@ -339,29 +356,43 @@ export function createRoadnet({ THREE, scene, EX = 1.5, glslRamp, alt = false })
     polygonOffsetUnits: -2,
   });
 
+  const matSkirt = new THREE.ShaderMaterial({
+    uniforms: { uEx: uniforms.uEx, uDepthK: uniforms.uDepthK, uDistVis: uniforms.uDistVis },
+    vertexShader: SKIRT_VERT,
+    fragmentShader: SKIRT_FRAG,
+    transparent: false,
+    depthWrite: true,
+    depthTest: true,
+    depthFunc: THREE.LessDepth,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+
   const blank = new THREE.DataTexture(new Uint8Array([SENTINEL]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType);
   blank.needsUpdate = true;
   uniforms.uWet.value = blank;
   if (alt) { uniforms.uSun.value = blank; uniforms.uTs.value = blank; }
 
-  let group = null, fullG = null, tileG = null, geoms = [], lodFull = true;
+  let group = null, fullG = null, tileG = null, skirtG = null, geoms = [], lodFull = true;
   let tex = null, texAlt = null, texTs = null;
   let S = 0, nF = 0, u8 = null, c0 = 0, stw = 0;
 
   const api = { mesh: null, worldRoad: null, stats: null, uniforms, material: matStreet };
 
-  /// Upload pre-baked ROAD1 buffers directly to WebGL and build the game road graph.
+  /// Upload pre-baked ROAD2 buffers directly to WebGL and build the game road graph.
   api.build = (buffer, meta = null) => {
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const { mesh, graph } = parseRoad1(buffer);
+    const { mesh, graph } = parseRoad2(buffer);
 
     const shared = {
       position: new THREE.BufferAttribute(mesh.pos, 3),
-      normal: new THREE.BufferAttribute(mesh.nrm, 3),
-      aInfo: new THREE.BufferAttribute(mesh.aInfo, 4),
-      aB: new THREE.BufferAttribute(mesh.aB, 1),
-      aRt: new THREE.BufferAttribute(mesh.aRt, 3),
+      normal: new THREE.BufferAttribute(mesh.nrm, 4, true),
+      aSamples: new THREE.BufferAttribute(mesh.aSamples, 2),
+      aAttr: new THREE.BufferAttribute(mesh.aAttr, 2, true),
     };
+    const skirtPosAttr = mesh.nSkirtVerts > 0 ? new THREE.BufferAttribute(mesh.skirtPos, 3) : null;
 
     const mkGeom = (idxSlice, bs) => {
       const g = new THREE.BufferGeometry();
@@ -376,7 +407,8 @@ export function createRoadnet({ THREE, scene, EX = 1.5, glslRamp, alt = false })
     group.matrixAutoUpdate = false;
     fullG = new THREE.Group();
     tileG = new THREE.Group();
-    group.add(fullG, tileG);
+    skirtG = new THREE.Group();
+    group.add(fullG, tileG, skirtG);
 
     if (mesh.streetIdx.length > 0) {
       const gFull = mkGeom(mesh.streetIdx, null);
@@ -387,18 +419,34 @@ export function createRoadnet({ THREE, scene, EX = 1.5, glslRamp, alt = false })
     }
 
     for (let t = 0; t < mesh.nTiles; t++) {
-      const sOff = mesh.tileRanges[t * 4], sCnt = mesh.tileRanges[t * 4 + 1];
-      if (!sCnt) continue;
       const cx = mesh.tileBounds[t * 4], cy = mesh.tileBounds[t * 4 + 1] * EX, cz = mesh.tileBounds[t * 4 + 2];
       const rad = mesh.tileBounds[t * 4 + 3] * Math.max(1, EX);
-      const gTile = mkGeom(mesh.streetIdx.subarray(sOff, sOff + sCnt), new THREE.Sphere(new THREE.Vector3(cx, cy, cz), rad));
-      const mTile = new THREE.Mesh(gTile, matStreet);
-      mTile.renderOrder = 0; mTile.matrixAutoUpdate = false; mTile.frustumCulled = true;
-      tileG.add(mTile);
-      geoms.push(gTile);
+      const bs = new THREE.Sphere(new THREE.Vector3(cx, cy, cz), rad);
+
+      const sOff = mesh.tileRanges[t * 4], sCnt = mesh.tileRanges[t * 4 + 1];
+      if (sCnt > 0) {
+        const gTile = mkGeom(mesh.streetIdx.subarray(sOff, sOff + sCnt), bs);
+        const mTile = new THREE.Mesh(gTile, matStreet);
+        mTile.renderOrder = 0; mTile.matrixAutoUpdate = false; mTile.frustumCulled = true;
+        tileG.add(mTile);
+        geoms.push(gTile);
+      }
+
+      const skOff = mesh.skirtTileRanges[t * 2], skCnt = mesh.skirtTileRanges[t * 2 + 1];
+      if (skCnt > 0 && skirtPosAttr) {
+        const gSkirt = new THREE.BufferGeometry();
+        gSkirt.setAttribute('position', skirtPosAttr);
+        gSkirt.setIndex(new THREE.BufferAttribute(mesh.skirtIdx.subarray(skOff, skOff + skCnt), 1));
+        gSkirt.boundingSphere = bs;
+        const mSkirt = new THREE.Mesh(gSkirt, matSkirt);
+        mSkirt.renderOrder = 0; mSkirt.matrixAutoUpdate = false; mSkirt.frustumCulled = true;
+        skirtG.add(mSkirt);
+        geoms.push(gSkirt);
+      }
     }
 
     tileG.visible = false;
+    skirtG.visible = false;
     scene.add(group);
     api.mesh = group;
     api.worldRoad = createRoadGraph(graph, (meta && meta.streets) || [], EX);
@@ -406,6 +454,8 @@ export function createRoadnet({ THREE, scene, EX = 1.5, glslRamp, alt = false })
     api.stats = {
       vertices: mesh.nVerts,
       triangles: mesh.nStreetIdx / 3,
+      skirtVertices: mesh.nSkirtVerts,
+      skirtTriangles: mesh.nSkirtIdx / 3,
       tiles: mesh.nTiles,
       nodes: graph.nNodes,
       edges: graph.nEdges,
@@ -463,6 +513,7 @@ export function createRoadnet({ THREE, scene, EX = 1.5, glslRamp, alt = false })
     if (group) {
       const f = d > FULL_D;
       if (f !== lodFull) { lodFull = f; fullG.visible = f; tileG.visible = !f; }
+      if (skirtG) skirtG.visible = d <= SKIRT_MAX_D;
     }
     const t = clamp((24000 - d) / 6000, 0, 1);
     uniforms.uDistFade.value = t * t * (3 - 2 * t);
@@ -472,8 +523,8 @@ export function createRoadnet({ THREE, scene, EX = 1.5, glslRamp, alt = false })
     if (group) scene.remove(group);
     geoms.forEach((g) => g.dispose()); geoms = [];
     if (tex) tex.dispose(); if (texAlt) texAlt.dispose(); if (texTs) texTs.dispose();
-    blank.dispose(); matStreet.dispose();
-    group = fullG = tileG = tex = texAlt = texTs = null;
+    blank.dispose(); matStreet.dispose(); matSkirt.dispose();
+    group = fullG = tileG = skirtG = tex = texAlt = texTs = null;
   };
 
   return api;

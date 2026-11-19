@@ -90,8 +90,8 @@ def test_osm_degree2_chaining_and_bridge_layer_separation(tmp_path: Path):
     assert layers == [0, 1]
 
 
-def test_watertight_4way_intersection_and_road1_roundtrip():
-    """4-way intersection produces watertight shared vertices, upward normals, and bit-exact ROAD1 round-trip."""
+def test_watertight_4way_intersection_and_road2_roundtrip():
+    """4-way intersection produces watertight shared vertices, upward normals, and bit-exact ROAD2 round-trip."""
     x0, y0 = roadnet.X0, roadnet.Y0
     # 4-way cross centered at (x0+100, y0+100) with 80 m arms
     cx, cy = x0 + 100.0, y0 + 100.0
@@ -118,33 +118,39 @@ def test_watertight_4way_intersection_and_road1_roundtrip():
     ], dtype=np.float64)
     binder = roadnet.SampleBinder(sample_xy, S1=5)
 
-    # Simulate 60 m terrain cutting 1 m below the steep hill crest so curb skirts are emitted
+    # Simulate 60 m terrain cutting 1 m below only on the east arm (x > cx + 25) so per-segment skirts trigger selectively
     def t60_fn(xs, ys):
-        return dem_fn(xs, ys) - 1.0
+        return dem_fn(xs, ys) - np.where(xs > cx + 25.0, 1.0, 0.0)
 
     mesh, graph = roadnet.build_road_mesh(nodes, edges, dem_fn, t60_fn, binder)
     assert mesh["nJunctions"] == 1
     assert len(mesh["pos"]) > 16
     assert len(mesh["streetIdx"]) > 0 and len(mesh["streetIdx"]) % 3 == 0
-    top_mask = mesh["aInfo"][:, 1] <= 1.5
-    skirt_mask = mesh["aInfo"][:, 1] > 1.5
-    assert np.any(skirt_mask), "grounded curb skirts (across=2.0) must be emitted"
-    assert np.all(mesh["nrm"][top_mask, 1] > 0.5), "all road surface normals must point upward"
-    assert np.all((mesh["aInfo"][:, 3] >= 0.0) & (mesh["aInfo"][:, 3] <= 1.0))
+    assert len(mesh["skirtPos"]) > 0 and len(mesh["skirtIdx"]) > 0 and len(mesh["skirtIdx"]) % 3 == 0
+    # Per-segment gating: east arm has ~55 m of >0.65 m drop-off, other 3 arms have 0 -> far fewer skirt verts than top verts
+    assert len(mesh["skirtPos"]) < len(mesh["pos"]) * 2
+    assert mesh["nrm"].dtype == np.int8 and mesh["nrm"].shape == (len(mesh["pos"]), 4)
+    assert np.all(mesh["nrm"][:, 1] > 64), "all top road surface normals must point upward (int8 > 0.5*127)"
+    assert mesh["aSamples"].dtype == np.float32 and mesh["aSamples"].shape == (len(mesh["pos"]), 2)
+    assert mesh["aAttr"].dtype == np.int16 and mesh["aAttr"].shape == (len(mesh["pos"]), 2)
+    assert np.all((mesh["aAttr"][:, 1] >= 0) & (mesh["aAttr"][:, 1] <= 32767))
 
     # Game graph connectivity: center node 0 has 4 incident edges sorted CCW
     assert int(graph["nodeEdgeSpan"][0, 1]) == 4
     assert len(graph["edgeMeta"]) == 4
 
-    # ROAD1 pack/unpack round-trip
-    blob = roadnet.pack_road1(mesh, graph)
-    mesh2, graph2 = roadnet.unpack_road1(blob)
+    # ROAD2 pack/unpack round-trip
+    blob = roadnet.pack_road2(mesh, graph)
+    mesh2, graph2 = roadnet.unpack_road2(blob)
     assert mesh2["S1"] == 5
     np.testing.assert_array_equal(mesh["pos"], mesh2["pos"])
     np.testing.assert_array_equal(mesh["nrm"], mesh2["nrm"])
-    np.testing.assert_array_equal(mesh["aInfo"], mesh2["aInfo"])
-    np.testing.assert_array_equal(mesh["aB"], mesh2["aB"])
+    np.testing.assert_array_equal(mesh["aSamples"], mesh2["aSamples"])
+    np.testing.assert_array_equal(mesh["aAttr"], mesh2["aAttr"])
     np.testing.assert_array_equal(mesh["streetIdx"], mesh2["streetIdx"])
+    np.testing.assert_array_equal(mesh["skirtPos"], mesh2["skirtPos"])
+    np.testing.assert_array_equal(mesh["skirtTileRanges"], mesh2["skirtTileRanges"])
+    np.testing.assert_array_equal(mesh["skirtIdx"], mesh2["skirtIdx"])
     np.testing.assert_array_equal(graph["nodePos"], graph2["nodePos"])
     np.testing.assert_array_equal(graph["edgeMeta"], graph2["edgeMeta"])
     np.testing.assert_array_equal(graph["polyPts"], graph2["polyPts"])
@@ -173,10 +179,30 @@ def test_midspan_terrain_clearance_and_sharp_corner_rounding():
 
     mesh, graph = roadnet.build_road_mesh(nodes, edges, dem_flat, t60_bulge, None)
     # Every top-surface vertex must stay above t60_bulge (no swallowing!)
-    top = mesh["aInfo"][:, 1] <= 1.5
-    wx = mesh["pos"][top, 0] + x0
-    wy = y0 - mesh["pos"][top, 2]
-    wz = mesh["pos"][top, 1]
+    wx = mesh["pos"][:, 0] + x0
+    wy = y0 - mesh["pos"][:, 2]
+    wz = mesh["pos"][:, 1]
     assert np.all(wz >= t60_bulge(wx, wy) + roadnet.TERRAIN_CLEAR_M - 0.05)
     # Adaptive subdivision over the bulge + rounded 90-deg corner must emit > 8 centerline points
     assert len(graph["polyPts"]) > 8
+
+
+def test_nudge_terrain60_for_roads_pulls_surface_vertices_only():
+    """nudge_terrain60_for_roads pulls 60 m land vertices under layer==0 roads toward road_z - 0.15 m."""
+    spec = {"x0": 0.0, "y0": 0.0, "cell_m": 20.0}
+    ter = np.full((10, 10), 14.0, dtype=np.float32)
+    ter[0, :] = 0.0  # water cells must remain untouched
+    edges = [
+        {"xy": np.array([[60.0, 0.0], [60.0, 180.0]]), "width": 8.0, "layer": 0},
+        {"xy": np.array([[120.0, 0.0], [120.0, 180.0]]), "width": 8.0, "layer": 1},  # bridge: ignored
+    ]
+    def dem_fn(xs, ys):
+        return np.full_like(xs, 10.0, dtype=np.float64)
+
+    nudged = roadnet.nudge_terrain60_for_roads(ter, spec, edges, dem_fn, step=3)
+    assert nudged.shape == ter.shape
+    assert np.all(nudged[0, :] == 0.0), "water cells must not be nudged"
+    # Vertex at (3, 3) -> x=60, y=60 is directly on the surface road (target 9.85 m)
+    assert nudged[3, 3] < 12.0, f"expected 60 m vertex under surface road to be pulled down, got {nudged[3, 3]}"
+    # Vertex at (6, 3) -> x=120, y=60 is under a bridge (layer=1) -> untouched
+    assert nudged[6, 3] == pytest.approx(14.0)
