@@ -1,4 +1,6 @@
 data/
+_worktrees/
+_archive/
 state/
 site/
 __pycache__/
