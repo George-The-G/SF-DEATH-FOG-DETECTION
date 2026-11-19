@@ -14,6 +14,7 @@ from microclimate.paths import REPO_ROOT, data_dir
 from tools import codemap, task as task_cli
 
 ALLOWED_ROOT_FILES = {
+    ".git",  # git worktrees store .git as a file pointing to the main repo
     ".gitattributes",
     ".gitignore",
     "AGENTS.md",

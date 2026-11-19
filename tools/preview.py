@@ -53,10 +53,11 @@ class WorktreeFallbackHandler(SimpleHTTPRequestHandler):
 
 def _make_handler(directory: Path, *, quiet: bool = False):
     fallback = _main_v3_dir() if directory.resolve() == V3_DIR.resolve() else None
+    is_quiet = quiet
 
     class _BoundHandler(WorktreeFallbackHandler):
         fallback_dir = fallback
-        quiet = quiet
+        quiet = is_quiet
 
     return partial(_BoundHandler, directory=str(directory))
 
