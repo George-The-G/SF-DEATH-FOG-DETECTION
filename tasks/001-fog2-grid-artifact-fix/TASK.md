@@ -6,7 +6,7 @@ issue: null
 epic: null
 pr: null
 pr_url: ""
-status: "ready"
+status: "done"
 branch: "feat/001-fog2-grid-artifact-fix"
 switch: "col_top_clamp"
 depends_on: []
@@ -22,6 +22,8 @@ deliverables:
 # Task 001: Fix 320m voxel ray-march grid artifact in fog2.js (Option F2)
 
 ## Problem & Goal
+> **Already implemented:** Option F2 (`if (!emp && rd.y < -1e-5) tE = min(tE, t + (p.y - colTop) / -rd.y);`) is already live in `site/v3/fog2.js` L255–L260. Closed as `done` (2026-11-18).
+
 Clamp descending ray column-top skipping (tE) in site/v3/fog2.js per docs/fog/grid-artifact-diagnosis.md.
 
 ## Scope
