@@ -8,13 +8,15 @@ Last verified: 2026-11-18
 
 ## 1. Self-Contained Repository Layout (Option 1)
 
-Everything for Death Fog lives inside `C:\Users\George\source\repos\SF-DEATH-FOG-DETECTION\`:
+Everything for Death Fog lives inside `<repo_root>/` (the repository root):
 
 - `microclimate/` — Python package: wind/fog simulation, 3D tracer advection, and the v3 live pipeline (`microclimate/live/`).
 - `deathfog/` — Python package: v2 station collector, wetness scoring, alerts, and status page.
 - `site/v3/` — 3D WebGL viewer (`index.html`, `pipeline.html`, JS modules, replay data, static meshes).
 - `edge/` — Cloudflare Workers (`bus-proxy`, `cron-trigger`).
-- `live_ci/`, `scripts/`, `tools/` — CI runner helpers, state backup scripts, and dev/viewer tools.
+- `live_ci/`, `scripts/`, `tools/` — CI runner helpers, state backup scripts, and dev/viewer/task tools (`tools/codemap.py`, `tools/preview.py`, `tools/task.py`).
+- `tasks/<id>-<slug>/` — Self-contained feature task packets (`TASK.md`, `PLAN.md`, `mockups/`, `evidence/`).
+- `.agents/skills/` — Generic, model-agnostic agent skills (`deathfog-task-workflow`, `deathfog-agent-brief`, `deathfog-ship`).
 - `spikes/<topic>/` — Experiment scripts and markdown reports (`REPORT.md`). Never commit `.npz` data here.
 - `docs/` — All documentation, architecture notes, numbered guides, runbooks, and plans. Start at [`docs/INDEX.md`](docs/INDEX.md) and [`docs/STATUS.md`](docs/STATUS.md).
 - `data/` — **Gitignored** local data root (except tracked [`data/MANIFEST.md`](data/MANIFEST.md)). Holds `library/`, `live/`, `raw/`, `grids/`, `refined/`, `spikes/`, `sky_inputs/`. Resolved via `microclimate/paths.py` (`DEATHFOG_DATA`, default `<repo_root>/data`).
@@ -86,9 +88,11 @@ Run both test suites before committing or merging to `v3-dev`:
 
 ---
 
-## 5. Branch, Worktree & Deploy Discipline (`deathfog-agent-brief` & `deathfog-ship`)
+## 5. Task Lifecycle, Worktree & Deploy Discipline (`.agents/skills/`)
 
-- **Skills:** Follow [`.claude/skills/deathfog-agent-brief/SKILL.md`](.claude/skills/deathfog-agent-brief/SKILL.md) and [`.claude/skills/deathfog-ship/SKILL.md`](.claude/skills/deathfog-ship/SKILL.md).
-- **Active trunk:** `v3-dev`. Create short-lived branches (`feat/<topic>`, `sim/<NN>-<topic>`, `fix/<topic>`) off `v3-dev`, and delete them after merging.
-- **Worktrees:** Do not create worktrees in `AppData\Local\Temp` or as sibling folders in `source\repos\`. If parallel work requires a worktree, place it in `_worktrees/wt_<topic>` and remove it (`git worktree remove`) immediately after merge.
+- **Skills (model-agnostic):** Follow [`.agents/skills/deathfog-task-workflow/SKILL.md`](.agents/skills/deathfog-task-workflow/SKILL.md), [`.agents/skills/deathfog-agent-brief/SKILL.md`](.agents/skills/deathfog-agent-brief/SKILL.md), and [`.agents/skills/deathfog-ship/SKILL.md`](.agents/skills/deathfog-ship/SKILL.md). Do not add vendor-specific skill folders (like `.claude/skills/`).
+- **Active trunk:** `v3-dev`. Scope major features into DAG tasks via `.\.venv\Scripts\python.exe tools/task.py new ...`, inspect conflict-free parallel waves with `tools/task.py dag`, and start each task in its own worktree (`_worktrees/wt_<id>-<slug>`) with `tools/task.py start <id>`.
+- **Self-contained task packets:** Keep each task's `TASK.md`, `PLAN.md`, `mockups/`, and `evidence/` inside `tasks/<id>-<slug>/`. Gate new viewer features behind `featOn('<switch>')` (`?beta=1&feat=<switch>`) so parallel features can deploy to Beta without colliding.
+- **Verification & cleanup:** Run `.\.venv\Scripts\python.exe tools/task.py verify <id>` before resolving any task, then `tools/task.py finish <id> --merge` (add `--deploy-beta` to trigger Beta CI) to merge and remove `_worktrees/wt_<id>-<slug>`.
+- **Worktrees:** Do not create worktrees in `AppData\Local\Temp` or as sibling folders in `source\repos\`. Always place them in `_worktrees/wt_<id>-<slug>` (`microclimate/paths.py` and `tools/preview.py` auto-resolve `data/` and `site/v3/live*` from the parent checkout).
 - **Large files:** No binary over 5 MB or new daily generated output in git. Store simulation data in `data/` (`$DEATHFOG_DATA`) and document it in `data/MANIFEST.md`.

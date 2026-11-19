@@ -21,14 +21,50 @@ ROOT = Path(__file__).resolve().parent.parent
 V3_DIR = ROOT / "site" / "v3"
 
 
-class QuietHandler(SimpleHTTPRequestHandler):
+def _main_v3_dir() -> Path | None:
+    """When running inside `_worktrees/wt_*`, return the parent checkout's `site/v3/` for live-data fallback."""
+    if ROOT.parent.name == "_worktrees":
+        cand = ROOT.parent.parent / "site" / "v3"
+        if cand.exists():
+            return cand
+    return None
+
+
+class WorktreeFallbackHandler(SimpleHTTPRequestHandler):
+    """Static file handler that falls back to the main checkout's `site/v3/` for gitignored live assets."""
+
+    fallback_dir: Path | None = None
+    quiet: bool = False
+
     def log_message(self, fmt, *args):
-        pass
+        if not self.quiet:
+            super().log_message(fmt, *args)
+
+    def translate_path(self, path: str) -> str:
+        primary = Path(super().translate_path(path))
+        if not primary.exists() and self.fallback_dir is not None:
+            rel = path.split("?", 1)[0].split("#", 1)[0].lstrip("/")
+            if rel.startswith(("live/", "live_beta/", "replay/")):
+                alt = self.fallback_dir / rel
+                if alt.exists():
+                    return str(alt)
+        return str(primary)
 
 
-def start_server(port: int = 0) -> tuple[ThreadingHTTPServer, int]:
-    """Start a background HTTP server serving `site/v3/` and return (server, bound_port)."""
-    srv = ThreadingHTTPServer(("127.0.0.1", port), partial(QuietHandler, directory=str(V3_DIR)))
+def _make_handler(directory: Path, *, quiet: bool = False):
+    fallback = _main_v3_dir() if directory.resolve() == V3_DIR.resolve() else None
+
+    class _BoundHandler(WorktreeFallbackHandler):
+        fallback_dir = fallback
+        quiet = quiet
+
+    return partial(_BoundHandler, directory=str(directory))
+
+
+def start_server(port: int = 0, directory: Path | None = None) -> tuple[ThreadingHTTPServer, int]:
+    """Start a background HTTP server serving `site/v3/` (or `directory`) and return (server, bound_port)."""
+    target = directory or V3_DIR
+    srv = ThreadingHTTPServer(("127.0.0.1", port), _make_handler(target, quiet=True))
     bound_port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
@@ -83,16 +119,18 @@ def run_check(query: str, out_dir: Path, phone: bool = False, wait_ms: int = 350
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Serve or headless-verify site/v3/ locally.")
-    parser.add_argument("--serve", action="store_true", help="Run a local static HTTP server on site/v3/ until Ctrl+C.")
+    parser.add_argument("--serve", action="store_true", help="Run a local static HTTP server on site/v3/ (or --root) until Ctrl+C.")
     parser.add_argument("--port", type=int, default=8130, help="Port for --serve (default: 8130).")
+    parser.add_argument("--root", default=str(V3_DIR), help="Directory to serve with --serve (default: site/v3/).")
     parser.add_argument("--check", nargs="?", const="?beta=1&night=2026-10-01", help="Headless Playwright verification for query string.")
     parser.add_argument("--phone", action="store_true", help="Use 390x844 dsf2 mobile viewport for --check.")
     parser.add_argument("--out", default=str(ROOT / "artifacts" / "preview"), help="Output directory for --check screenshots.")
     args = parser.parse_args(argv)
 
     if args.serve:
-        srv = ThreadingHTTPServer(("127.0.0.1", args.port), partial(SimpleHTTPRequestHandler, directory=str(V3_DIR)))
-        print(f"Serving {V3_DIR} at http://127.0.0.1:{args.port}/ (beta: http://127.0.0.1:{args.port}/?beta=1)")
+        serve_dir = Path(args.root).resolve()
+        srv = ThreadingHTTPServer(("127.0.0.1", args.port), _make_handler(serve_dir, quiet=False))
+        print(f"Serving {serve_dir} at http://127.0.0.1:{args.port}/ (beta: http://127.0.0.1:{args.port}/?beta=1)")
         try:
             srv.serve_forever()
         except KeyboardInterrupt:
