@@ -77,12 +77,25 @@ REQUIRED_FIELDS = (
     "gpu_required",
     "deliverables",
 )
-VALID_STATUSES = ("backlog", "brainstorm", "plan", "ready", "in-progress", "review", "beta", "done")
+VALID_STATUSES = ("backlog", "scope", "plan", "approved", "build", "review", "beta", "main", "done")
+STATUS_ALIASES = {
+    "brainstorm": "scope",
+    "ready": "approved",
+    "in-progress": "build",
+    "closed": "done",
+}
 VALID_EXEC_TIERS = ("flash", "hydrogen", "standard", "pro")
-PRE_BUILD_GATES = {"backlog", "brainstorm", "plan"}
-GATE_NEXT = {"backlog": "brainstorm", "brainstorm": "plan", "plan": "ready"}
+PRE_BUILD_GATES = {"backlog", "scope", "plan"}
+GATE_NEXT = {"backlog": "scope", "scope": "plan", "plan": "approved"}
 DONE_STATUSES = {"beta", "done"}
+MERGED_STATUSES = {"beta", "main", "done"}
 _CONV_ID_RE = re.compile(r"^[A-Za-z0-9_-]{4,128}$")
+
+
+def normalize_status(status: str | None) -> str:
+    """Normalize legacy status aliases (`brainstorm->scope`, `ready->approved`, `in-progress->build`, `closed->done`)."""
+    s = str(status or "").strip().lower()
+    return STATUS_ALIASES.get(s, s)
 
 
 # @sec: frontmatter — Zero-dependency YAML frontmatter parser and serializer for TASK.md
@@ -141,6 +154,8 @@ def parse_task_md(path: Path) -> tuple[dict, str]:
             cur_list_key = None
     if "id" in meta and meta["id"] is not None:
         meta["id"] = str(meta["id"]).zfill(3) if str(meta["id"]).isdigit() else str(meta["id"])
+    if "status" in meta and meta["status"] is not None:
+        meta["status"] = normalize_status(meta["status"])
     return meta, body
 
 
@@ -198,9 +213,9 @@ def validate_task_meta(meta: dict, path: Path) -> list[str]:
     for field in REQUIRED_FIELDS:
         if field not in meta:
             errs.append(f"{path}: missing required frontmatter field '{field}'")
-    status = meta.get("status")
+    status = normalize_status(meta.get("status"))
     if status and status not in VALID_STATUSES:
-        errs.append(f"{path}: invalid status '{status}' (expected one of {VALID_STATUSES})")
+        errs.append(f"{path}: invalid status '{meta.get('status')}' (expected one of {VALID_STATUSES})")
     for list_field in ("depends_on", "owned_paths", "deliverables"):
         if list_field in meta and not isinstance(meta[list_field], list):
             errs.append(f"{path}: '{list_field}' must be a list")
@@ -306,8 +321,9 @@ def _norm_id(val) -> str:
 
 def compute_waves(tasks: dict[str, tuple[dict, Path]]) -> list[list[dict]]:
     """Group unfinished tasks into conflict-free parallel execution waves."""
-    done_ids = {tid for tid, (m, _) in tasks.items() if m.get("status") in DONE_STATUSES}
-    remaining = {tid: m for tid, (m, _) in tasks.items() if tid not in done_ids}
+    done_ids = {tid for tid, (m, _) in tasks.items() if normalize_status(m.get("status")) in DONE_STATUSES}
+    merged_ids = {tid for tid, (m, _) in tasks.items() if normalize_status(m.get("status")) in MERGED_STATUSES}
+    remaining = {tid: m for tid, (m, _) in tasks.items() if tid not in merged_ids}
     waves: list[list[dict]] = []
     satisfied = set(done_ids)
 
@@ -318,7 +334,7 @@ def compute_waves(tasks: dict[str, tuple[dict, Path]]) -> list[list[dict]]:
                 for m in remaining.values()
                 if all(_norm_id(dep) in satisfied for dep in m.get("depends_on", []))
             ],
-            key=lambda m: (0 if m.get("status") == "in-progress" else 1, str(m["id"])),
+            key=lambda m: (0 if normalize_status(m.get("status")) == "build" else 1, str(m["id"])),
         )
         if not ready:
             # Break cycles or external deps by reporting remaining as blocked
@@ -482,11 +498,11 @@ def cmd_new(args: argparse.Namespace) -> int:
     switch = args.switch or slug.replace("-", "_")
 
     quick = bool(getattr(args, "quick", False))
-    initial_status = getattr(args, "status", "") or ("plan" if quick else "brainstorm")
-    if initial_status in ("ready", "in-progress", "review", "beta", "done"):
+    initial_status = normalize_status(getattr(args, "status", "")) or ("plan" if quick else "scope")
+    if initial_status in ("approved", "build", "review", "beta", "main", "done"):
         print(
             f"Rejected: initial status '{initial_status}' is not allowed. "
-            "New tasks must start in 'backlog', 'brainstorm', or 'plan' (via --quick) "
+            "New tasks must start in 'backlog', 'scope', or 'plan' (via --quick) "
             "and pass the formal plan approval gate before build."
         )
         return 1
@@ -569,23 +585,24 @@ def cmd_start(args: argparse.Namespace) -> int:
     slug = meta["slug"]
     branch = meta["branch"]
 
-    # Enforce formal human plan approval gate (brainstorm -> plan -> ready, never bypassed by --force)
+    # Enforce formal human plan approval gate (scope -> plan -> approved, never bypassed by --force)
     wt_path = WORKTREES_DIR / f"wt_{tid}-{slug}"
-    already_active = meta.get("status") == "in-progress" and wt_path.exists()
+    cur_status = normalize_status(meta.get("status"))
+    already_active = cur_status == "build" and wt_path.exists()
     readiness = check_plan_readiness(tfile.parent, meta)
     if not already_active:
-        if meta.get("status") in PRE_BUILD_GATES:
-            nxt = next_gate_status(str(meta.get("status", ""))) or "ready"
+        if cur_status in PRE_BUILD_GATES:
+            nxt = next_gate_status(cur_status) or "approved"
             print(
-                f"Blocked: task {tid} is at the '{meta.get('status')}' gate. "
-                f"Advance to '{nxt}' (and 'ready' via `python tools/task.py approve {tid} --approve-plan` "
+                f"Blocked: task {tid} is at the '{cur_status}' gate. "
+                f"Advance to '{nxt}' (and 'approved' via `python tools/task.py approve {tid} --approve-plan` "
                 "or the Task Viewer) before starting a worktree. (--force cannot bypass plan approval.)"
             )
             return 1
         if meta.get("plan_approved") is not True:
             print(
                 f"Blocked: task {tid} does not have formal plan approval (`plan_approved: true`). "
-                f"Run `python tools/task.py approve {tid} --to ready --approve-plan` or approve in Task Viewer. "
+                f"Run `python tools/task.py approve {tid} --to approved --approve-plan` or approve in Task Viewer. "
                 "(--force cannot bypass plan approval.)"
             )
             return 1
@@ -593,7 +610,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             print(
                 f"Blocked: task {tid} PLAN.md drifted since approval "
                 f"(approved {readiness['plan_approved_sha']}, current {readiness['plan_sha']}). "
-                f"Re-approve via `python tools/task.py approve {tid} --to ready --approve-plan` or Task Viewer. "
+                f"Re-approve via `python tools/task.py approve {tid} --to approved --approve-plan` or Task Viewer. "
                 "(--force cannot bypass plan approval.)"
             )
             return 1
@@ -607,7 +624,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     all_tasks = load_all_tasks(MAIN_ROOT)
     unmet = [
         d for d in meta.get("depends_on", [])
-        if (all_tasks.get(str(d).zfill(3) if str(d).isdigit() else str(d), ({}, Path()))[0].get("status") not in DONE_STATUSES)
+        if (normalize_status(all_tasks.get(str(d).zfill(3) if str(d).isdigit() else str(d), ({}, Path()))[0].get("status")) not in DONE_STATUSES)
     ]
     if unmet and not args.force:
         print(f"Blocked: task {tid} depends on unfinished task(s): {unmet}. Use --force to override.")
@@ -640,13 +657,13 @@ def cmd_start(args: argparse.Namespace) -> int:
             return res.returncode
 
     # Update status directly in MAIN_ROOT/tasks/<id>-<slug>/TASK.md (no worktree packet duplication)
-    meta["status"] = "in-progress"
+    meta["status"] = "build"
     _, body = parse_task_md(tfile) if tfile.exists() else (meta, "")
     tfile.write_text(dump_task_md(meta, body), encoding="utf-8")
 
     # Update GitHub issue label if linked and online
     if meta.get("issue"):
-        _run(["gh", "issue", "edit", str(meta["issue"]), "--add-label", "status:in-progress", "--remove-label", "status:ready"], cwd=MAIN_ROOT)
+        _run(["gh", "issue", "edit", str(meta["issue"]), "--add-label", "status:build", "--remove-label", "status:approved"], cwd=MAIN_ROOT)
 
     print(f"Started worktree {wt_path} on branch {branch} (switch: {meta['switch']}).")
     if not getattr(args, "no_brief", False):
@@ -851,7 +868,7 @@ def cmd_pr(args: argparse.Namespace) -> int:
 
     if meta.get("issue") and pr_num:
         _run(["gh", "issue", "comment", str(meta["issue"]), "--body", f"Opened PR #{pr_num}: {pr_url}"], cwd=MAIN_ROOT)
-        _run(["gh", "issue", "edit", str(meta["issue"]), "--add-label", "status:review", "--remove-label", "status:in-progress"], cwd=MAIN_ROOT)
+        _run(["gh", "issue", "edit", str(meta["issue"]), "--add-label", "status:review", "--remove-label", "status:build"], cwd=MAIN_ROOT)
 
     print(f"PR #{pr_num}: {pr_url} (recorded in tasks/{tid}-{slug}/TASK.md)")
     return 0
@@ -915,7 +932,7 @@ def cmd_finish(args: argparse.Namespace) -> int:
             f"Beta preview flag: `?beta=1&feat={meta['switch']}`"
         )
         _run(["gh", "issue", "comment", str(meta["issue"]), "--body", comment], cwd=MAIN_ROOT)
-        _run(["gh", "issue", "edit", str(meta["issue"]), "--add-label", f"status:{new_status}", "--remove-label", "status:in-progress"], cwd=MAIN_ROOT)
+        _run(["gh", "issue", "edit", str(meta["issue"]), "--add-label", f"status:{new_status}", "--remove-label", "status:build"], cwd=MAIN_ROOT)
 
     if args.deploy_beta:
         _run(["git", "push", "origin", "v3-dev"], cwd=MAIN_ROOT, check=True)
@@ -961,6 +978,38 @@ def shared_main_drift(main_root: Path = MAIN_ROOT) -> dict:
         return {"ok": False, "in_sync": False, "drifted": [], "main_ref": main_ref, "error": res.stderr.strip()}
     drifted = [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
     return {"ok": True, "in_sync": len(drifted) == 0, "drifted": drifted, "main_ref": main_ref}
+
+
+def _is_shared_main_path(rel_path: str) -> bool:
+    """Return True if `rel_path` is covered by `SHARED_MAIN_PATHS`."""
+    p = str(rel_path).replace("\\", "/").lstrip("./").rstrip("/")
+    if not p:
+        return False
+    for shared in SHARED_MAIN_PATHS:
+        s = shared.rstrip("/")
+        if p == s or p.startswith(s + "/"):
+            return True
+    return False
+
+
+def _stamp_shared_main_tasks(main_root: Path) -> list[str]:
+    """Promote `beta` tasks whose entire `owned_paths` are in `SHARED_MAIN_PATHS` to `done`."""
+    stamped: list[str] = []
+    for tid, (meta, tfile) in sorted(load_all_tasks(main_root).items()):
+        if normalize_status(meta.get("status")) != "beta":
+            continue
+        owned = [str(p).strip() for p in (meta.get("owned_paths") or []) if str(p).strip()]
+        if not owned or not all(_is_shared_main_path(p) for p in owned):
+            continue
+        merged_into = list(meta.get("merged_into") or [])
+        if "main" not in merged_into:
+            merged_into.append("main")
+        meta["merged_into"] = merged_into
+        meta["status"] = "done"
+        _, body = parse_task_md(tfile)
+        tfile.write_text(dump_task_md(meta, body), encoding="utf-8")
+        stamped.append(tid)
+    return stamped
 
 
 def sync_shared_to_main(*, push: bool = False, check_only: bool = False, main_root: Path = MAIN_ROOT) -> dict:
@@ -1026,12 +1075,15 @@ def sync_shared_to_main(*, push: bool = False, check_only: bool = False, main_ro
             ps_res = _run(["git", "push", "origin", "HEAD:main"], cwd=wt_sync)
             if ps_res.returncode != 0:
                 return {"ok": False, "error": f"Push to origin/main failed: {(ps_res.stderr or ps_res.stdout).strip()}"}
+            stamped = _stamp_shared_main_tasks(main_root)
+            stamp_msg = f" Marked task(s) {', '.join(stamped)} done." if stamped else ""
             return {
                 "ok": True,
                 "in_sync": True,
                 "drifted": [],
                 "commit": sha,
-                "message": f"Synced {len(drift['drifted'])} shared file(s) to origin/main ({sha}) with isolated tests passing.",
+                "stamped_tasks": stamped,
+                "message": f"Synced {len(drift['drifted'])} shared file(s) to origin/main ({sha}) with isolated tests passing.{stamp_msg}",
             }
         return {
             "ok": True,
@@ -1161,8 +1213,8 @@ def check_plan_readiness(task_dir: Path, meta: dict) -> dict:
 
 
 def next_gate_status(status: str) -> str | None:
-    """Return the next pre-build gate status (`backlog -> brainstorm -> plan -> ready`), or None."""
-    return GATE_NEXT.get(str(status))
+    """Return the next pre-build gate status (`backlog -> scope -> plan -> approved`), or None."""
+    return GATE_NEXT.get(normalize_status(status))
 
 
 def approve_task_gate(
@@ -1174,15 +1226,15 @@ def approve_task_gate(
 ) -> dict:
     """Advance a task's stage gate in `TASK.md` and return a result summary dict."""
     meta, tfile, _ = find_task(task_id)
-    prev = str(meta.get("status", ""))
-    nxt = target_status or next_gate_status(prev)
+    prev = normalize_status(meta.get("status", ""))
+    nxt = normalize_status(target_status) if target_status else next_gate_status(prev)
     if not nxt:
         return {"ok": False, "error": f"Task {meta['id']} is already at '{prev}'; specify --to <status> explicitly."}
     if nxt not in VALID_STATUSES:
         return {"ok": False, "error": f"Invalid target status '{nxt}'. Valid: {', '.join(VALID_STATUSES)}"}
 
     _, body = parse_task_md(tfile)
-    if nxt == "ready":
+    if nxt == "approved":
         if not approve_plan:
             return {
                 "ok": False,
@@ -1200,7 +1252,7 @@ def approve_task_gate(
         meta["plan_approved_at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
         meta["plan_approved_by"] = approved_by or "human-cli"
         meta["plan_approved_sha"] = readiness["plan_sha"]
-    elif nxt in ("backlog", "brainstorm", "plan"):
+    elif nxt in PRE_BUILD_GATES:
         meta["plan_approved"] = False
         meta["plan_approved_at"] = ""
         meta["plan_approved_by"] = ""
@@ -1436,11 +1488,11 @@ def _is_ancestor(ref: str, target: str, cwd: Path) -> bool:
 
 
 def merge_status(meta: dict, main_root: Path = MAIN_ROOT) -> dict:
-    """Compute live PR and merge-destination status (Branch -> PR -> Beta v3-dev -> Public main)."""
+    """Compute live PR and merge-destination status (Branch -> PR -> Beta v3-dev / Public main -> Done)."""
     branch = str(meta.get("branch", ""))
     pr = meta.get("pr")
     pr_url = str(meta.get("pr_url") or "")
-    status = str(meta.get("status", ""))
+    status = normalize_status(meta.get("status", ""))
     merged_sha = str(meta.get("merged_sha") or "")
     recorded = [str(x) for x in (meta.get("merged_into") or []) if str(x)]
 
@@ -1452,9 +1504,18 @@ def merge_status(meta: dict, main_root: Path = MAIN_ROOT) -> dict:
     )
     in_public = (
         ("main" in recorded)
-        or (status == "done")
+        or (status in ("main", "done"))
         or any(_is_ancestor(check_ref, ref, main_root) for ref in ("main", "origin/main"))
     )
+    if in_beta and in_public:
+        stage_bucket = "done"
+    elif in_beta:
+        stage_bucket = "beta"
+    elif in_public:
+        stage_bucket = "main"
+    else:
+        stage_bucket = status or "backlog"
+
     merged_into = list(dict.fromkeys(recorded + (["v3-dev"] if in_beta else []) + (["main"] if in_public else [])))
     return {
         "branch": branch,
@@ -1464,6 +1525,7 @@ def merge_status(meta: dict, main_root: Path = MAIN_ROOT) -> dict:
         "in_beta": in_beta,
         "in_public": in_public,
         "merged_into": merged_into,
+        "stage_bucket": stage_bucket,
     }
 
 
@@ -1506,7 +1568,7 @@ def update_handoff(
     now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     tid = (meta or {}).get("id", task_dir.name.split("-", 1)[0])
     title = (meta or {}).get("title", task_dir.name)
-    stage = (meta or {}).get("status", "brainstorm")
+    stage = normalize_status((meta or {}).get("status", "scope")) or "scope"
 
     hmeta = {"updated_at": now, "last_agent": "", "last_model": "", "last_commit": ""}
     if hpath.is_file():
@@ -1567,7 +1629,7 @@ def build_resume_prompt(task_id: str, *, worker: bool = False) -> dict:
             secs = ", ".join(f"L{ln}:{sec.split('—')[0].strip()}" for ln, sec in info["sections"][:5])
             codemap_lines.append(f"- `{rel}` ({info['lines']}L)" + (f" [{secs}]" if secs else ""))
 
-    stage = str(meta.get("status", ""))
+    stage = normalize_status(meta.get("status", ""))
     if worker:
         sections = [
             f"# Worker Brief — Task {tid}: {meta.get('title', slug)} (Tier: {tier})",
@@ -1613,7 +1675,7 @@ def build_resume_prompt(task_id: str, *, worker: bool = False) -> dict:
             sections.append("\n## Owned File Outlines\n" + "\n".join(codemap_lines))
         sections.append(
             f"\n## Standing Reminder\n"
-            f"1. Read `tasks/{tid}-{slug}/PLAN.md` (and `AGENTS.md`). Respect stage gates (`brainstorm -> plan -> ready -> in-progress`).\n"
+            f"1. Read `tasks/{tid}-{slug}/PLAN.md` (and `AGENTS.md`). Respect stage gates (`scope -> plan -> approved -> build`).\n"
             f"2. `HANDOFF.md` is optional & overwrite-only — only write it if pausing mid-task with non-obvious dead ends."
         )
 
@@ -1665,7 +1727,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
 
 def cmd_approve(args: argparse.Namespace) -> int:
-    """Advance a task's human-approved stage gate (`brainstorm -> plan -> ready`)."""
+    """Advance a task's human-approved stage gate (`scope -> plan -> approved`)."""
     res = approve_task_gate(
         args.id,
         target_status=args.to or None,
@@ -1741,15 +1803,15 @@ def main(argv: list[str]) -> int:
     p_new.add_argument("--switch", default="", help="Feature flag name (default: slug with underscores).")
     p_new.add_argument("--gpu", action="store_true", help="Mark task as requiring the local GPU lock.")
     p_new.add_argument("--problem", default="", help="Short problem/goal statement.")
-    p_new.add_argument("--status", default="", choices=("",) + VALID_STATUSES, help="Initial gate status (default: brainstorm, or plan with --quick).")
+    p_new.add_argument("--status", default="", choices=("",) + VALID_STATUSES + tuple(STATUS_ALIASES), help="Initial gate status (default: scope, or plan with --quick).")
     p_new.add_argument("--tier", default="", choices=("",) + VALID_EXEC_TIERS, help="Recommended execution model tier (flash|hydrogen|standard|pro).")
     p_new.add_argument("--quick", action="store_true", help="Fast-track small task (starts at plan gate with exec_tier=flash).")
     p_new.add_argument("--local", action="store_true", help="Skip GitHub issue creation (offline/draft mode).")
 
-    p_approve = sub.add_parser("approve", help="Advance a task's stage gate (brainstorm -> plan -> ready).")
+    p_approve = sub.add_parser("approve", help="Advance a task's stage gate (scope -> plan -> approved).")
     p_approve.add_argument("id")
-    p_approve.add_argument("--to", default="", choices=("",) + VALID_STATUSES, help="Explicit target gate status.")
-    p_approve.add_argument("--approve-plan", action="store_true", help="Formally approve PLAN.md when advancing to 'ready'.")
+    p_approve.add_argument("--to", default="", choices=("",) + VALID_STATUSES + tuple(STATUS_ALIASES), help="Explicit target gate status.")
+    p_approve.add_argument("--approve-plan", action="store_true", help="Formally approve PLAN.md when advancing to 'approved'.")
     p_approve.add_argument("--by", default="human-cli", help="Approver label recorded in TASK.md (default: human-cli).")
 
     p_link = sub.add_parser("link", help="Link an Antigravity or Claude conversation ID to a task.")

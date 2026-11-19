@@ -112,9 +112,11 @@ class TestTaskWorkflow(unittest.TestCase):
         self.assertNotIn("sendConvoLinkToChat", html)
 
     def test_stage_gates_block_start_until_approved(self):
-        """Tasks in brainstorm/plan gates cannot be started until approved to ready."""
+        """Tasks in scope/plan gates cannot be started until approved."""
         self.assertEqual(task.next_gate_status("brainstorm"), "plan")
-        self.assertEqual(task.next_gate_status("plan"), "ready")
+        self.assertEqual(task.next_gate_status("scope"), "plan")
+        self.assertEqual(task.next_gate_status("plan"), "approved")
+        self.assertIsNone(task.next_gate_status("approved"))
         self.assertIsNone(task.next_gate_status("ready"))
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -161,7 +163,7 @@ class TestTaskWorkflow(unittest.TestCase):
                 )
                 r2 = task.approve_task_gate("099", approve_plan=True, approved_by="human-cli")
                 self.assertTrue(r2["ok"])
-                self.assertEqual(r2["status"], "ready")
+                self.assertEqual(r2["status"], "approved")
 
     def test_conversations_handoff_and_resume_prompt(self):
         """Primary + collapsible conversation links, HANDOFF.md checkpoints, and resume prompt work end-to-end."""
@@ -327,7 +329,7 @@ class TestTaskWorkflow(unittest.TestCase):
                 )
                 r_ok = task.approve_task_gate("095", approve_plan=True, approved_by="human-cli")
                 self.assertTrue(r_ok["ok"])
-                self.assertEqual(r_ok["status"], "ready")
+                self.assertEqual(r_ok["status"], "approved")
                 saved_meta, _ = task.parse_task_md(tfile)
                 self.assertTrue(saved_meta["plan_approved"])
                 self.assertEqual(saved_meta["plan_approved_by"], "human-cli")
@@ -961,6 +963,152 @@ class TestTaskWorkflow(unittest.TestCase):
             self.assertEqual(call_order, ["refresh", "build"])
             self.assertEqual(sent[-1].get("git_refresh"), {"ok": True, "error": ""})
             m_ref.assert_called_once_with(task_viewer_server.task_cli.MAIN_ROOT)
+
+    def test_normalize_status_and_legacy_aliases(self):
+        """Legacy status aliases normalize cleanly on parse, validation, and gate transitions."""
+        self.assertEqual(task.normalize_status("brainstorm"), "scope")
+        self.assertEqual(task.normalize_status("ready"), "approved")
+        self.assertEqual(task.normalize_status("in-progress"), "build")
+        self.assertEqual(task.normalize_status("closed"), "done")
+        self.assertEqual(task.normalize_status("scope"), "scope")
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "071", status="brainstorm", fill_plan=True)
+            tfile = tdir / "TASK.md"
+            parsed, _ = task.parse_task_md(tfile)
+            self.assertEqual(parsed["status"], "scope")
+            self.assertEqual(task.validate_task_meta(parsed, tfile), [])
+
+            def _find_live(_tid):
+                m, _ = task.parse_task_md(tfile)
+                return m, tfile, root
+
+            with mock.patch.object(task, "find_task", side_effect=_find_live):
+                r_plan = task.approve_task_gate("071")
+                self.assertTrue(r_plan["ok"])
+                self.assertEqual(r_plan["status"], "plan")
+                r_appr = task.approve_task_gate("071", target_status="ready", approve_plan=True)
+                self.assertTrue(r_appr["ok"])
+                self.assertEqual(r_appr["status"], "approved")
+
+    def test_merge_status_quadrants_and_stage_bucket(self):
+        """merge_status() computes 2x2 in_beta/in_public and stage_bucket accurately."""
+        with mock.patch.object(task, "_is_ancestor", return_value=False):
+            ms_beta = task.merge_status({"status": "beta", "branch": "feat/005-a"})
+            self.assertTrue(ms_beta["in_beta"])
+            self.assertFalse(ms_beta["in_public"])
+            self.assertEqual(ms_beta["stage_bucket"], "beta")
+
+            ms_main = task.merge_status({"status": "main", "branch": "feat/020-hotfix"})
+            self.assertFalse(ms_main["in_beta"])
+            self.assertTrue(ms_main["in_public"])
+            self.assertEqual(ms_main["stage_bucket"], "main")
+
+            ms_done = task.merge_status({"status": "closed", "branch": "feat/001-done"})
+            self.assertTrue(ms_done["in_beta"])
+            self.assertTrue(ms_done["in_public"])
+            self.assertEqual(ms_done["stage_bucket"], "done")
+
+            ms_pre = task.merge_status({"status": "brainstorm", "branch": "feat/017-pre"})
+            self.assertFalse(ms_pre["in_beta"])
+            self.assertFalse(ms_pre["in_public"])
+            self.assertEqual(ms_pre["stage_bucket"], "scope")
+
+    def test_compute_waves_main_only_vs_beta_deps(self):
+        """main-only tasks are excluded from waves but do not satisfy v3-dev dependencies; build sorts first."""
+        tasks = {
+            "001": ({"id": "001", "slug": "beta-dep", "status": "beta", "depends_on": [], "owned_paths": ["a.py"]}, Path("a")),
+            "002": ({"id": "002", "slug": "main-dep", "status": "main", "depends_on": [], "owned_paths": ["b.py"]}, Path("b")),
+            "003": ({"id": "003", "slug": "needs-beta", "status": "approved", "depends_on": ["001"], "owned_paths": ["c.py"]}, Path("c")),
+            "004": ({"id": "004", "slug": "active-build", "status": "build", "depends_on": [], "owned_paths": ["d.py"]}, Path("d")),
+            "005": ({"id": "005", "slug": "needs-main", "status": "approved", "depends_on": ["002"], "owned_paths": ["e.py"]}, Path("e")),
+        }
+        waves = task.compute_waves(tasks)
+        self.assertEqual(len(waves), 2)
+        self.assertEqual([m["id"] for m in waves[0]], ["004", "003"])
+        self.assertEqual([m["id"] for m in waves[1]], ["005"])
+
+    def test_build_state_exposes_wave_and_stage_bucket(self):
+        """build_state() detects active build task, computes 1-based wave, and exposes stage_bucket."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            m1, tdir1 = self._make_sample_task(root, "010", status="approved", owns=["a.py"], fill_plan=True)
+            m2, tdir2 = self._make_sample_task(root, "011", status="build", owns=["b.py"], fill_plan=True)
+            m3, tdir3 = self._make_sample_task(root, "012", status="main", owns=["c.py"], fill_plan=True)
+            loaded = {
+                "010": (m1, tdir1 / "TASK.md"),
+                "011": (m2, tdir2 / "TASK.md"),
+                "012": (m3, tdir3 / "TASK.md"),
+            }
+            with mock.patch.object(task, "MAIN_ROOT", root), \
+                 mock.patch.object(task, "load_all_tasks", return_value=loaded), \
+                 mock.patch.object(task, "active_worktree_tasks", return_value={}), \
+                 mock.patch.object(task, "shared_main_drift", return_value={"ok": True, "drifted": []}), \
+                 mock.patch.object(task, "_is_ancestor", return_value=False), \
+                 mock.patch.object(task_viewer_server, "detect_launchers", return_value={}):
+                state = task_viewer_server.build_state()
+            self.assertEqual(state["active_task_id"], "011")
+            self.assertEqual(state["tasks"]["010"]["wave"], 1)
+            self.assertEqual(state["tasks"]["010"]["stage_bucket"], "approved")
+            self.assertEqual(state["tasks"]["011"]["wave"], 1)
+            self.assertEqual(state["tasks"]["011"]["stage_bucket"], "build")
+            self.assertIsNone(state["tasks"]["012"]["wave"])
+            self.assertEqual(state["tasks"]["012"]["stage_bucket"], "main")
+
+    def test_sync_shared_to_main_auto_stamps_beta_shared_tasks(self):
+        """sync_shared_to_main(push=True) stamps beta tasks whose owned_paths are all in SHARED_MAIN_PATHS as done."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _, tdir_shared = self._make_sample_task(
+                root, "017", status="beta", owns=["tools/task.py", "tools/task_viewer/index.html"], fill_plan=True
+            )
+            _, tdir_mixed = self._make_sample_task(
+                root, "018", status="beta", owns=["tools/task.py", "site/v3/app.js"], fill_plan=True
+            )
+
+            def _fake_run(cmd, cwd=None, check=False):
+                if cmd[:2] == ["git", "status"]:
+                    return argparse.Namespace(returncode=0, stdout="M tools/task.py\n", stderr="")
+                if cmd[:2] == ["git", "rev-parse"]:
+                    return argparse.Namespace(returncode=0, stdout="abc1234\n", stderr="")
+                return argparse.Namespace(returncode=0, stdout="", stderr="")
+
+            with mock.patch.object(task, "_run", side_effect=_fake_run), \
+                 mock.patch.object(task, "shared_main_drift", return_value={"ok": True, "in_sync": False, "drifted": ["tools/task.py"], "main_ref": "origin/main"}), \
+                 mock.patch.object(task.subprocess, "run", return_value=argparse.Namespace(returncode=0, stdout="", stderr="")):
+                res = task.sync_shared_to_main(push=True, main_root=root)
+
+            self.assertTrue(res["ok"])
+            self.assertEqual(res.get("stamped_tasks"), ["017"])
+            m_shared, _ = task.parse_task_md(tdir_shared / "TASK.md")
+            self.assertEqual(m_shared["status"], "done")
+            self.assertIn("main", m_shared.get("merged_into") or [])
+
+            m_mixed, _ = task.parse_task_md(tdir_mixed / "TASK.md")
+            self.assertEqual(m_mixed["status"], "beta")
+            self.assertNotIn("main", m_mixed.get("merged_into") or [])
+
+    def test_guard_h5_blocks_scope_in_main_checkout(self):
+        """guard.py H5 blocks repo code edits in main checkout when linked task is in 'scope'."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            tdir = root / "tasks" / "017-scope-test"
+            tdir.mkdir(parents=True)
+            (tdir / "TASK.md").write_text("---\nid: \"017\"\nslug: \"scope-test\"\nstatus: \"scope\"\nowned_paths:\n  - \"tools/task.py\"\n---\n", encoding="utf-8")
+            (tdir / "conversations.json").write_text('{"primary_id": "conv-scope-1", "items": []}', encoding="utf-8")
+
+            payload = {
+                "hook_event_name": "PreToolUse",
+                "session_id": "conv-scope-1",
+                "tool_name": "Edit",
+                "tool_input": {"file_path": str(root / "tools" / "task.py")},
+            }
+            platform, resp = guard.evaluate_payload(payload, main_root=root)
+            self.assertEqual(platform, "claude")
+            out = resp["hookSpecificOutput"]
+            self.assertEqual(out["permissionDecision"], "deny")
+            self.assertIn("scope", out["permissionDecisionReason"])
 
 
 if __name__ == "__main__":

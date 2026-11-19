@@ -273,6 +273,10 @@ def build_state() -> dict:
 
     waves_raw = task_cli.compute_waves({tid: (m, tf) for tid, (m, tf, _, _) in merged.items()})
     waves = [[str(m["id"]) for m in w] for w in waves_raw]
+    wave_map: dict[str, int] = {}
+    for w_idx, w_ids in enumerate(waves, 1):
+        for w_tid in w_ids:
+            wave_map[w_tid] = w_idx
 
     tasks_out: dict[str, dict] = {}
     active_task_id: str | None = None
@@ -305,14 +309,18 @@ def build_state() -> dict:
             except Exception:
                 handoff_meta = {}
 
-        if active_task_id is None and (is_wt or meta.get("status") == "in-progress"):
+        status_str = task_cli.normalize_status(meta.get("status", ""))
+        if active_task_id is None and (is_wt or status_str == "build"):
             active_task_id = tid
 
-        status_str = str(meta.get("status", ""))
         plan_readiness = task_cli.check_plan_readiness(tdir, meta)
+        ms = task_cli.merge_status(meta, main_root)
         tasks_out[tid] = {
             **meta,
             "id": tid,
+            "status": status_str or str(meta.get("status", "")),
+            "wave": wave_map.get(tid),
+            "stage_bucket": ms.get("stage_bucket") or status_str or str(meta.get("status", "")),
             "active_worktree": is_wt,
             "worktree_path": str(checkout_root) if is_wt else "",
             "task_dir": str(tdir),
@@ -321,7 +329,7 @@ def build_state() -> dict:
             "handoff_md": handoff_md,
             "handoff_meta": handoff_meta,
             "conversations": task_cli.load_conversations(tdir),
-            "merge_status": task_cli.merge_status(meta, main_root),
+            "merge_status": ms,
             "exec_tier": str(meta.get("exec_tier") or "hydrogen"),
             "git_summary": task_cli.git_summary(checkout_root) if is_wt else {},
             "next_gate": task_cli.next_gate_status(status_str),
@@ -416,7 +424,7 @@ def run_action(action_or_payload: str | dict, task_id: str = "") -> dict:
     if action == "approve_plan":
         return task_cli.approve_task_gate(
             task_id,
-            target_status="ready",
+            target_status="approved",
             approve_plan=True,
             approved_by="human-ui",
         )
