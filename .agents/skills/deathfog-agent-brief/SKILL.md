@@ -8,7 +8,7 @@ description: "Use when starting or delegating SF death-fog work: standing rules,
 Read [`AGENTS.md`](../../../AGENTS.md) and [`docs/STATUS.md`](../../../docs/STATUS.md) first. Put the standing rules below in any subagent prompt, then add only the task, approved scope, and report format.
 
 ## Standing rules
-- **Self-contained layout (Option 1):** Everything lives in `C:\Users\George\source\repos\SF-DEATH-FOG-DETECTION\`. Python: `.\.venv\Scripts\python.exe`. Data root: `data\` (via `microclimate.paths.data_dir()`, which auto-resolves from `_worktrees/wt_*`).
+- **Self-contained layout (Option 1):** Everything lives inside `<repo_root>/` (the repository root). Python: `.\.venv\Scripts\python.exe` (or `.venv/bin/python`). Data root: `data/` (via `microclimate.paths.data_dir()`, which auto-resolves from `_worktrees/wt_*`).
 - **Never run `git clean -fdx` or `git clean -fdX`** at the repo root (`data\` and `_archive\` are gitignored inside the repo root).
 - **Token-efficient navigation first:** Before reading large files (`site/v3/app.js`, `site/v3/fog2.js`, `microclimate/wetness.py`, `microclimate/live/forcing.py`), run:
   - `python tools/codemap.py <file_or_dir>` to get exact live `[Lstart-Lend]` line numbers for every `@sec:` section and function.

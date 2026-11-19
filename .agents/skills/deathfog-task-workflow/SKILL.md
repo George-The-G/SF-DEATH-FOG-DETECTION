@@ -43,9 +43,14 @@ Never mark a task done until the automated gate passes:
 ```
 This checks `TASK.md` schema, required `deliverables`, `owned_paths` scope, `pytest` (including `test_repo_hygiene.py`), `node --test tests_js/*.mjs`, and headless Playwright desktop+phone previews (for `site/v3/` tasks), writing `tasks/<id>-<slug>/evidence/verify.json`.
 
-## 4. Merge to Beta & Cleanup
+## 4. Open PR, Merge to Beta & Cleanup
 Once `verify.json` has `"ok": true` matching `HEAD`:
-```powershell
-.\.venv\Scripts\python.exe tools/task.py finish <id> --merge
-```
-Add `--deploy-beta` to push `v3-dev` and trigger `gh workflow run collect.yml --ref main`. Never promote to public (`/v3/` or `PROMOTED`) without explicit user approval in chat.
+- **Open a PR for review** (pushes branch, creates GitHub PR against `v3-dev`, and records `pr` & `pr_url` back into `tasks/<id>-<slug>/TASK.md`):
+  ```powershell
+  .\.venv\Scripts\python.exe tools/task.py pr <id>
+  ```
+- **Or merge directly to Beta & clean up the worktree:**
+  ```powershell
+  .\.venv\Scripts\python.exe tools/task.py finish <id> --merge
+  ```
+  Add `--deploy-beta` to push `v3-dev` and trigger `gh workflow run collect.yml --ref main`. Never promote to public (`/v3/` or `PROMOTED`) without explicit user approval in chat.

@@ -8,7 +8,7 @@ Last verified: 2026-11-18
 
 ## 1. Self-Contained Repository Layout (Option 1)
 
-Everything for Death Fog lives inside `C:\Users\George\source\repos\SF-DEATH-FOG-DETECTION\`:
+Everything for Death Fog lives inside `<repo_root>/` (the repository root):
 
 - `microclimate/` — Python package: wind/fog simulation, 3D tracer advection, and the v3 live pipeline (`microclimate/live/`).
 - `deathfog/` — Python package: v2 station collector, wetness scoring, alerts, and status page.

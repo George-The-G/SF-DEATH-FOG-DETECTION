@@ -4,6 +4,8 @@ slug: "guide14-fog-advection"
 title: "Guide 14 fog advection boundary smoothing and forecast extension"
 issue: null
 epic: null
+pr: null
+pr_url: ""
 status: "ready"
 branch: "feat/003-guide14-fog-advection"
 switch: "guide14_advect"

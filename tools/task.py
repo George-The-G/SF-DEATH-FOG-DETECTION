@@ -117,6 +117,8 @@ def dump_task_md(meta: dict, body: str) -> str:
         "title",
         "issue",
         "epic",
+        "pr",
+        "pr_url",
         "status",
         "branch",
         "switch",
@@ -302,15 +304,16 @@ def cmd_list(_args: argparse.Namespace) -> int:
     if not tasks:
         print("No tasks found in tasks/. Create one with: python tools/task.py new --title \"...\" --slug <slug>")
         return 0
-    print(f"{'ID':<5} {'STATUS':<12} {'EPIC':<6} {'GPU':<4} {'SLUG':<28} {'OWNED PATHS'}")
-    print("-" * 92)
+    print(f"{'ID':<5} {'STATUS':<12} {'EPIC':<6} {'PR':<6} {'GPU':<4} {'SLUG':<28} {'OWNED PATHS'}")
+    print("-" * 98)
     for tid in sorted(tasks):
         m, _ = tasks[tid]
         epic = f"#{m['epic']}" if m.get("epic") else "-"
+        pr_str = f"#{m['pr']}" if m.get("pr") else "-"
         gpu = "yes" if m.get("gpu_required") else "no"
         owns = ", ".join(m.get("owned_paths", [])) or "-"
         wt_mark = "*" if tid in wt_active else " "
-        print(f"{tid:<4}{wt_mark} {m.get('status','?'):<12} {epic:<6} {gpu:<4} {m.get('slug',''):<28} {owns}")
+        print(f"{tid:<4}{wt_mark} {m.get('status','?'):<12} {epic:<6} {pr_str:<6} {gpu:<4} {m.get('slug',''):<28} {owns}")
     if wt_active:
         print("\n(* = active worktree in _worktrees/)")
     return 0
@@ -457,6 +460,8 @@ def cmd_new(args: argparse.Namespace) -> int:
         "title": args.title,
         "issue": issue_num,
         "epic": args.epic,
+        "pr": None,
+        "pr_url": "",
         "status": "ready",
         "branch": f"feat/{tid}-{slug}",
         "switch": switch,
@@ -666,6 +671,84 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+# @sec: pr — Open a GitHub Pull Request for a task and record pr / pr_url back into TASK.md
+def cmd_pr(args: argparse.Namespace) -> int:
+    """Push task branch, create/find GitHub PR against `--base`, and record `pr` & `pr_url` in `TASK.md`."""
+    meta, tfile, wt_root = find_task(args.id)
+    tid, slug, branch = str(meta["id"]), meta["slug"], meta["branch"]
+    vfile = wt_root / "tasks" / f"{tid}-{slug}" / "evidence" / "verify.json"
+
+    if not args.draft:
+        if not vfile.is_file():
+            print(f"Cannot open PR for task {tid}: missing {vfile}. Run `python tools/task.py verify {tid}` first (or pass --draft).")
+            return 1
+        report = json.loads(vfile.read_text(encoding="utf-8"))
+        if not report.get("ok"):
+            print(f"Cannot open PR for task {tid}: verify.json has ok=false.")
+            return 1
+
+    push = _run(["git", "push", "-u", "origin", branch], cwd=wt_root)
+    if push.returncode != 0:
+        print(push.stderr or push.stdout)
+        return push.returncode
+
+    # Check if a PR already exists for this branch
+    view = _run(["gh", "pr", "view", branch, "--json", "number,url"], cwd=wt_root)
+    pr_num: int | None = None
+    pr_url: str = ""
+    if view.returncode == 0 and view.stdout.strip():
+        data = json.loads(view.stdout)
+        pr_num = data.get("number")
+        pr_url = data.get("url", "")
+    else:
+        issue_line = f"Closes #{meta['issue']}\n" if meta.get("issue") else ""
+        epic_line = f"Part of Epic #{meta['epic']}\n" if meta.get("epic") else ""
+        body = (
+            f"## Task {tid}: {meta['title']}\n\n"
+            f"{issue_line}{epic_line}\n"
+            f"- **Task packet:** `tasks/{tid}-{slug}/TASK.md` & `tasks/{tid}-{slug}/PLAN.md`\n"
+            f"- **Verification evidence:** `tasks/{tid}-{slug}/evidence/verify.json`\n"
+            f"- **Beta preview switch:** `?beta=1&feat={meta['switch']}`\n"
+            f"- **Owned paths:** {', '.join(f'`{p}`' for p in meta.get('owned_paths', [])) or '(none)'}\n"
+        )
+        cmd = [
+            "gh", "pr", "create",
+            "--base", args.base,
+            "--head", branch,
+            "--title", f"task({tid}): {meta['title']}",
+            "--body", body,
+        ]
+        if args.draft:
+            cmd.append("--draft")
+        created = _run(cmd, cwd=wt_root)
+        if created.returncode != 0:
+            print(created.stderr or created.stdout)
+            return created.returncode
+        pr_url = created.stdout.strip().splitlines()[-1].strip()
+        m = re.search(r"/pull/(\d+)", pr_url)
+        pr_num = int(m.group(1)) if m else None
+
+    # Record PR correlation back into TASK.md and push
+    meta["pr"] = pr_num
+    meta["pr_url"] = pr_url
+    meta["status"] = "review"
+    _, body_md = parse_task_md(tfile)
+    tfile.write_text(dump_task_md(meta, body_md), encoding="utf-8")
+
+    rel_task = str(tfile.relative_to(wt_root).as_posix())
+    _run(["git", "add", rel_task], cwd=wt_root)
+    commit = _run(["git", "commit", "-m", f"task({tid}): link PR #{pr_num} in TASK.md"], cwd=wt_root)
+    if commit.returncode == 0:
+        _run(["git", "push", "origin", branch], cwd=wt_root)
+
+    if meta.get("issue") and pr_num:
+        _run(["gh", "issue", "comment", str(meta["issue"]), "--body", f"Opened PR #{pr_num}: {pr_url}"], cwd=MAIN_ROOT)
+        _run(["gh", "issue", "edit", str(meta["issue"]), "--add-label", "status:review", "--remove-label", "status:in-progress"], cwd=MAIN_ROOT)
+
+    print(f"PR #{pr_num}: {pr_url} (recorded in {rel_task})")
+    return 0
+
+
 # @sec: finish — Merge verified branch into v3-dev, remove worktree, and sync GitHub
 def cmd_finish(args: argparse.Namespace) -> int:
     """Validate passing `verify.json`, optionally merge into `v3-dev`, clean worktree, and sync GitHub."""
@@ -776,6 +859,11 @@ def main(argv: list[str]) -> int:
     p_verify.add_argument("--skip-preview", action="store_true", help="Skip headless Playwright check.")
     p_verify.add_argument("--allow-extra", action="store_true", help="Allow modified files outside owned_paths.")
 
+    p_pr = sub.add_parser("pr", help="Push branch, open GitHub PR against v3-dev, and record pr/pr_url in TASK.md.")
+    p_pr.add_argument("id")
+    p_pr.add_argument("--base", default="v3-dev", help="Base branch for the PR (default: v3-dev).")
+    p_pr.add_argument("--draft", action="store_true", help="Open as a draft PR (skips verify.json gate).")
+
     p_finish = sub.add_parser("finish", help="Verify evidence, merge into v3-dev, remove worktree, and sync GitHub.")
     p_finish.add_argument("id")
     p_finish.add_argument("--merge", action="store_true", help="Merge feature branch into v3-dev and remove worktree.")
@@ -791,6 +879,7 @@ def main(argv: list[str]) -> int:
         "new": cmd_new,
         "start": cmd_start,
         "verify": cmd_verify,
+        "pr": cmd_pr,
         "finish": cmd_finish,
     }
     return handlers[args.cmd](args)

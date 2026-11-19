@@ -4,6 +4,8 @@ slug: "fog2-grid-artifact-fix"
 title: "Fix 320m voxel ray-march grid artifact in fog2.js (Option F2)"
 issue: null
 epic: null
+pr: null
+pr_url: ""
 status: "ready"
 branch: "feat/001-fog2-grid-artifact-fix"
 switch: "col_top_clamp"

@@ -17,7 +17,9 @@ class TestTaskWorkflow(unittest.TestCase):
             "title": "Fix 320m column-skip grid artifact",
             "issue": 42,
             "epic": 40,
-            "status": "ready",
+            "pr": 99,
+            "pr_url": "https://github.com/George-The-G/SF-DEATH-FOG-DETECTION/pull/99",
+            "status": "review",
             "branch": "feat/042-grid-artifact-fix",
             "switch": "col_top_clamp",
             "depends_on": ["041"],
@@ -33,6 +35,8 @@ class TestTaskWorkflow(unittest.TestCase):
             self.assertEqual(task.validate_task_meta(parsed, p), [])
             self.assertEqual(parsed["id"], "042")
             self.assertEqual(parsed["issue"], 42)
+            self.assertEqual(parsed["pr"], 99)
+            self.assertEqual(parsed["pr_url"], "https://github.com/George-The-G/SF-DEATH-FOG-DETECTION/pull/99")
             self.assertEqual(parsed["gpu_required"], False)
             self.assertEqual(parsed["owned_paths"], ["site/v3/fog2.js", "tests_js/test_fog2.mjs"])
             self.assertIn("Details here.", parsed_body)

@@ -4,6 +4,8 @@ slug: "street5m-wind-refinement"
 title: "Guide 12 5m street wind refinement and nesting validation (H2)"
 issue: null
 epic: null
+pr: null
+pr_url: ""
 status: "ready"
 branch: "feat/004-street5m-wind-refinement"
 switch: "street5m_wind"
