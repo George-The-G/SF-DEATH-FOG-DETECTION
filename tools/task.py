@@ -26,19 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-try:
-    from microclimate.paths import data_dir, main_repo_root  # noqa: E402
-except ImportError:
-    def main_repo_root() -> Path:
-        """Fallback main repository root resolver when microclimate/ is absent (e.g. on main branch)."""
-        if ROOT.parent.name == "_worktrees":
-            return ROOT.parent.parent
-        return ROOT
-
-    def data_dir() -> Path:
-        """Fallback data directory resolver when microclimate/ is absent."""
-        return main_repo_root() / "data"
-
+from microclimate.paths import data_dir, main_repo_root  # noqa: E402
 from tools import codemap  # noqa: E402
 
 MAIN_ROOT = main_repo_root()
@@ -57,7 +45,10 @@ REQUIRED_FIELDS = (
     "gpu_required",
     "deliverables",
 )
-VALID_STATUSES = ("backlog", "ready", "in-progress", "review", "beta", "done")
+VALID_STATUSES = ("backlog", "brainstorm", "plan", "ready", "in-progress", "review", "beta", "done")
+VALID_EXEC_TIERS = ("flash", "hydrogen", "standard", "pro")
+PRE_BUILD_GATES = {"backlog", "brainstorm", "plan"}
+GATE_NEXT = {"backlog": "brainstorm", "brainstorm": "plan", "plan": "ready"}
 DONE_STATUSES = {"beta", "done"}
 
 
@@ -418,11 +409,16 @@ def scaffold_task_dir(base_root: Path, meta: dict, problem: str = "") -> Path:
     if not plan_md.exists():
         plan_md.write_text(
             f"# Plan — Task {meta['id']}: {meta['title']}\n\n"
-            f"## 1. Affected Symbols (from `python tools/codemap.py`)\n- TBD\n\n"
-            f"## 2. Implementation Steps\n1. TBD\n\n"
-            f"## 3. Verification & Beta Switch\n"
-            f"- Switch: `{meta['switch']}` (preview via `?beta=1&feat={meta['switch']}`)\n"
-            f"- Gate: `python tools/task.py verify {meta['id']}`\n",
+            f"## Brainstorm — Goals, Decisions & Dead Ends\n"
+            f"- **Goals:** {problem or 'TBD'}\n"
+            f"- **Decisions:** TBD\n"
+            f"- **Rejected / Dead Ends:** None yet\n"
+            f"- **Open Questions:** TBD\n\n"
+            f"## Plan — Architecture, Owned Paths & Verification\n"
+            f"- **Affected Symbols (`python tools/codemap.py`):** TBD\n"
+            f"- **Implementation Steps:**\n  1. TBD\n"
+            f"- **Switch:** `{meta['switch']}` (preview via `?beta=1&feat={meta['switch']}`)\n"
+            f"- **Gate:** `python tools/task.py verify {meta['id']}`\n",
             encoding="utf-8",
         )
     return tdir
@@ -435,6 +431,9 @@ def cmd_new(args: argparse.Namespace) -> int:
     deps = [d.strip().zfill(3) if d.strip().isdigit() else d.strip() for d in (args.depends or "").split(",") if d.strip()]
     switch = args.switch or slug.replace("-", "_")
 
+    quick = bool(getattr(args, "quick", False))
+    initial_status = getattr(args, "status", "") or ("plan" if quick else "brainstorm")
+    exec_tier = getattr(args, "tier", "") or ("flash" if quick else "hydrogen")
     issue_num: int | None = None
     tid = _next_local_id()
     if not args.local:
@@ -444,7 +443,7 @@ def cmd_new(args: argparse.Namespace) -> int:
             "title": args.title,
             "issue": None,
             "epic": args.epic,
-            "status": "ready",
+            "status": initial_status,
             "branch": f"feat/{tid}-{slug}",
             "switch": switch,
             "depends_on": deps,
@@ -455,7 +454,7 @@ def cmd_new(args: argparse.Namespace) -> int:
         issue_num = _create_github_issue(
             f"[Task] {args.title}",
             dump_task_md(draft_meta, args.problem or "Scoped via `tools/task.py new`."),
-            ["task", "status:ready"],
+            ["task", f"status:{initial_status}"],
         )
         if issue_num is not None:
             tid = str(issue_num).zfill(3)
@@ -474,7 +473,8 @@ def cmd_new(args: argparse.Namespace) -> int:
         "epic": args.epic,
         "pr": None,
         "pr_url": "",
-        "status": "ready",
+        "status": initial_status,
+        "exec_tier": exec_tier,
         "branch": f"feat/{tid}-{slug}",
         "switch": switch,
         "depends_on": deps,
@@ -507,6 +507,16 @@ def cmd_start(args: argparse.Namespace) -> int:
     tid = str(meta["id"])
     slug = meta["slug"]
     branch = meta["branch"]
+
+    # Enforce human-approved pre-build stage gates (brainstorm -> plan -> ready)
+    if meta.get("status") in PRE_BUILD_GATES and not args.force:
+        nxt = next_gate_status(str(meta.get("status", ""))) or "ready"
+        print(
+            f"Blocked: task {tid} is at the '{meta.get('status')}' gate. "
+            f"Advance to '{nxt}' (and 'ready' for build go-ahead) via "
+            f"`python tools/task.py approve {tid}` or the Task Viewer before starting a worktree."
+        )
+        return 1
 
     # Check dependencies
     all_tasks = load_all_tasks(MAIN_ROOT)
@@ -779,9 +789,15 @@ def cmd_finish(args: argparse.Namespace) -> int:
         print(f"Cannot finish task {tid}: verify.json SHA ({report.get('git_sha')}) != HEAD ({head_sha}). Re-run verify after committing.")
         return 1
 
-    # Update TASK.md status
+    # Update TASK.md status (and record merge metadata when merging to v3-dev)
     new_status = "beta" if args.merge else "review"
     meta["status"] = new_status
+    if args.merge:
+        meta["merged_sha"] = head_sha[:12]
+        merged_into = list(meta.get("merged_into") or [])
+        if "v3-dev" not in merged_into:
+            merged_into.append("v3-dev")
+        meta["merged_into"] = merged_into
     _, body = parse_task_md(tfile)
     tfile.write_text(dump_task_md(meta, body), encoding="utf-8")
 
@@ -835,6 +851,377 @@ def cmd_sync(_args: argparse.Namespace) -> int:
     return 0
 
 
+# @sec: handoff — Stage gate approval, HANDOFF.md checkpoints, conversation links, and resume prompts
+def next_gate_status(status: str) -> str | None:
+    """Return the next pre-build gate status (`backlog -> brainstorm -> plan -> ready`), or None."""
+    return GATE_NEXT.get(str(status))
+
+
+def approve_task_gate(task_id: str, target_status: str | None = None) -> dict:
+    """Advance a task's stage gate in `TASK.md` and return a result summary dict."""
+    meta, tfile, _ = find_task(task_id)
+    prev = str(meta.get("status", ""))
+    nxt = target_status or next_gate_status(prev)
+    if not nxt:
+        return {"ok": False, "error": f"Task {meta['id']} is already at '{prev}'; specify --to <status> explicitly."}
+    if nxt not in VALID_STATUSES:
+        return {"ok": False, "error": f"Invalid target status '{nxt}'. Valid: {', '.join(VALID_STATUSES)}"}
+    _, body = parse_task_md(tfile)
+    meta["status"] = nxt
+    tfile.write_text(dump_task_md(meta, body), encoding="utf-8")
+    return {
+        "ok": True,
+        "id": str(meta["id"]),
+        "previous_status": prev,
+        "status": nxt,
+        "message": f"Task {meta['id']} advanced: {prev} -> {nxt}",
+    }
+
+
+def load_conversations(task_dir: Path) -> dict:
+    """Load `conversations.json` from `task_dir` and return primary + collapsible history."""
+    cpath = task_dir / "conversations.json"
+    data = {"primary_id": "", "items": []}
+    if cpath.is_file():
+        try:
+            raw = json.loads(cpath.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                data["primary_id"] = str(raw.get("primary_id") or "")
+                items = raw.get("items")
+                if isinstance(items, list):
+                    data["items"] = [it for it in items if isinstance(it, dict) and it.get("id")]
+        except Exception:
+            pass
+    items = data["items"]
+    primary = next((it for it in items if it.get("id") == data["primary_id"]), None)
+    if primary is None and items:
+        primary = items[0]
+        data["primary_id"] = str(primary.get("id", ""))
+    history = [it for it in items if primary is None or it.get("id") != primary.get("id")]
+    return {"primary_id": data["primary_id"], "primary": primary, "history": history, "items": items}
+
+
+def _save_conversations(task_dir: Path, primary_id: str, items: list[dict]) -> dict:
+    """Persist `conversations.json` inside `task_dir` and return normalized conversation state."""
+    task_dir.mkdir(parents=True, exist_ok=True)
+    payload = {"primary_id": primary_id, "items": items}
+    (task_dir / "conversations.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return load_conversations(task_dir)
+
+
+def link_conversation(
+    task_dir: Path,
+    conv_id: str,
+    tool: str = "antigravity",
+    label: str = "",
+    stage: str = "",
+    make_primary: bool = True,
+) -> dict:
+    """Link an Antigravity or Claude conversation ID to a task (primary or history)."""
+    cid = conv_id.strip()
+    if not cid:
+        raise ValueError("Conversation ID must not be empty.")
+    tool_norm = tool.strip().lower() or "antigravity"
+    if tool_norm not in ("antigravity", "claude", "gemini", "other"):
+        raise ValueError(f"Unsupported tool '{tool_norm}'. Use antigravity, claude, gemini, or other.")
+    cur = load_conversations(task_dir)
+    now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    items = [it for it in cur["items"] if it.get("id") != cid]
+    entry = {
+        "id": cid,
+        "tool": tool_norm,
+        "label": label.strip() or f"{tool_norm.capitalize()} session",
+        "stage": stage.strip(),
+        "updated_at": now,
+    }
+    items.insert(0, entry)
+    primary_id = cid if (make_primary or not cur["primary_id"]) else cur["primary_id"]
+    return _save_conversations(task_dir, primary_id, items)
+
+
+def set_primary_conversation(task_dir: Path, conv_id: str) -> dict:
+    """Promote an already-linked conversation ID in `conversations.json` to primary."""
+    cid = conv_id.strip()
+    cur = load_conversations(task_dir)
+    if not any(it.get("id") == cid for it in cur["items"]):
+        raise ValueError(f"Conversation '{cid}' is not linked to this task.")
+    return _save_conversations(task_dir, cid, cur["items"])
+
+
+def git_summary(checkout_root: Path) -> dict:
+    """Return lightweight git HEAD, dirty count, status, diff stat, and recent commits."""
+    if not checkout_root.exists():
+        return {"head_sha": "", "head_subject": "", "dirty_count": 0, "status_short": "", "diff_stat": "", "recent_commits": ""}
+    head_res = _run(["git", "log", "-1", "--format=%h%x1f%s"], cwd=checkout_root)
+    head_sha, head_subject = "", ""
+    if head_res.returncode == 0 and "\x1f" in head_res.stdout:
+        head_sha, head_subject = head_res.stdout.strip().split("\x1f", 1)
+    st_res = _run(["git", "status", "--short"], cwd=checkout_root)
+    st_lines = [ln for ln in st_res.stdout.splitlines() if ln.strip()] if st_res.returncode == 0 else []
+    diff_res = _run(["git", "diff", "--stat"], cwd=checkout_root)
+    log_res = _run(["git", "log", "-n", "5", "--oneline"], cwd=checkout_root)
+    return {
+        "head_sha": head_sha,
+        "head_subject": head_subject,
+        "dirty_count": len(st_lines),
+        "status_short": "\n".join(st_lines[:25]),
+        "diff_stat": diff_res.stdout.strip()[:1200] if diff_res.returncode == 0 else "",
+        "recent_commits": log_res.stdout.strip() if log_res.returncode == 0 else "",
+    }
+
+
+def _is_ancestor(ref: str, target: str, cwd: Path) -> bool:
+    """Return True if git commit/ref `ref` is an ancestor of `target` in `cwd`."""
+    if not ref:
+        return False
+    res = _run(["git", "merge-base", "--is-ancestor", ref, target], cwd=cwd)
+    return res.returncode == 0
+
+
+def merge_status(meta: dict, main_root: Path = MAIN_ROOT) -> dict:
+    """Compute live PR and merge-destination status (Branch -> PR -> Beta v3-dev -> Public main)."""
+    branch = str(meta.get("branch", ""))
+    pr = meta.get("pr")
+    pr_url = str(meta.get("pr_url") or "")
+    status = str(meta.get("status", ""))
+    merged_sha = str(meta.get("merged_sha") or "")
+    recorded = [str(x) for x in (meta.get("merged_into") or []) if str(x)]
+
+    check_ref = merged_sha or branch
+    in_beta = ("v3-dev" in recorded) or (status in ("beta", "done")) or _is_ancestor(check_ref, "v3-dev", main_root)
+    in_public = ("main" in recorded) or (status == "done") or _is_ancestor(check_ref, "main", main_root)
+    merged_into = list(dict.fromkeys(recorded + (["v3-dev"] if in_beta else []) + (["main"] if in_public else [])))
+    return {
+        "branch": branch,
+        "pr": pr,
+        "pr_url": pr_url,
+        "merged_sha": merged_sha,
+        "in_beta": in_beta,
+        "in_public": in_public,
+        "merged_into": merged_into,
+    }
+
+
+def update_handoff(
+    task_dir: Path,
+    checkout_root: Path,
+    *,
+    meta: dict | None = None,
+    agent: str = "",
+    model: str = "",
+    state_note: str = "",
+    decisions_note: str = "",
+    next_note: str = "",
+    content: str | None = None,
+) -> Path:
+    """Overwrite optional `HANDOFF.md` sticky note (no append log) with compact current state."""
+    hpath = task_dir / "HANDOFF.md"
+    if content is not None:
+        hpath.write_text(content, encoding="utf-8")
+        return hpath
+
+    gs = git_summary(checkout_root)
+    now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    tid = (meta or {}).get("id", task_dir.name.split("-", 1)[0])
+    title = (meta or {}).get("title", task_dir.name)
+    stage = (meta or {}).get("status", "brainstorm")
+
+    hmeta = {"updated_at": now, "last_agent": "", "last_model": "", "last_commit": ""}
+    if hpath.is_file():
+        old_meta, _ = parse_task_md(hpath)
+        hmeta.update({k: v for k, v in old_meta.items() if k in hmeta})
+    hmeta["updated_at"] = now
+    if agent:
+        hmeta["last_agent"] = agent
+    if model:
+        hmeta["last_model"] = model
+    if gs["head_sha"]:
+        hmeta["last_commit"] = gs["head_sha"]
+
+    hbody = (
+        f"# Handoff (Optional Sticky Note) — Task {tid}: {title}\n\n"
+        f"- **Stage:** `{stage}` | **HEAD:** `{gs['head_sha'] or 'none'}` ({gs['dirty_count']} dirty)\n"
+        f"- **State:** {state_note or 'See PLAN.md and git status.'}\n"
+        f"- **Dead Ends / Gotchas:** {decisions_note or 'None.'}\n"
+        f"- **Next:** {next_note or 'Continue from PLAN.md.'}\n"
+    )
+    hpath.write_text(dump_task_md(hmeta, hbody), encoding="utf-8")
+    return hpath
+
+
+def build_resume_prompt(task_id: str, *, worker: bool = False) -> dict:
+    """Assemble a compact cold-boot resume prompt (or lean `--worker` execution brief for cheap/fast agents)."""
+    meta, tfile, checkout_root = find_task(task_id)
+    tid = str(meta["id"])
+    slug = str(meta["slug"])
+    tdir = tfile.parent
+    is_wt = WORKTREES_DIR in checkout_root.parents
+    gs = git_summary(checkout_root)
+    convs = load_conversations(tdir)
+    tier = str(meta.get("exec_tier") or "hydrogen")
+
+    handoff_text = (tdir / "HANDOFF.md").read_text(encoding="utf-8", errors="replace").strip() if (tdir / "HANDOFF.md").is_file() else ""
+    verify_path = tdir / "evidence" / "verify.json"
+    verify_line = "unverified"
+    if verify_path.is_file():
+        try:
+            v = json.loads(verify_path.read_text(encoding="utf-8"))
+            verify_line = f"ok={v.get('ok')} (sha={v.get('git_sha', '')[:7]})"
+        except Exception:
+            verify_line = "verify.json unreadable"
+
+    codemap_lines: list[str] = []
+    for rel in meta.get("owned_paths", [])[:8]:
+        p = checkout_root / rel
+        if p.is_file() and p.suffix in (".py", ".js", ".mjs"):
+            info = codemap.parse_python(p) if p.suffix == ".py" else codemap.parse_js(p)
+            secs = ", ".join(f"L{ln}:{sec.split('—')[0].strip()}" for ln, sec in info["sections"][:5])
+            codemap_lines.append(f"- `{rel}` ({info['lines']}L)" + (f" [{secs}]" if secs else ""))
+
+    stage = str(meta.get("status", ""))
+    if worker:
+        sections = [
+            f"# Worker Brief — Task {tid}: {meta.get('title', slug)} (Tier: {tier})",
+            f"- **Worktree:** `{checkout_root}` | **Branch:** `{meta.get('branch', '')}` | **Switch:** `?beta=1&feat={meta.get('switch', slug)}`",
+            f"- **Plan:** Read `tasks/{tid}-{slug}/PLAN.md` and implement strictly within `owned_paths`.",
+            f"- **Owned Paths:** {', '.join(meta.get('owned_paths', [])) or '(none)'}",
+        ]
+        if codemap_lines:
+            sections.append("## Target Symbols (read only needed line ranges)\n" + "\n".join(codemap_lines))
+        if handoff_text:
+            sections.append("## Sticky Note (`HANDOFF.md`)\n" + handoff_text[:1200])
+        sections.append(
+            f"## Rules & Finish\n"
+            f"1. Follow `AGENTS.md`. Do NOT edit files outside `owned_paths` or read unrelated monoliths.\n"
+            f"2. Iterate with targeted tests first; then run `python tools/task.py verify {tid}` once before reporting.\n"
+            f"3. Do NOT write a running handoff log. Report concise diff summary, test counts, and any risks."
+        )
+    else:
+        gate_note = (
+            f"STOP AT GATE: task is in `{stage}` — do NOT edit repo code or start a worktree until the user gives explicit go-ahead."
+            if stage in PRE_BUILD_GATES
+            else f"Active stage `{stage}` — edit strictly within `owned_paths` inside `{checkout_root}`."
+        )
+        sections = [
+            f"# Resume Task {tid}: {meta.get('title', slug)}",
+            f"- **Stage:** `{stage}` ({gate_note}) | **Exec Tier:** `{tier}`",
+            f"- **Checkout:** `{checkout_root}` ({'worktree' if is_wt else 'main repo'}) | **Branch:** `{meta.get('branch', '')}` | **Switch:** `?beta=1&feat={meta.get('switch', slug)}`",
+            f"- **Packet:** `tasks/{tid}-{slug}/` (`TASK.md`, `PLAN.md`)",
+            f"- **Owned Paths:** {', '.join(meta.get('owned_paths', [])) or '(none)'}",
+            f"- **Git:** HEAD `{gs['head_sha']}` {gs['head_subject']} | dirty: {gs['dirty_count']} | Verify: {verify_line}",
+        ]
+        if convs["primary"]:
+            p = convs["primary"]
+            sections.append(f"- **Primary Convo:** `{p['tool']}` `{p['id']}` ({p.get('label', '')})")
+        if handoff_text:
+            sections.append("\n## HANDOFF.md (Sticky Note)\n" + handoff_text[:1500])
+        if gs["status_short"]:
+            sections.append("\n## Working Tree (`git status --short`)\n```\n" + gs["status_short"] + "\n```")
+        if gs["recent_commits"]:
+            sections.append("\n## Recent Commits\n```\n" + gs["recent_commits"] + "\n```")
+        if codemap_lines:
+            sections.append("\n## Owned File Outlines\n" + "\n".join(codemap_lines))
+        sections.append(
+            f"\n## Standing Reminder\n"
+            f"1. Read `tasks/{tid}-{slug}/PLAN.md` (and `AGENTS.md`). Respect stage gates (`brainstorm -> plan -> ready -> in-progress`).\n"
+            f"2. `HANDOFF.md` is optional & overwrite-only — only write it if pausing mid-task with non-obvious dead ends."
+        )
+
+    prompt = "\n".join(sections).strip() + "\n"
+    return {
+        "ok": True,
+        "id": tid,
+        "stage": stage,
+        "exec_tier": tier,
+        "worker": worker,
+        "checkout_root": str(checkout_root),
+        "active_worktree": is_wt,
+        "prompt": prompt,
+        "conversations": convs,
+    }
+
+
+def cmd_diff(args: argparse.Namespace) -> int:
+    """Print a compact diff summary (`--stat` + bounded patch + verify status) for low-token code review."""
+    meta, tfile, checkout_root = find_task(args.id)
+    tid = str(meta["id"])
+    base = args.base
+    stat = _run(["git", "diff", "--stat", f"{base}...HEAD"], cwd=checkout_root)
+    wt_stat = _run(["git", "diff", "--stat"], cwd=checkout_root)
+    vpath = tfile.parent / "evidence" / "verify.json"
+    v_ok = "unverified"
+    if vpath.is_file():
+        try:
+            v = json.loads(vpath.read_text(encoding="utf-8"))
+            v_ok = f"ok={v.get('ok')} sha={str(v.get('git_sha', ''))[:7]}"
+        except Exception:
+            v_ok = "unreadable"
+    print(f"=== REVIEW DIFF: Task {tid} ({meta.get('slug')}) | Verify: {v_ok} ===")
+    if stat.stdout.strip():
+        print("-- Committed vs " + base + " --")
+        print(stat.stdout.strip())
+    if wt_stat.stdout.strip():
+        print("-- Uncommitted --")
+        print(wt_stat.stdout.strip())
+    if not args.stat_only:
+        patch = _run(["git", "diff", f"{base}"], cwd=checkout_root)
+        lines = patch.stdout.splitlines()
+        limit = max(20, int(args.max_lines))
+        print("\n".join(lines[:limit]))
+        if len(lines) > limit:
+            print(f"\n... truncated ({len(lines) - limit} more lines; pass --max-lines to expand)")
+    return 0
+
+
+def cmd_approve(args: argparse.Namespace) -> int:
+    """Advance a task's human-approved stage gate (`brainstorm -> plan -> ready`)."""
+    res = approve_task_gate(args.id, target_status=args.to or None)
+    print(res.get("message") or res.get("error"))
+    return 0 if res.get("ok") else 1
+
+
+def cmd_link(args: argparse.Namespace) -> int:
+    """Link an Antigravity or Claude conversation ID to a task packet."""
+    meta, tfile, _ = find_task(args.id)
+    res = link_conversation(
+        tfile.parent,
+        args.conv,
+        tool=args.tool,
+        label=args.label,
+        stage=str(meta.get("status", "")),
+        make_primary=not args.secondary,
+    )
+    print(f"Linked {args.tool} conversation {args.conv} to task {meta['id']} (primary={res['primary_id']}, total={len(res['items'])})")
+    return 0
+
+
+def cmd_checkpoint(args: argparse.Namespace) -> int:
+    """Update `HANDOFF.md` with current commit, agent metadata, and checkpoint notes."""
+    meta, tfile, checkout_root = find_task(args.id)
+    hpath = update_handoff(
+        tfile.parent,
+        checkout_root,
+        meta=meta,
+        agent=args.agent,
+        model=args.model,
+        state_note=args.state,
+        decisions_note=args.decisions,
+        next_note=args.next,
+    )
+    print(f"Updated handoff: {hpath}")
+    return 0
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    """Print a compact model-agnostic cold-boot resume prompt (or `--worker` execution brief)."""
+    res = build_resume_prompt(args.id, worker=bool(getattr(args, "worker", False)))
+    if args.json:
+        print(json.dumps(res, indent=2))
+    else:
+        print(res["prompt"])
+    return 0
+
+
 # @sec: cli — Argument parser entry point
 def main(argv: list[str]) -> int:
     """CLI entry point for `tools/task.py`."""
@@ -858,7 +1245,40 @@ def main(argv: list[str]) -> int:
     p_new.add_argument("--switch", default="", help="Feature flag name (default: slug with underscores).")
     p_new.add_argument("--gpu", action="store_true", help="Mark task as requiring the local GPU lock.")
     p_new.add_argument("--problem", default="", help="Short problem/goal statement.")
+    p_new.add_argument("--status", default="", choices=("",) + VALID_STATUSES, help="Initial gate status (default: brainstorm, or plan with --quick).")
+    p_new.add_argument("--tier", default="", choices=("",) + VALID_EXEC_TIERS, help="Recommended execution model tier (flash|hydrogen|standard|pro).")
+    p_new.add_argument("--quick", action="store_true", help="Fast-track small task (starts at plan gate with exec_tier=flash).")
     p_new.add_argument("--local", action="store_true", help="Skip GitHub issue creation (offline/draft mode).")
+
+    p_approve = sub.add_parser("approve", help="Advance a task's stage gate (brainstorm -> plan -> ready).")
+    p_approve.add_argument("id")
+    p_approve.add_argument("--to", default="", choices=("",) + VALID_STATUSES, help="Explicit target gate status.")
+
+    p_link = sub.add_parser("link", help="Link an Antigravity or Claude conversation ID to a task.")
+    p_link.add_argument("id")
+    p_link.add_argument("--conv", required=True, help="Conversation or session ID.")
+    p_link.add_argument("--tool", default="antigravity", choices=("antigravity", "claude", "gemini", "other"))
+    p_link.add_argument("--label", default="", help="Short label (e.g. 'Brainstorm', 'Build').")
+    p_link.add_argument("--secondary", action="store_true", help="Add to history without replacing primary.")
+
+    p_ckpt = sub.add_parser("checkpoint", help="Update HANDOFF.md with current commit and checkpoint notes.")
+    p_ckpt.add_argument("id")
+    p_ckpt.add_argument("--agent", default="", help="Agent tool name (e.g. gemini, claude).")
+    p_ckpt.add_argument("--model", default="", help="Model name.")
+    p_ckpt.add_argument("--state", default="", help="Current state note.")
+    p_ckpt.add_argument("--decisions", default="", help="Decision or dead-end note.")
+    p_ckpt.add_argument("--next", default="", help="Next step note.")
+
+    p_resume = sub.add_parser("resume", help="Print a compact cold-boot resume prompt (or --worker brief).")
+    p_resume.add_argument("id")
+    p_resume.add_argument("--worker", action="store_true", help="Emit lean execution brief for a fast/cheap worker agent.")
+    p_resume.add_argument("--json", action="store_true", help="Output structured JSON instead of plain markdown.")
+
+    p_diff = sub.add_parser("diff", help="Print a compact diff summary + verify status for low-token review.")
+    p_diff.add_argument("id")
+    p_diff.add_argument("--base", default="v3-dev", help="Base git ref (default: v3-dev).")
+    p_diff.add_argument("--stat-only", action="store_true", help="Show only --stat summary.")
+    p_diff.add_argument("--max-lines", type=int, default=200, help="Max patch lines to print (default: 200).")
 
     p_start = sub.add_parser("start", help="Start a task in an isolated `_worktrees/wt_<id>-<slug>` worktree.")
     p_start.add_argument("id")
@@ -889,6 +1309,11 @@ def main(argv: list[str]) -> int:
         "sync": cmd_sync,
         "epic": cmd_epic,
         "new": cmd_new,
+        "approve": cmd_approve,
+        "link": cmd_link,
+        "checkpoint": cmd_checkpoint,
+        "resume": cmd_resume,
+        "diff": cmd_diff,
         "start": cmd_start,
         "verify": cmd_verify,
         "pr": cmd_pr,

@@ -14,8 +14,10 @@ import argparse
 import json
 import mimetypes
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -30,6 +32,7 @@ from tools import task as task_cli  # noqa: E402
 BETA_BASE_URL = "https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/"
 
 
+# @sec: helpers — Safe file readers, launcher detection, and command builders
 def _read_text_safe(path: Path, max_bytes: int = 120_000) -> str:
     """Read UTF-8 text file safely up to `max_bytes`, returning empty string if missing."""
     if not path.is_file():
@@ -50,8 +53,45 @@ def _list_dir_files(directory: Path) -> list[str]:
     )
 
 
+def detect_launchers() -> dict[str, str]:
+    """Detect locally installed agent CLIs and terminal launchers on PATH."""
+    return {
+        name: (shutil.which(name) or "")
+        for name in ("claude", "wt", "gemini", "agy")
+    }
+
+
+def build_claude_launch_cmd(
+    cwd: Path,
+    *,
+    prompt_file: Path | None = None,
+    session_id: str = "",
+    launchers: dict[str, str] | None = None,
+) -> list[str]:
+    """Build a terminal launch command for Claude Code in `cwd` (resume prompt or session ID)."""
+    bins = launchers if launchers is not None else detect_launchers()
+    claude_bin = bins.get("claude") or "claude"
+    if session_id:
+        inner = f"& '{claude_bin}' --resume '{session_id}'"
+    elif prompt_file is not None:
+        pf = str(prompt_file).replace("'", "''")
+        inner = f"$p = Get-Content -Raw -Encoding UTF8 '{pf}'; & '{claude_bin}' $p"
+    else:
+        inner = f"& '{claude_bin}'"
+
+    if sys.platform == "win32":
+        wt_bin = bins.get("wt")
+        if wt_bin:
+            return [wt_bin, "-d", str(cwd), "powershell", "-NoExit", "-Command", inner]
+        return ["powershell", "-NoExit", "-Command", f"Set-Location '{cwd}'; {inner}"]
+    if session_id:
+        return [claude_bin, "--resume", session_id]
+    return [claude_bin]
+
+
+# @sec: state — Build live DAG, stage gates, handoff, conversations, and git state
 def build_state() -> dict:
-    """Collect all tasks, active worktrees, DAG waves, plans, mockups, and verification evidence."""
+    """Collect all tasks, active worktrees, DAG waves, gates, handoffs, conversations, and evidence."""
     main_root = task_cli.MAIN_ROOT
     all_tasks = task_cli.load_all_tasks(main_root)
     wt_active = task_cli.active_worktree_tasks()
@@ -80,9 +120,19 @@ def build_state() -> dict:
             except Exception:
                 verify_data = None
 
+        handoff_path = tdir / "HANDOFF.md"
+        handoff_md = _read_text_safe(handoff_path)
+        handoff_meta: dict = {}
+        if handoff_path.is_file():
+            try:
+                handoff_meta, _ = task_cli.parse_task_md(handoff_path)
+            except Exception:
+                handoff_meta = {}
+
         if active_task_id is None and (is_wt or meta.get("status") == "in-progress"):
             active_task_id = tid
 
+        status_str = str(meta.get("status", ""))
         tasks_out[tid] = {
             **meta,
             "id": tid,
@@ -91,6 +141,14 @@ def build_state() -> dict:
             "task_dir": str(tdir),
             "task_md": _read_text_safe(tdir / "TASK.md"),
             "plan_md": _read_text_safe(tdir / "PLAN.md"),
+            "handoff_md": handoff_md,
+            "handoff_meta": handoff_meta,
+            "conversations": task_cli.load_conversations(tdir),
+            "merge_status": task_cli.merge_status(meta, main_root),
+            "exec_tier": str(meta.get("exec_tier") or "hydrogen"),
+            "git_summary": task_cli.git_summary(checkout_root) if is_wt else {},
+            "next_gate": task_cli.next_gate_status(status_str),
+            "is_pre_build_gate": status_str in task_cli.PRE_BUILD_GATES,
             "mockups": _list_dir_files(tdir / "mockups"),
             "evidence": _list_dir_files(tdir / "evidence"),
             "verify": verify_data,
@@ -103,34 +161,113 @@ def build_state() -> dict:
     return {
         "repo_root": str(main_root),
         "active_task_id": active_task_id,
+        "available_launchers": detect_launchers(),
         "waves": waves,
         "tasks": tasks_out,
     }
 
 
-def run_action(action: str, task_id: str) -> dict:
-    """Execute an allowlisted task action (`open_folder`, `start`, `verify`, `open_beta`)."""
+# @sec: actions — Safe allowlisted task mutations, gate approvals, and agent launchers
+def run_action(action_or_payload: str | dict, task_id: str = "") -> dict:
+    """Execute an allowlisted task action (gates, plan/handoff edits, conversations, resume, verify)."""
+    if isinstance(action_or_payload, dict):
+        payload = action_or_payload
+        action = str(payload.get("action", ""))
+        task_id = str(payload.get("task_id", ""))
+    else:
+        payload = {"action": action_or_payload, "task_id": task_id}
+        action = str(action_or_payload)
+
     state = build_state()
     info = state["tasks"].get(task_id)
     if not info:
         return {"ok": False, "error": f"Unknown task id: {task_id}"}
 
+    tdir = Path(info["task_dir"])
+    checkout_root = Path(info["worktree_path"]) if info.get("worktree_path") else task_cli.MAIN_ROOT
+
     if action == "open_folder":
-        target = Path(info["task_dir"])
-        if not target.exists():
-            return {"ok": False, "error": f"Directory does not exist: {target}"}
+        if not tdir.exists():
+            return {"ok": False, "error": f"Directory does not exist: {tdir}"}
         if sys.platform == "win32":
-            os.startfile(str(target))  # type: ignore[attr-defined]
+            os.startfile(str(tdir))  # type: ignore[attr-defined]
         elif sys.platform == "darwin":
-            subprocess.Popen(["open", str(target)])
+            subprocess.Popen(["open", str(tdir)])
         else:
-            subprocess.Popen(["xdg-open", str(target)])
-        return {"ok": True, "message": f"Opened {target}"}
+            subprocess.Popen(["xdg-open", str(tdir)])
+        return {"ok": True, "message": f"Opened {tdir}"}
 
     if action == "open_beta":
         url = info["beta_url"]
         webbrowser.open(url)
         return {"ok": True, "message": f"Opened {url}"}
+
+    if action == "approve_gate":
+        target = str(payload.get("to") or "").strip() or None
+        return task_cli.approve_task_gate(task_id, target_status=target)
+
+    if action == "save_plan":
+        content = str(payload.get("content", ""))
+        (tdir / "PLAN.md").write_text(content, encoding="utf-8")
+        return {"ok": True, "message": f"Saved PLAN.md ({len(content)} chars)"}
+
+    if action == "save_handoff":
+        content = str(payload.get("content", ""))
+        task_cli.update_handoff(tdir, checkout_root, content=content)
+        return {"ok": True, "message": f"Saved HANDOFF.md ({len(content)} chars)"}
+
+    if action == "snapshot_handoff":
+        gs = task_cli.git_summary(checkout_root)
+        note = f"Snapshot from Task Viewer: HEAD {gs['head_sha']} ({gs['dirty_count']} dirty file(s))"
+        task_cli.update_handoff(tdir, checkout_root, meta=info, state_note=note)
+        return {"ok": True, "message": note}
+
+    if action == "link_conversation":
+        conv_id = str(payload.get("conv_id", "")).strip()
+        tool = str(payload.get("tool", "antigravity")).strip() or "antigravity"
+        label = str(payload.get("label", "")).strip()
+        make_primary = bool(payload.get("make_primary", True))
+        try:
+            convs = task_cli.link_conversation(
+                tdir,
+                conv_id,
+                tool=tool,
+                label=label,
+                stage=str(info.get("status", "")),
+                make_primary=make_primary,
+            )
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "message": f"Linked {tool} conversation {conv_id}", "conversations": convs}
+
+    if action == "set_primary_conversation":
+        conv_id = str(payload.get("conv_id", "")).strip()
+        try:
+            convs = task_cli.set_primary_conversation(tdir, conv_id)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "message": f"Primary conversation set to {conv_id}", "conversations": convs}
+
+    if action == "resume_prompt":
+        return task_cli.build_resume_prompt(task_id, worker=bool(payload.get("worker", False)))
+
+    if action == "launch_claude":
+        launchers = detect_launchers()
+        if not launchers.get("claude"):
+            return {"ok": False, "error": "Claude Code CLI (`claude`) not found on PATH."}
+        session_id = str(payload.get("session_id", "")).strip()
+        prompt_file: Path | None = None
+        if not session_id:
+            res = task_cli.build_resume_prompt(task_id)
+            prompt_file = Path(tempfile.gettempdir()) / f"deathfog_resume_{task_id}.md"
+            prompt_file.write_text(res["prompt"], encoding="utf-8")
+        cmd = build_claude_launch_cmd(checkout_root, prompt_file=prompt_file, session_id=session_id, launchers=launchers)
+        subprocess.Popen(cmd, cwd=str(checkout_root))
+        return {
+            "ok": True,
+            "message": f"Launched Claude in {checkout_root}" + (f" (session {session_id})" if session_id else ""),
+            "cmd": cmd,
+        }
 
     if action == "start":
         res = subprocess.run(
@@ -178,6 +315,7 @@ def _resolve_task_file(task_id: str, kind: str, filename: str) -> Path | None:
     return candidate
 
 
+# @sec: http — Standalone HTTP server handler and CLI entry point
 class TaskViewerHandler(BaseHTTPRequestHandler):
     """HTTP request handler serving the Task Viewer UI, state API, files, and safe actions."""
 
@@ -241,7 +379,7 @@ class TaskViewerHandler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self._send_json({"ok": False, "error": "Invalid JSON"}, status=400)
             return
-        res = run_action(str(payload.get("action", "")), str(payload.get("task_id", "")))
+        res = run_action(payload)
         self._send_json(res, status=200 if res.get("ok") else 400)
 
 
@@ -252,14 +390,20 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--port", type=int, default=8135, help="Bind port (default: 8135).")
     parser.add_argument("--state-json", action="store_true", help="Print current state JSON and exit.")
     parser.add_argument("--action-json", default="", help="Run JSON action payload and exit.")
+    parser.add_argument("--action-stdin", action="store_true", help="Read JSON action payload from stdin and exit.")
     args = parser.parse_args(argv)
 
     if args.state_json:
         print(json.dumps(build_state()))
         return 0
+    if args.action_stdin:
+        raw = sys.stdin.read() or "{}"
+        payload = json.loads(raw)
+        print(json.dumps(run_action(payload)))
+        return 0
     if args.action_json:
         payload = json.loads(args.action_json)
-        print(json.dumps(run_action(str(payload.get("action", "")), str(payload.get("task_id", "")))))
+        print(json.dumps(run_action(payload)))
         return 0
 
     srv = ThreadingHTTPServer((args.host, args.port), TaskViewerHandler)
