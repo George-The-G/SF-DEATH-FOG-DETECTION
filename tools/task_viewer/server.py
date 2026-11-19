@@ -14,6 +14,7 @@ import argparse
 import json
 import mimetypes
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -30,6 +31,7 @@ sys.path.insert(0, str(ROOT))
 from tools import task as task_cli  # noqa: E402
 
 BETA_BASE_URL = "https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/"
+_CONV_ID_RE = re.compile(r"^[A-Za-z0-9_-]{4,128}$")
 
 
 # @sec: helpers — Safe file readers, launcher detection, and command builders
@@ -89,6 +91,93 @@ def build_claude_launch_cmd(
     return [claude_bin]
 
 
+def _validate_conv_id(conv_id: str) -> str | None:
+    """Validate an Antigravity/Claude conversation ID against safe path-segment characters."""
+    s = str(conv_id or "").strip()
+    return s if _CONV_ID_RE.match(s) else None
+
+
+def _open_os_folder(directory: Path) -> None:
+    """Open `directory` in the host OS file explorer."""
+    if sys.platform == "win32":
+        os.startfile(str(directory))  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(directory)])
+    else:
+        subprocess.Popen(["xdg-open", str(directory)])
+
+
+def _load_convo_preview(conv_id: str, *, brain_root: Path | None = None) -> dict:
+    """Read local Antigravity brain artifacts and recent transcript turns with zero LLM tokens."""
+    valid_id = _validate_conv_id(conv_id)
+    if not valid_id:
+        return {"ok": False, "error": f"Invalid conversation ID: {conv_id}"}
+
+    root_dir = (brain_root if brain_root is not None else (Path.home() / ".gemini" / "antigravity" / "brain")).resolve()
+    brain_dir = (root_dir / valid_id).resolve()
+    if root_dir not in brain_dir.parents:
+        return {"ok": False, "error": f"Invalid conversation path: {conv_id}"}
+
+    if not brain_dir.is_dir():
+        return {
+            "ok": True,
+            "conv_id": valid_id,
+            "exists": False,
+            "brain_dir": str(brain_dir),
+            "artifacts": [],
+            "recent_turns": [],
+        }
+
+    artifacts = []
+    for p in sorted(brain_dir.iterdir()):
+        if p.is_file() and p.suffix.lower() == ".md":
+            artifacts.append({
+                "name": p.name,
+                "size": p.stat().st_size,
+                "content": _read_text_safe(p, max_bytes=16_384),
+            })
+
+    recent_turns = []
+    transcript = brain_dir / ".system_generated" / "logs" / "transcript.jsonl"
+    if transcript.is_file():
+        try:
+            lines = transcript.read_text(encoding="utf-8", errors="replace").splitlines()[-80:]
+            for ln in lines:
+                if not ln.strip():
+                    continue
+                try:
+                    obj = json.loads(ln)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                content = str(obj.get("content") or "").strip()
+                if not content:
+                    continue
+                t_type = str(obj.get("type") or "")
+                t_src = str(obj.get("source") or "")
+                if t_type not in ("USER_INPUT", "PLANNER_RESPONSE") and t_src not in ("USER_EXPLICIT", "MODEL"):
+                    continue
+                is_user = "USER" in t_type or "USER" in t_src
+                recent_turns.append({
+                    "role": "User" if is_user else "Assistant",
+                    "timestamp": str(obj.get("created_at") or ""),
+                    "snippet": content[:240],
+                })
+            recent_turns = recent_turns[-8:]
+        except OSError:
+            recent_turns = []
+
+    return {
+        "ok": True,
+        "conv_id": valid_id,
+        "exists": True,
+        "brain_dir": str(brain_dir),
+        "artifacts": artifacts,
+        "recent_turns": recent_turns,
+    }
+
+
 # @sec: state — Build live DAG, stage gates, handoff, conversations, and git state
 def build_state() -> dict:
     """Collect all tasks, active worktrees, DAG waves, gates, handoffs, conversations, and evidence."""
@@ -133,6 +222,7 @@ def build_state() -> dict:
             active_task_id = tid
 
         status_str = str(meta.get("status", ""))
+        plan_readiness = task_cli.check_plan_readiness(tdir, meta)
         tasks_out[tid] = {
             **meta,
             "id": tid,
@@ -149,6 +239,12 @@ def build_state() -> dict:
             "git_summary": task_cli.git_summary(checkout_root) if is_wt else {},
             "next_gate": task_cli.next_gate_status(status_str),
             "is_pre_build_gate": status_str in task_cli.PRE_BUILD_GATES,
+            "plan_readiness": plan_readiness,
+            "plan_approved": plan_readiness["plan_approved"],
+            "plan_drifted": plan_readiness["plan_drifted"],
+            "plan_approved_at": plan_readiness["plan_approved_at"],
+            "plan_approved_by": plan_readiness["plan_approved_by"],
+            "plan_approved_sha": plan_readiness["plan_approved_sha"],
             "mockups": _list_dir_files(tdir / "mockups"),
             "evidence": _list_dir_files(tdir / "evidence"),
             "verify": verify_data,
@@ -182,6 +278,19 @@ def run_action(action_or_payload: str | dict, task_id: str = "") -> dict:
     if action == "sync_main":
         return task_cli.sync_shared_to_main(push=bool(payload.get("push", True)))
 
+    if action == "preview_conversation":
+        return _load_convo_preview(str(payload.get("conv_id", "")))
+
+    if action == "open_convo_folder":
+        valid_id = _validate_conv_id(str(payload.get("conv_id", "")))
+        if not valid_id:
+            return {"ok": False, "error": "Invalid conversation ID."}
+        brain_dir = Path.home() / ".gemini" / "antigravity" / "brain" / valid_id
+        if not brain_dir.is_dir():
+            return {"ok": False, "error": f"Brain folder not found: {brain_dir}"}
+        _open_os_folder(brain_dir)
+        return {"ok": True, "message": f"Opened {brain_dir}"}
+
     state = build_state()
     info = state["tasks"].get(task_id)
     if not info:
@@ -193,12 +302,7 @@ def run_action(action_or_payload: str | dict, task_id: str = "") -> dict:
     if action == "open_folder":
         if not tdir.exists():
             return {"ok": False, "error": f"Directory does not exist: {tdir}"}
-        if sys.platform == "win32":
-            os.startfile(str(tdir))  # type: ignore[attr-defined]
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", str(tdir)])
-        else:
-            subprocess.Popen(["xdg-open", str(tdir)])
+        _open_os_folder(tdir)
         return {"ok": True, "message": f"Opened {tdir}"}
 
     if action == "open_beta":
@@ -208,7 +312,23 @@ def run_action(action_or_payload: str | dict, task_id: str = "") -> dict:
 
     if action == "approve_gate":
         target = str(payload.get("to") or "").strip() or None
-        return task_cli.approve_task_gate(task_id, target_status=target)
+        return task_cli.approve_task_gate(
+            task_id,
+            target_status=target,
+            approve_plan=bool(payload.get("approve_plan", False)),
+            approved_by="human-ui",
+        )
+
+    if action == "approve_plan":
+        return task_cli.approve_task_gate(
+            task_id,
+            target_status="ready",
+            approve_plan=True,
+            approved_by="human-ui",
+        )
+
+    if action == "reopen_plan":
+        return task_cli.approve_task_gate(task_id, target_status="plan")
 
     if action == "save_plan":
         content = str(payload.get("content", ""))

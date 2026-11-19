@@ -8,9 +8,9 @@
 <style>
   :root {
     --bg: #0f131a;
-    --panel: #161b24;
-    --panel2: #1c2330;
-    --border: #273142;
+    --panel: #151b24;
+    --panel2: #1b2230;
+    --border: #263142;
     --text: #e6edf7;
     --muted: #8b9bb4;
     --accent: #4ea1ff;
@@ -29,199 +29,288 @@
     font-size: 13px;
     line-height: 1.45;
   }
-  header {
+  header.app-hdr {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    gap: 8px;
+    height: 38px;
+    padding: 0 12px;
     background: var(--panel);
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
-    z-index: 10;
+    z-index: 30;
   }
-  header h1 { font-size: 14px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+  header.app-hdr h1 { font-size: 13.5px; margin: 0; font-weight: 600; white-space: nowrap; }
+  .hdr-right { display: flex; align-items: center; gap: 6px; }
   .pill {
     display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 600;
     background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+    white-space: nowrap;
   }
   .pill.brainstorm { color: var(--cyan); border-color: #1f5573; }
   .pill.plan { color: var(--purple); border-color: #4f3d80; }
   .pill.ready { color: var(--accent); border-color: #264873; }
-  .pill.in-progress { color: var(--amber); border-color: #6b5218; }
+  .pill.in-progress { color: var(--amber); border-color: #6b5218; background: #261e0f; }
   .pill.review { color: var(--purple); border-color: #4f3d80; }
-  .pill.beta, .pill.done { color: var(--green); border-color: #1f5c3a; }
-  .pill.gpu { color: #ff8a65; border-color: #6b3524; }
-  .pill.wt { color: var(--green); border-color: #1f5c3a; }
-  .pill.convo { color: var(--cyan); border-color: #1f5573; }
-  .pill.pr-link { color: var(--accent); border-color: #264873; text-decoration: none; }
-  .pill.pr-link:hover { border-color: var(--text); }
-  .merge-bar {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-    padding: 7px 10px; margin-bottom: 10px; font-size: 11.5px;
+  .pill.beta, .pill.done, .pill.ok { color: var(--green); border-color: #1f5c3a; background: #12241b; }
+  .pill.warn { color: var(--amber); border-color: #6b5218; background: #261e0f; }
+  .pill.info { color: var(--cyan); border-color: #1f5573; }
+
+  /* Dismissible Top Toast */
+  .toast {
+    display: none; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 6px 12px; background: #132236; border-bottom: 1px solid #264873;
+    font-size: 12px; color: var(--text); position: sticky; top: 38px; z-index: 28;
   }
-  .merge-bar .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 700; margin-right: 4px; }
-  .layout {
+  .toast.show { display: flex; }
+  .toast.err { background: #2b1418; border-bottom-color: #6b2429; }
+  .toast-msg { flex: 1; white-space: pre-wrap; word-break: break-word; max-height: 110px; overflow-y: auto; }
+  .toast button.toast-x { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 15px; padding: 0 4px; }
+
+  /* Narrow 1-line Task Switcher */
+  .switcher-bar {
+    display: none; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 12px; background: var(--panel2); border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none;
+  }
+
+  .app-layout {
     display: grid;
-    grid-template-columns: 270px 1fr;
-    min-height: calc(100vh - 44px);
+    grid-template-columns: 245px 1fr;
+    min-height: calc(100vh - 38px);
+    position: relative;
   }
-  @media (max-width: 720px) {
-    .layout { grid-template-columns: 1fr; }
-    aside { border-right: none; border-bottom: 1px solid var(--border); max-height: 240px; }
-  }
-  aside {
+  aside.sidebar {
     background: var(--panel);
     border-right: 1px solid var(--border);
     padding: 10px;
     overflow-y: auto;
   }
+  @media (max-width: 680px) {
+    .switcher-bar { display: flex; }
+    .app-layout { grid-template-columns: 1fr; }
+    aside.sidebar {
+      display: none; position: fixed; top: 72px; left: 0; right: 0; bottom: 0;
+      z-index: 25; border-right: none; overflow-y: auto;
+    }
+    aside.sidebar.open { display: block; }
+  }
+
   .wave-hdr {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
-    color: var(--muted); margin: 10px 4px 6px; font-weight: 700;
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--muted); margin: 8px 4px 6px; font-weight: 700;
   }
   .wave-hdr:first-child { margin-top: 2px; }
   .task-card {
-    padding: 8px 10px;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    background: var(--panel2);
-    margin-bottom: 6px;
-    cursor: pointer;
+    padding: 7px 9px; border-radius: 7px; border: 1px solid transparent;
+    background: var(--panel2); margin-bottom: 6px; cursor: pointer;
     transition: border-color .12s, background .12s;
   }
   .task-card:hover { border-color: var(--border); }
-  .task-card.active { border-color: var(--accent); background: #1a2639; }
-  .task-card .row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-  .task-card .slug { font-weight: 600; font-size: 12.5px; color: var(--text); margin-top: 3px; }
-  .task-card .meta { font-size: 11px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  main { padding: 14px 16px; overflow-y: auto; }
-  .title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .title-row h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .stepper {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-    padding: 8px 10px; margin-bottom: 10px;
+  .task-card.active { border-color: var(--accent); background: #19263a; }
+  .task-card .r1 { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; font-weight: 600; }
+  .task-card .r1-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-card .r2 { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; margin-right: 4px; }
+
+  main { padding: 12px 14px; min-width: 0; overflow-y: auto; }
+  .title-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .title-bar h2 { margin: 0; font-size: 15px; font-weight: 600; min-width: 0; }
+
+  /* Unified 7-Node Lifecycle Sequence */
+  .seq {
+    display: flex; align-items: center; gap: 0; margin-bottom: 10px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--border);
   }
-  .step {
-    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
-    color: var(--muted); border: 1px solid var(--border); background: var(--panel2);
+  .seq-node {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 3px 7px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    border: 1px solid var(--border); color: var(--muted); background: transparent;
+    white-space: nowrap; text-decoration: none;
   }
-  .step.done { color: var(--green); border-color: #1f5c3a; }
-  .step.current { color: var(--text); border-color: var(--accent); background: #1a2c47; }
-  .step-sep { color: var(--muted); font-size: 11px; }
-  .actions {
-    display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 10px;
+  .seq-node.done { color: var(--green); border-color: #1f5c3a; background: #12241b; }
+  .seq-node.current { color: var(--text); border-color: var(--accent); background: #1a2c47; border-width: 1.5px; }
+  .seq-node.locked { color: var(--amber); border-color: #8a661a; background: #261e0f; border-width: 1.5px; }
+  .seq-node.clickable { cursor: pointer; }
+  .seq-node.clickable:hover { border-color: var(--text); }
+  .seq-line { flex: 1; height: 1px; background: var(--border); min-width: 4px; }
+  .seq-line.done { background: #266b45; }
+  .lbl-short { display: none; }
+  @media (max-width: 560px) {
+    .seq-node { padding: 2px 5px; font-size: 10px; }
+    .lbl-full { display: none; }
+    .lbl-short { display: inline; }
   }
-  button, a.btn {
+
+  /* Formal Plan Approval Gate Banner */
+  .gate-card {
+    background: var(--panel); border: 1px solid #6b5218; border-left: 3px solid var(--amber);
+    border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;
+  }
+  .gate-card.drift { border-color: #8c2d2d; border-left-color: var(--red); }
+  .gate-hdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .gate-title { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; color: var(--amber); }
+  .gate-card.drift .gate-title { color: var(--red); }
+  .checklist { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; margin: 6px 0 8px; }
+  .chk.ok { color: var(--green); }
+  .chk.pending { color: var(--muted); }
+  .gate-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+  /* Buttons & Dropdown Menus */
+  button.btn, a.btn {
     display: inline-flex; align-items: center; gap: 5px;
     background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 6px; padding: 6px 11px; font-size: 12px; font-weight: 500;
-    cursor: pointer; text-decoration: none;
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 500;
+    cursor: pointer; text-decoration: none; white-space: nowrap;
   }
-  button:hover, a.btn:hover { border-color: var(--accent); }
-  button.primary, a.btn.primary { background: #1d4e89; border-color: #2f6db8; }
-  button.primary:hover, a.btn.primary:hover { background: #255ea3; }
-  button.gate { background: #1b4d3e; border-color: #2e7d5b; }
-  button.gate:hover { background: #22634f; }
-  button:disabled { opacity: .45; cursor: not-allowed; }
-  .convo-box {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-    padding: 10px 12px; margin-bottom: 12px;
+  button.btn:hover, a.btn:hover { border-color: var(--accent); }
+  button.btn.primary, a.btn.primary { background: #1d4e89; border-color: #2f6db8; }
+  button.btn.primary:hover, a.btn.primary:hover { background: #255ea3; }
+  button.btn.gate { background: #1b4d3e; border-color: #2e7d5b; }
+  button.btn.gate:hover { background: #22634f; }
+  button.btn:disabled { opacity: .45; cursor: not-allowed; }
+  button.btn.ghost { background: transparent; padding: 4px 7px; }
+
+  .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; position: relative; }
+  .menu-wrap { position: relative; display: inline-block; }
+  .menu-pop {
+    display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 35;
+    min-width: 215px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.55);
   }
-  .convo-row {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: space-between;
+  .menu-pop.right { left: auto; right: 0; }
+  .menu-pop.open { display: block; }
+  .menu-pop button {
+    display: flex; width: 100%; text-align: left; background: transparent; border: none;
+    color: var(--text); padding: 6px 9px; border-radius: 5px; font-size: 12px; cursor: pointer;
   }
-  .convo-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; font-weight: 700; }
-  details.convo-history { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+  .menu-pop button:hover { background: var(--panel2); }
+
+  /* Consolidated Context & Convo Strip */
+  .context-strip {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 7px 0; margin-bottom: 8px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; color: var(--muted); }
+  .details-panel {
+    display: none; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 11px; margin-bottom: 10px; font-size: 11.5px;
+  }
+  .details-panel.open { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+  .details-panel .k { font-size: 10px; text-transform: uppercase; color: var(--muted); }
+  .details-panel .v { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; word-break: break-all; }
+
+  details.convo-history { margin-bottom: 10px; }
   details.convo-history summary { cursor: pointer; font-size: 11.5px; color: var(--muted); user-select: none; }
   .convo-item {
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
     gap: 8px; padding: 6px 8px; margin-top: 6px; border-radius: 6px;
     background: var(--panel2); border: 1px solid var(--border); font-size: 11.5px;
   }
-  .link-form {
-    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center;
-  }
+  .link-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
   .link-form input, .link-form select {
     background: #0b0e14; color: var(--text); border: 1px solid var(--border);
     border-radius: 5px; padding: 5px 8px; font-size: 11.5px;
   }
-  .kv {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 8px; background: var(--panel); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;
-  }
-  .kv .k { font-size: 10.5px; text-transform: uppercase; color: var(--muted); }
-  .kv .v { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px; word-break: break-all; }
-  .kv a { color: var(--accent); text-decoration: none; }
-  .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
-  .tab {
-    padding: 7px 12px; cursor: pointer; color: var(--muted); font-weight: 500;
-    border-bottom: 2px solid transparent; font-size: 12.5px;
-  }
-  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  /* Tabs & Doc */
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 10px; overflow-x: auto; }
+  .tab { padding: 6px 10px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; font-size: 12px; white-space: nowrap; }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab.dim { opacity: .55; }
   .doc-toolbar { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-bottom: 8px; }
   pre.doc {
     background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-    padding: 12px; white-space: pre-wrap; word-break: break-word;
-    font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px;
-    margin: 0; max-height: 58vh; overflow: auto;
+    padding: 11px; margin: 0; white-space: pre-wrap; word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px; color: #d5e0f0;
+    max-height: 58vh; overflow: auto;
   }
   textarea.editor {
-    width: 100%; min-height: 360px; max-height: 62vh;
+    width: 100%; min-height: 340px; max-height: 60vh;
     background: #0b0e14; color: var(--text); border: 1px solid var(--accent);
-    border-radius: 8px; padding: 12px;
+    border-radius: 8px; padding: 11px;
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px;
     resize: vertical;
   }
-  .log-box {
-    background: #0b0e14; border: 1px solid var(--border); border-radius: 8px;
-    padding: 10px 12px; margin-bottom: 12px; font-family: ui-monospace, Consolas, monospace;
-    font-size: 11.5px; white-space: pre-wrap; max-height: 180px; overflow: auto;
-    display: none;
-  }
-  .log-box.show { display: block; }
-  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-top: 10px; }
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
   .shots img { width: 100%; border-radius: 8px; border: 1px solid var(--border); }
   iframe.mockup { width: 100%; height: 480px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
   .empty { color: var(--muted); padding: 18px; text-align: center; background: var(--panel); border: 1px dashed var(--border); border-radius: 8px; }
+
+  /* Zero-Token Inline Convo Preview Modal */
+  .modal-bg {
+    display: none; position: fixed; inset: 0; background: rgba(5,8,13,.75);
+    z-index: 60; align-items: center; justify-content: center; padding: 14px;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    width: 100%; max-width: 580px; max-height: 84vh; overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.6);
+  }
+  .modal-hdr { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .turn { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; margin-bottom: 6px; font-size: 12px; }
+  .artifact-box { background: #0b0e14; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Death Fog — Task Viewer</h1>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+<header class="app-hdr">
+  <h1>Death Fog Tasks</h1>
+  <div class="hdr-right">
     <span id="parity-badge"></span>
     <span class="pill" id="sync-status">Loading...</span>
-    <button onclick="refresh(true)">Refresh</button>
+    <button class="btn ghost" onclick="refresh(true)" title="Refresh now">↻</button>
   </div>
 </header>
-<div class="layout">
-  <aside id="sidebar"></aside>
-  <main id="detail"><div class="empty">Select a task to inspect its stage gate, plan, handoff, mockups, and evidence.</div></main>
+
+<div class="toast" id="toast">
+  <span class="toast-msg" id="toast-msg"></span>
+  <button class="toast-x" onclick="hideToast()" title="Dismiss">×</button>
 </div>
+
+<div class="switcher-bar" id="switcher-bar" onclick="toggleDrawer()">
+  <div id="switcher-label"><span style="color:var(--muted);">▾</span> Select task</div>
+  <span class="mono" id="switcher-count"></span>
+</div>
+
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main id="detail"><div class="empty">Select a task to inspect its stage gate, plan, mockups, and evidence.</div></main>
+</div>
+
+<!-- Zero-Token Inline Convo Preview Modal -->
+<div class="modal-bg" id="convo-modal" onclick="if(event.target===this) closeConvoModal()">
+  <div class="modal" id="convo-modal-body"></div>
+</div>
+
 <script>
-const STAGE_ORDER = ['brainstorm', 'plan', 'ready', 'in-progress', 'review', 'beta'];
 const STAGE_LABELS = {
   backlog: 'Backlog',
-  brainstorm: 'Brainstorm',
+  brainstorm: 'Scope',
   plan: 'Plan',
   ready: 'Approved',
   'in-progress': 'Build',
   review: 'Review',
   beta: 'Beta',
-  done: 'Done',
+  done: 'Main',
 };
 
 let STATE = null;
+let LAST_STATE_JSON = '';
 let SELECTED = null;
 let TAB = 'plan';
 let LAST_ACTIVE_WT = null;
 let EDITING = null; // 'plan' | 'handoff' | null
-let LAST_LOG = '';
+let REVIEWED_CHK = false;
+let DETAILS_OPEN = false;
+let CONVO_HIST_OPEN = false;
+let MODAL_OPEN = false;
+let MOCKUP_IFRAME_NODE = null;
+let MOCKUP_IFRAME_SRC = '';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -240,48 +329,64 @@ function hasSidecarChat() {
   return Boolean(sc && sc.agent && typeof sc.agent.sendMessage === 'function');
 }
 
+function showToast(msg, isErr = false) {
+  const el = document.getElementById('toast');
+  const m = document.getElementById('toast-msg');
+  if (!el || !m) return;
+  m.textContent = msg;
+  el.classList.toggle('err', Boolean(isErr));
+  el.classList.add('show');
+}
+
+function hideToast() {
+  document.getElementById('toast')?.classList.remove('show');
+}
+
+function toggleDrawer(force) {
+  const sb = document.getElementById('sidebar');
+  if (!sb) return;
+  sb.classList.toggle('open', force !== undefined ? force : !sb.classList.contains('open'));
+}
+
+function toggleMenu(id, ev) {
+  if (ev) ev.stopPropagation();
+  document.querySelectorAll('.menu-pop').forEach(m => { if (m.id !== id) m.classList.remove('open'); });
+  document.getElementById(id)?.classList.toggle('open');
+}
+
+document.addEventListener('click', (ev) => {
+  if (!ev.target.closest('.menu-wrap')) {
+    document.querySelectorAll('.menu-pop.open').forEach(m => m.classList.remove('open'));
+  }
+});
+
 function renderParityBadge() {
   const el = document.getElementById('parity-badge');
   if (!el || !STATE || !STATE.main_parity) return;
   const mp = STATE.main_parity;
-  if (!mp.ok) {
-    el.innerHTML = '';
-    return;
-  }
+  if (!mp.ok) { el.innerHTML = ''; return; }
   if (mp.in_sync) {
-    el.innerHTML = '<span class="pill beta" title="Shared agent/tooling files match origin/main">main ↔ beta ✓</span>';
+    el.innerHTML = '<span class="pill ok" title="Shared agent/tooling files match origin/main">main↔beta ✓</span>';
   } else {
     const list = (mp.drifted || []).join(', ');
-    el.innerHTML = `<span class="pill in-progress" title="Drifted shared files: ${esc(list)}">main drift (${mp.drifted.length})</span> <button class="gate" style="padding:3px 8px;font-size:11px;" onclick="runSyncMain()" title="Sync shared agent/tooling files to origin/main with isolated tests">Sync → main</button>`;
+    el.innerHTML = `<span class="pill warn" title="Drifted shared files: ${esc(list)}">main drift (${mp.drifted.length})</span> <button class="btn gate" style="padding:2px 7px;font-size:11px;" onclick="runSyncMain()">Sync → main</button>`;
   }
 }
 
 async function runSyncMain() {
-  showLog('Syncing shared agent/tooling files from v3-dev to origin/main (with isolated tests)...');
+  showToast('Syncing shared agent/tooling files from v3-dev to origin/main (with isolated tests)...');
   try {
     const res = await postAction({ action: 'sync_main', push: true });
-    showLog((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.error || JSON.stringify(res)));
+    showToast((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.error || JSON.stringify(res)), !res.ok);
     await refresh(true);
   } catch (e) {
-    showLog('Error: ' + e.message);
-  }
-}
-
-function showLog(msg) {
-  LAST_LOG = msg;
-  const log = document.getElementById('action-log');
-  if (log) {
-    log.classList.add('show');
-    log.textContent = msg;
+    showToast('Error: ' + e.message, true);
   }
 }
 
 async function copyText(text) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch (_) {}
+    try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
   }
   const ta = document.createElement('textarea');
   ta.value = text;
@@ -295,6 +400,16 @@ async function copyText(text) {
   return ok;
 }
 
+async function copyWithBtnFeedback(btn, text, label = 'Copied ✓') {
+  const ok = await copyText(text);
+  if (btn) {
+    const orig = btn.textContent;
+    btn.textContent = ok ? label : 'Copy failed';
+    setTimeout(() => { btn.textContent = orig; }, 1400);
+  }
+  if (!ok) showToast('Clipboard unavailable — value: ' + text, true);
+}
+
 async function postAction(payload) {
   const r = await fetch('/api/action', {
     method: 'POST',
@@ -304,28 +419,56 @@ async function postAction(payload) {
   return await r.json();
 }
 
+function isUserInteracting() {
+  if (EDITING || MODAL_OPEN || REVIEWED_CHK) return true;
+  if (document.querySelector('.menu-pop.open')) return true;
+  const active = document.activeElement;
+  if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) return true;
+  return false;
+}
+
 async function refresh(manual = false) {
-  // Pause DOM re-render while editing markdown or typing in link inputs
-  if (!manual && (EDITING || (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)))) {
-    return;
-  }
+  if (!manual && isUserInteracting()) return;
   try {
     const r = await fetch('/api/state', { cache: 'no-store' });
-    STATE = await r.json();
+    const rawText = await r.text();
+    if (!manual && rawText === LAST_STATE_JSON) {
+      return;
+    }
+    LAST_STATE_JSON = rawText;
+    STATE = JSON.parse(rawText);
+
     if (!SELECTED || (STATE.active_task_id && STATE.active_task_id !== LAST_ACTIVE_WT && STATE.tasks[STATE.active_task_id]?.active_worktree)) {
       SELECTED = STATE.active_task_id;
       LAST_ACTIVE_WT = STATE.active_task_id;
     }
     if (SELECTED && !STATE.tasks[SELECTED]) SELECTED = STATE.active_task_id;
-    const modeTag = hasSidecarChat() ? 'antigravity' : 'live';
-    document.getElementById('sync-status').textContent = `${Object.keys(STATE.tasks).length} tasks · ${modeTag}`;
+    const modeTag = hasSidecarChat() ? 'ag' : 'live';
+    const count = Object.keys(STATE.tasks).length;
+    document.getElementById('sync-status').textContent = `${count} · ${modeTag}`;
     renderParityBadge();
+    renderSwitcher();
     renderSidebar();
     renderDetail();
   } catch (e) {
     document.getElementById('sync-status').textContent = 'Offline';
     if (manual) console.error(e);
   }
+}
+
+function renderSwitcher() {
+  const lbl = document.getElementById('switcher-label');
+  const cnt = document.getElementById('switcher-count');
+  if (!lbl || !STATE) return;
+  const total = Object.keys(STATE.tasks || {}).length;
+  if (cnt) cnt.textContent = `${total} tasks`;
+  const t = SELECTED ? STATE.tasks[SELECTED] : null;
+  if (!t) {
+    lbl.innerHTML = '<span style="color:var(--muted);">▾</span> Select task';
+    return;
+  }
+  const stLbl = STAGE_LABELS[t.status] || t.status;
+  lbl.innerHTML = `<span style="color:var(--muted);margin-right:4px;">▾</span><strong>#${esc(t.id)}</strong> · ${esc(t.slug)} <span class="pill ${esc(t.status)}" style="margin-left:4px;">${esc(stLbl)}</span>`;
 }
 
 function renderSidebar() {
@@ -342,7 +485,7 @@ function renderSidebar() {
   });
   const done = Object.keys(STATE.tasks).filter(tid => !seen.has(tid));
   if (done.length) {
-    html += '<div class="wave-hdr">Beta / Done</div>';
+    html += '<div class="wave-hdr">Beta / Main</div>';
     done.forEach(tid => { html += cardHtml(STATE.tasks[tid]); });
   }
   el.innerHTML = html;
@@ -351,28 +494,32 @@ function renderSidebar() {
 function cardHtml(t) {
   if (!t) return '';
   const active = t.id === SELECTED ? ' active' : '';
-  const wt = t.active_worktree ? '<span class="pill wt">WT</span>' : '';
-  const gpu = t.gpu_required ? '<span class="pill gpu">GPU</span>' : '';
-  const convo = t.conversations?.primary ? '<span class="pill convo">Convo</span>' : '';
   const ms = t.merge_status || {};
-  const mergedTag = ms.in_public ? '<span class="pill beta">Main</span>' : (ms.in_beta ? '<span class="pill beta">Beta</span>' : '');
-  const pr = t.pr_url
-    ? `<a class="pill pr-link" href="${esc(t.pr_url)}" target="_blank" onclick="event.stopPropagation()">PR #${esc(t.pr)} ↗</a>`
-    : (t.pr ? `<span class="pill">PR #${esc(t.pr)}</span>` : '');
+  let badge = `<span class="pill ${esc(t.status)}">${esc(STAGE_LABELS[t.status] || t.status)}</span>`;
+  if (t.active_worktree) badge = '<span class="pill ok">WT</span>';
+  else if (ms.in_public) badge = '<span class="pill ok">Main</span>';
+  else if (ms.in_beta) badge = '<span class="pill ok">Beta</span>';
+
+  const dotColor = t.active_worktree
+    ? 'var(--amber)'
+    : (ms.in_public || ms.in_beta ? 'var(--green)' : (t.status === 'plan' ? 'var(--purple)' : 'var(--cyan)'));
+
   return `<div class="task-card${active}" onclick="selectTask('${esc(t.id)}')">
-    <div class="row">
-      <span class="pill ${esc(t.status)}">#${esc(t.id)} · ${esc(STAGE_LABELS[t.status] || t.status)}</span>
-      <span style="display:flex;gap:4px;">${wt}${convo}${mergedTag}${gpu}${pr}</span>
+    <div class="r1">
+      <span class="r1-title"><span class="dot" style="background:${dotColor}"></span>#${esc(t.id)} ${esc(t.slug)}</span>
+      ${badge}
     </div>
-    <div class="slug">${esc(t.slug)}</div>
-    <div class="meta">${esc((t.owned_paths || []).join(', ') || 'no owned_paths')}</div>
+    <div class="r2">${esc((t.owned_paths || []).join(', ') || 'no owned_paths')}</div>
   </div>`;
 }
 
 function selectTask(id) {
   SELECTED = id;
   EDITING = null;
-  LAST_LOG = '';
+  REVIEWED_CHK = false;
+  CONVO_HIST_OPEN = false;
+  toggleDrawer(false);
+  renderSwitcher();
   renderSidebar();
   renderDetail();
 }
@@ -397,80 +544,119 @@ async function saveDoc(kind) {
   const ta = document.getElementById('doc-editor');
   if (!ta || !SELECTED) return;
   const action = kind === 'plan' ? 'save_plan' : 'save_handoff';
-  showLog(`Saving ${kind.toUpperCase()}.md...`);
+  showToast(`Saving ${kind.toUpperCase()}.md...`);
   try {
     const res = await postAction({ action, task_id: SELECTED, content: ta.value });
     EDITING = null;
-    showLog((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.error || JSON.stringify(res)));
+    showToast((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.error || JSON.stringify(res)), !res.ok);
     await refresh(true);
   } catch (e) {
-    showLog('Error: ' + e.message);
+    showToast('Error: ' + e.message, true);
   }
 }
 
 async function runAction(action, extra = {}) {
   if (!SELECTED) return;
-  showLog(`Running '${action}' for task ${SELECTED}...`);
+  showToast(`Running '${action}' for task ${SELECTED}...`);
   try {
     const res = await postAction({ action, task_id: SELECTED, ...extra });
-    showLog((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.output || res.error || JSON.stringify(res)));
+    if (res.ok && action === 'approve_plan') {
+      REVIEWED_CHK = false;
+    }
+    showToast((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.output || res.error || JSON.stringify(res)), !res.ok);
     await refresh(true);
   } catch (e) {
-    showLog('Error: ' + e.message);
+    showToast('Error: ' + e.message, true);
   }
 }
 
 async function copyResumePrompt(worker = false) {
   if (!SELECTED) return;
   const kind = worker ? 'worker brief' : 'resume prompt';
-  showLog(`Building ${kind} for task ${SELECTED}...`);
   try {
     const res = await postAction({ action: 'resume_prompt', task_id: SELECTED, worker });
     if (!res.ok) {
-      showLog(`FAILED: ` + (res.error || `Could not build ${kind}`));
+      showToast('FAILED: ' + (res.error || `Could not build ${kind}`), true);
       return;
     }
     const ok = await copyText(res.prompt);
-    showLog(ok ? `Copied ${kind} (${res.prompt.length} chars) to clipboard.` : `${kind} ready (clipboard unavailable):\n\n` + res.prompt);
+    showToast(ok ? `Copied ${kind} (${res.prompt.length} chars) to clipboard.` : `${kind} ready (clipboard unavailable):\n${res.prompt}`);
   } catch (e) {
-    showLog('Error: ' + e.message);
+    showToast('Error: ' + e.message, true);
   }
 }
 
 async function sendResumeToChat() {
   if (!SELECTED) return;
-  showLog(`Sending resume prompt for task ${SELECTED} to active Antigravity chat...`);
   try {
     const res = await postAction({ action: 'resume_prompt', task_id: SELECTED });
     if (!res.ok) {
-      showLog('FAILED: ' + (res.error || 'Could not build resume prompt'));
+      showToast('FAILED: ' + (res.error || 'Could not build resume prompt'), true);
       return;
     }
     if (hasSidecarChat()) {
       await getSidecarBridge().agent.sendMessage(res.prompt);
-      showLog(`Sent resume prompt (${res.prompt.length} chars) to active Antigravity chat.`);
+      showToast(`Sent resume prompt (${res.prompt.length} chars) to active Antigravity chat.`);
     } else {
       await copyText(res.prompt);
-      showLog('Not in Antigravity sidecar — copied resume prompt to clipboard instead.');
+      showToast('Not in Antigravity sidecar — copied resume prompt to clipboard instead.');
     }
   } catch (e) {
-    showLog('Error: ' + e.message);
+    showToast('Error: ' + e.message, true);
   }
 }
 
-async function sendConvoLinkToChat(convId, label) {
-  const md = `[Open Task #${SELECTED} Convo: ${label || convId}](conversation://${convId})`;
-  if (hasSidecarChat()) {
-    try {
-      await getSidecarBridge().agent.sendMessage(`Jump to linked conversation: ${md}`);
-      showLog(`Sent clickable Antigravity conversation link to active chat (click the link in chat to jump): ${convId}`);
+async function openConvoModal(convId) {
+  MODAL_OPEN = true;
+  const bg = document.getElementById('convo-modal');
+  const body = document.getElementById('convo-modal-body');
+  if (!bg || !body) return;
+  body.innerHTML = `<div class="modal-hdr"><strong>Loading local conversation ${esc(convId)}...</strong><button class="btn ghost" onclick="closeConvoModal()">✕</button></div>`;
+  bg.classList.add('open');
+  try {
+    const res = await postAction({ action: 'preview_conversation', conv_id: convId });
+    if (!res.ok) {
+      body.innerHTML = `<div class="modal-hdr"><strong>Conversation Preview</strong><button class="btn ghost" onclick="closeConvoModal()">✕</button></div><div class="empty">${esc(res.error || 'Failed to load')}</div>`;
       return;
-    } catch (e) {
-      showLog('Sidecar send failed: ' + e.message);
     }
+    const artifactsHtml = (res.artifacts || []).length
+      ? res.artifacts.map(a => `<details class="artifact-box"><summary style="cursor:pointer;font-weight:600;font-size:12px;">${esc(a.name)} <span class="mono">(${a.size} B)</span></summary><pre class="doc" style="margin-top:6px;max-height:220px;">${esc(a.content)}</pre></details>`).join('')
+      : '<div class="mono" style="margin-bottom:8px;">No .md artifacts found in brain folder.</div>';
+    const turnsHtml = (res.recent_turns || []).length
+      ? res.recent_turns.map(t => `<div class="turn"><strong>${esc(t.role)}:</strong> ${esc(t.snippet)}</div>`).join('')
+      : '<div class="mono">No recent transcript turns found locally.</div>';
+    body.innerHTML = `
+      <div class="modal-hdr">
+        <div>
+          <strong style="font-size:14px;">Linked Antigravity Conversation</strong>
+          <span class="pill ok" style="margin-left:6px;">Local · 0 Tokens</span>
+          <div class="mono" style="margin-top:2px;">${esc(res.conv_id)}</div>
+        </div>
+        <button class="btn ghost" onclick="closeConvoModal()">✕</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+        <button class="btn primary" onclick="copyWithBtnFeedback(this, '${esc(res.conv_id)}')">Copy Conversation ID</button>
+        <button class="btn" ${res.exists ? '' : 'disabled'} onclick="openConvoFolder('${esc(res.conv_id)}')">Open Brain Folder</button>
+      </div>
+      ${res.exists ? '' : '<div class="pill warn" style="margin-bottom:8px;">Brain folder not found on this machine</div>'}
+      <div style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:700;margin:6px 0;">Artifacts</div>
+      ${artifactsHtml}
+      <div style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:700;margin:8px 0 6px;">Recent Turns (transcript.jsonl)</div>
+      ${turnsHtml}
+    `;
+  } catch (e) {
+    body.innerHTML = `<div class="modal-hdr"><strong>Error</strong><button class="btn ghost" onclick="closeConvoModal()">✕</button></div><div class="empty">${esc(e.message)}</div>`;
   }
-  await copyText(md);
-  showLog(`Copied clickable Antigravity link to clipboard (paste in chat to jump — avoids Windows protocol dialog): ${md}`);
+}
+
+function closeConvoModal() {
+  MODAL_OPEN = false;
+  document.getElementById('convo-modal')?.classList.remove('open');
+}
+
+async function openConvoFolder(convId) {
+  const res = await postAction({ action: 'open_convo_folder', conv_id: convId });
+  showToast((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.error || ''), !res.ok);
 }
 
 async function submitLinkConvo(e) {
@@ -484,111 +670,171 @@ async function submitLinkConvo(e) {
   await runAction('link_conversation', { conv_id: convId, tool, label, make_primary: makePrimary });
 }
 
-function renderStepper(status) {
-  const curIdx = status === 'done' ? STAGE_ORDER.length : STAGE_ORDER.indexOf(status);
-  return `<div class="stepper">
-    ${STAGE_ORDER.map((s, i) => {
-      const cls = i < curIdx ? 'done' : (i === curIdx ? 'current' : '');
-      const sep = i < STAGE_ORDER.length - 1 ? '<span class="step-sep">→</span>' : '';
-      return `<span class="step ${cls}">${esc(STAGE_LABELS[s] || s)}</span>${sep}`;
-    }).join('')}
-  </div>`;
-}
-
-function renderMergeBar(t) {
+function renderSequence(t) {
   const ms = t.merge_status || {};
-  const prPill = ms.pr_url
-    ? `<a class="step current" href="${esc(ms.pr_url)}" target="_blank" style="text-decoration:none;">PR #${esc(ms.pr)} ↗</a>`
-    : `<span class="step">${ms.pr ? 'PR #' + esc(ms.pr) : 'No PR yet'}</span>`;
-  const betaCls = ms.in_beta ? 'done' : '';
-  const pubCls = ms.in_public ? 'done' : '';
-  const shaNote = ms.merged_sha ? `<span style="color:var(--muted);font-family:monospace;margin-left:auto;">merged ${esc(ms.merged_sha)}</span>` : '';
-  return `<div class="merge-bar">
-    <span class="lbl">Ship Track</span>
-    <span class="step ${t.active_worktree || ms.in_beta ? 'done' : ''}">${esc(ms.branch || t.branch)}</span>
-    <span class="step-sep">→</span>
-    ${prPill}
-    <span class="step-sep">→</span>
-    <span class="step ${betaCls}">${ms.in_beta ? '✓ ' : ''}Beta (v3-dev)</span>
-    <span class="step-sep">→</span>
-    <span class="step ${pubCls}">${ms.in_public ? '✓ ' : ''}Public (main)</span>
-    ${shaNote}
-  </div>`;
+  const order = ['brainstorm', 'plan', 'ready', 'in-progress', 'review', 'beta', 'done'];
+  let idx = order.indexOf(t.status);
+  if (idx < 0) idx = 0;
+  if (ms.in_public) idx = 6;
+  else if (ms.in_beta && idx < 5) idx = 5;
+
+  const nodes = [
+    { key: 'brainstorm', full: 'Scope', short: 'Scope', icon: '' },
+    { key: 'plan', full: 'Plan', short: 'Plan', icon: t.status === 'plan' || (t.status === 'ready' && t.plan_drifted) ? '🔒' : '' },
+    { key: 'ready', full: 'Approved', short: 'Appr', icon: '' },
+    { key: 'in-progress', full: 'Build', short: 'Build', icon: t.active_worktree ? '●' : '' },
+    { key: 'review', full: ms.pr ? `PR #${ms.pr}` : 'Review', short: ms.pr ? `#${ms.pr}` : 'PR', icon: '', href: ms.pr_url || '' },
+    { key: 'beta', full: 'Beta', short: 'Beta', icon: '', onclick: "runAction('open_beta')" },
+    { key: 'done', full: 'Main', short: 'Main', icon: ms.in_public || t.status === 'done' ? '🌐' : '', title: ms.merged_sha ? `Main (${ms.merged_sha})` : 'Main (public)' },
+  ];
+
+  return `<div class="seq">${nodes.map((n, i) => {
+    const isDone = i < idx || ((ms.in_public || t.status === 'done') && i === 6);
+    const isCur = i === idx && !(ms.in_public || t.status === 'done');
+    const cls = isDone ? 'done' : (isCur ? (n.key === 'plan' ? 'locked' : 'current') : '');
+    const prefix = isDone && n.key !== 'done' ? '✓ ' : (n.icon ? n.icon + ' ' : '');
+    const titleAttr = esc(n.title || n.full);
+    let nodeHtml = '';
+    if (n.href) {
+      nodeHtml = `<a class="seq-node ${cls} clickable" href="${esc(n.href)}" target="_blank" title="${titleAttr}">${prefix}<span class="lbl-full">${esc(n.full)}</span><span class="lbl-short">${esc(n.short)}</span> ↗</a>`;
+    } else if (n.onclick) {
+      nodeHtml = `<span class="seq-node ${cls} clickable" onclick="${n.onclick}" title="${titleAttr}">${prefix}<span class="lbl-full">${esc(n.full)}</span><span class="lbl-short">${esc(n.short)}</span></span>`;
+    } else {
+      nodeHtml = `<span class="seq-node ${cls}" title="${titleAttr}">${prefix}<span class="lbl-full">${esc(n.full)}</span><span class="lbl-short">${esc(n.short)}</span></span>`;
+    }
+    const lineHtml = i < nodes.length - 1 ? `<span class="seq-line ${i < idx ? 'done' : ''}"></span>` : '';
+    return nodeHtml + lineHtml;
+  }).join('')}</div>`;
 }
 
-function renderConversations(t) {
+function renderGateCallout(t) {
+  const st = t.status;
+  const rd = t.plan_readiness || {};
+  const drifted = Boolean(t.plan_drifted);
+
+  if (st === 'backlog' || st === 'brainstorm') {
+    const nextLbl = st === 'backlog' ? 'Brainstorm' : 'Plan Stage';
+    return `<div class="gate-card">
+      <div class="gate-hdr">
+        <span class="gate-title">Gate 1 · ${st === 'backlog' ? 'Backlog' : 'Brainstorm'}</span>
+        <span class="pill info">Code Locked</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Capture goals &amp; decisions in PLAN.md before advancing to the formal Plan stage.</div>
+      <div class="gate-foot">
+        <button class="btn gate" onclick="runAction('approve_gate')">Advance → ${nextLbl}</button>
+        <button class="btn" onclick="setTab('plan');startEdit('plan')">Edit PLAN.md</button>
+      </div>
+    </div>`;
+  }
+
+  if (st === 'plan' || (st === 'ready' && drifted)) {
+    const checks = rd.checks || [];
+    const chkHtml = checks.map(c => `<span class="chk ${c.ok ? 'ok' : 'pending'}">${c.ok ? '✓' : '○'} ${esc(c.label)}</span>`).join('');
+    const canApprove = Boolean(rd.ready && REVIEWED_CHK);
+    return `<div class="gate-card ${drifted ? 'drift' : ''}">
+      <div class="gate-hdr">
+        <span class="gate-title">${drifted ? '⚠ Plan Drifted Since Approval' : '🔒 Formal Plan Approval Gate'}</span>
+        <span class="pill warn">Build Locked</span>
+      </div>
+      <div class="checklist">${chkHtml}</div>
+      <div class="gate-foot">
+        <label style="font-size:11.5px;display:flex;align-items:center;gap:5px;cursor:pointer;">
+          <input type="checkbox" ${REVIEWED_CHK ? 'checked' : ''} onchange="REVIEWED_CHK=this.checked;renderDetail()" />
+          I have reviewed PLAN.md and approve build
+        </label>
+        <button class="btn gate" ${canApprove ? '' : 'disabled'} onclick="runAction('approve_plan')" title="${rd.ready ? 'Approve PLAN.md and unlock worktree build' : 'Complete PLAN.md spec and owned_paths first'}">✓ Approve Plan &amp; Unlock Build</button>
+      </div>
+    </div>`;
+  }
+
+  if (drifted) {
+    return `<div class="gate-card drift" style="padding:7px 10px;">
+      <div class="gate-hdr" style="margin-bottom:0;">
+        <span class="gate-title">⚠ PLAN.md drifted since approval (${esc(t.plan_approved_sha || '')} → ${esc(rd.plan_sha || '')})</span>
+        <button class="btn" style="padding:3px 8px;font-size:11px;" onclick="runAction('approve_plan')">Re-approve SHA</button>
+      </div>
+    </div>`;
+  }
+  return '';
+}
+
+function renderConvoStrip(t) {
   const convs = t.conversations || { primary: null, history: [] };
   const p = convs.primary;
   const hist = convs.history || [];
   const hasClaude = Boolean(STATE?.available_launchers?.claude);
 
-  let primaryHtml = '<span style="color:var(--muted);font-size:12px;">No primary conversation linked yet.</span>';
+  let primaryHtml = '<span style="color:var(--muted);">No linked conversation</span>';
   if (p) {
+    const shortId = p.id.slice(0, 8);
     if (p.tool === 'antigravity') {
       primaryHtml = `
-        <button class="primary" onclick="sendConvoLinkToChat('${esc(p.id)}', '${esc(p.label || '')}')" title="Send clickable Antigravity conversation link to active chat (or copy markdown link)">
-          ${hasSidecarChat() ? 'Jump to Antigravity Convo' : 'Copy Antigravity Convo Link'} · ${esc(p.label || p.id.slice(0, 8))}
-        </button>`;
+        <span class="pill info">AG</span>
+        <strong>${esc(p.label || 'Conversation')}</strong>
+        <span class="mono">${esc(shortId)}</span>
+        <button class="btn ghost" onclick="openConvoModal('${esc(p.id)}')" title="Local 0-token preview of brain artifacts &amp; transcript">Preview</button>
+        <button class="btn ghost" onclick="copyWithBtnFeedback(this, '${esc(p.id)}')">Copy ID</button>`;
     } else if (p.tool === 'claude') {
       primaryHtml = `
-        <button class="primary" ${hasClaude ? '' : 'disabled'} onclick="runAction('launch_claude', { session_id: '${esc(p.id)}' })">
-          Resume Claude Session · ${esc(p.label || p.id.slice(0, 8))}
-        </button>`;
+        <span class="pill plan">Claude</span>
+        <strong>${esc(p.label || 'Session')}</strong>
+        <span class="mono">${esc(shortId)}</span>
+        <button class="btn ghost" ${hasClaude ? '' : 'disabled'} onclick="runAction('launch_claude', { session_id: '${esc(p.id)}' })">Resume in Terminal</button>
+        <button class="btn ghost" onclick="copyWithBtnFeedback(this, '${esc(p.id)}')">Copy ID</button>`;
     } else {
-      primaryHtml = `<span class="pill convo">${esc(p.tool)}: ${esc(p.label || p.id)}</span>`;
+      primaryHtml = `<span class="pill">${esc(p.tool)}</span> <strong>${esc(p.label || p.id)}</strong> <button class="btn ghost" onclick="copyWithBtnFeedback(this, '${esc(p.id)}')">Copy ID</button>`;
     }
   }
 
   const histHtml = hist.map(it => {
-    const openBtn = it.tool === 'antigravity'
-      ? `<button onclick="sendConvoLinkToChat('${esc(it.id)}', '${esc(it.label || '')}')">${hasSidecarChat() ? 'Jump' : 'Copy Link'}</button>`
-      : (it.tool === 'claude'
-        ? `<button ${hasClaude ? '' : 'disabled'} onclick="runAction('launch_claude', { session_id: '${esc(it.id)}' })">Resume</button>`
-        : '');
+    const btn = it.tool === 'antigravity'
+      ? `<button class="btn ghost" onclick="openConvoModal('${esc(it.id)}')">Preview</button>`
+      : (it.tool === 'claude' ? `<button class="btn ghost" ${hasClaude ? '' : 'disabled'} onclick="runAction('launch_claude', { session_id: '${esc(it.id)}' })">Resume</button>` : '');
     return `<div class="convo-item">
-      <div>
-        <span class="pill convo">${esc(it.tool)}</span>
-        <strong>${esc(it.label || it.id)}</strong>
-        <span style="color:var(--muted);margin-left:6px;font-family:monospace;">${esc(it.id.slice(0, 12))}</span>
-      </div>
-      <div style="display:flex;gap:6px;">
-        ${openBtn}
-        <button onclick="runAction('set_primary_conversation', { conv_id: '${esc(it.id)}' })">Make Primary</button>
+      <div><span class="pill">${esc(it.tool)}</span> <strong>${esc(it.label || it.id)}</strong> <span class="mono">${esc(it.id.slice(0, 12))}</span></div>
+      <div style="display:flex;gap:4px;">
+        ${btn}
+        <button class="btn ghost" onclick="copyWithBtnFeedback(this, '${esc(it.id)}')">Copy ID</button>
+        <button class="btn ghost" onclick="runAction('set_primary_conversation', { conv_id: '${esc(it.id)}' })">Make Primary</button>
       </div>
     </div>`;
   }).join('');
 
-  return `<div class="convo-box">
-    <div class="convo-row">
-      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-        <span class="convo-label">Context &amp; Convo</span>
-        ${primaryHtml}
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        <button onclick="copyResumePrompt(true)" title="Compact execution brief for a fast/cheap worker agent (flash or hydrogen)">Copy Worker Brief (${esc(t.exec_tier || 'hydrogen')})</button>
-        <button onclick="copyResumePrompt(false)">Copy Resume Prompt</button>
-        ${hasSidecarChat() ? '<button onclick="sendResumeToChat()">Send Resume to Chat</button>' : ''}
-        ${hasClaude ? '<button onclick="runAction(\'launch_claude\')">Resume in Claude</button>' : ''}
-      </div>
+  return `
+    <div class="context-strip">
+      ${primaryHtml}
+      <span style="margin-left:auto;display:flex;gap:4px;">
+        <button class="btn ghost" onclick="DETAILS_OPEN=!DETAILS_OPEN;renderDetail()">${DETAILS_OPEN ? 'Details ▴' : 'Details ▾'}</button>
+      </span>
     </div>
-    <details class="convo-history">
+    <details class="convo-history" ${CONVO_HIST_OPEN ? 'open' : ''} ontoggle="CONVO_HIST_OPEN=this.open">
       <summary>Past Conversations (${hist.length}) &amp; Link New</summary>
-      ${histHtml || '<div style="color:var(--muted);font-size:11.5px;margin-top:6px;">No secondary conversations linked.</div>'}
+      ${histHtml || '<div class="mono" style="margin-top:6px;">No secondary conversations linked.</div>'}
       <form class="link-form" onsubmit="submitLinkConvo(event)">
-        <input id="link-conv-id" placeholder="Conversation / Session ID" required style="min-width:210px;" />
+        <input id="link-conv-id" placeholder="Conversation / Session ID" required style="min-width:190px;" />
         <select id="link-conv-tool">
           <option value="antigravity">Antigravity</option>
           <option value="claude">Claude</option>
           <option value="gemini">Gemini</option>
         </select>
-        <input id="link-conv-label" placeholder="Label (e.g. Brainstorm)" style="min-width:130px;" />
+        <input id="link-conv-label" placeholder="Label (e.g. Brainstorm)" style="min-width:120px;" />
         <label style="font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:4px;">
           <input type="checkbox" id="link-conv-primary" checked /> Primary
         </label>
-        <button type="submit">+ Link</button>
+        <button class="btn" type="submit">+ Link</button>
       </form>
-    </details>
-  </div>`;
+    </details>`;
+}
+
+function getPersistentMockupIframe(src) {
+  if (!MOCKUP_IFRAME_NODE || MOCKUP_IFRAME_SRC !== src) {
+    const ifr = document.createElement('iframe');
+    ifr.className = 'mockup';
+    ifr.src = src;
+    MOCKUP_IFRAME_NODE = ifr;
+    MOCKUP_IFRAME_SRC = src;
+  }
+  return MOCKUP_IFRAME_NODE;
 }
 
 function renderDetail() {
@@ -598,109 +844,143 @@ function renderDetail() {
     el.innerHTML = '<div class="empty">Select a task to inspect.</div>';
     return;
   }
-  const prLink = t.pr_url ? `<a href="${esc(t.pr_url)}" target="_blank">PR #${esc(t.pr)}</a>` : (t.pr ? `#${esc(t.pr)}` : '—');
-  const vBadge = t.verify ? (t.verify.ok ? '<span class="pill beta">Verified OK</span>' : '<span class="pill" style="color:var(--red)">Verify Failed</span>') : '<span class="pill">Unverified</span>';
-  const lastAgent = t.handoff_meta?.last_agent ? `<span class="pill">Last: ${esc(t.handoff_meta.last_agent)}</span>` : '';
 
-  let gateBtn = '';
-  if (t.next_gate) {
-    const gateLabel = t.next_gate === 'ready'
-      ? 'Approve Build Go-Ahead'
-      : `Approve → ${STAGE_LABELS[t.next_gate] || t.next_gate}`;
-    gateBtn = `<button class="gate" onclick="runAction('approve_gate')">${esc(gateLabel)}</button>`;
+  const ms = t.merge_status || {};
+  const hasClaude = Boolean(STATE?.available_launchers?.claude);
+
+  let primaryBtn = '';
+  if (t.status === 'ready' && !t.plan_drifted) {
+    primaryBtn = `<button class="btn primary" onclick="runAction('start')">▶ Start Worktree</button>`;
+  } else if (t.status === 'in-progress') {
+    primaryBtn = `<button class="btn primary" onclick="runAction('verify')">✓ Run Verify</button>`;
+  } else if (t.status === 'review') {
+    primaryBtn = ms.pr_url
+      ? `<a class="btn primary" href="${esc(ms.pr_url)}" target="_blank">Open PR #${esc(ms.pr)} ↗</a> <button class="btn" onclick="runAction('verify')">✓ Run Verify</button>`
+      : `<button class="btn primary" onclick="runAction('verify')">✓ Run Verify</button>`;
+  } else if (t.status === 'beta' || t.status === 'done') {
+    primaryBtn = `<button class="btn primary" onclick="runAction('open_beta')">Beta Preview ↗</button>`;
   }
 
+  const extraBetaBtn = t.status === 'in-progress'
+    ? `<button class="btn" onclick="runAction('open_beta')">Beta Preview ↗</button>`
+    : '';
+
   let bodyHtml = '';
-  if (TAB === 'task') {
-    bodyHtml = `<pre class="doc">${esc(t.task_md || 'No TASK.md')}</pre>`;
-  } else if (TAB === 'plan') {
+  let attachMockupSrc = '';
+  if (TAB === 'plan') {
     if (EDITING === 'plan') {
       bodyHtml = `
         <div class="doc-toolbar">
-          <button class="primary" onclick="saveDoc('plan')">Save PLAN.md</button>
-          <button onclick="cancelEdit()">Cancel</button>
+          <button class="btn primary" onclick="saveDoc('plan')">Save PLAN.md</button>
+          <button class="btn" onclick="cancelEdit()">Cancel</button>
         </div>
         <textarea class="editor" id="doc-editor">${esc(t.plan_md || '')}</textarea>`;
     } else {
       bodyHtml = `
         <div class="doc-toolbar">
-          <button onclick="startEdit('plan')">Edit PLAN.md</button>
+          <button class="btn" onclick="startEdit('plan')">Edit PLAN.md</button>
         </div>
         <pre class="doc">${esc(t.plan_md || 'No PLAN.md')}</pre>`;
     }
-  } else if (TAB === 'handoff') {
-    if (EDITING === 'handoff') {
-      bodyHtml = `
-        <div class="doc-toolbar">
-          <button class="primary" onclick="saveDoc('handoff')">Save HANDOFF.md</button>
-          <button onclick="cancelEdit()">Cancel</button>
-        </div>
-        <textarea class="editor" id="doc-editor">${esc(t.handoff_md || '')}</textarea>`;
-    } else {
-      bodyHtml = `
-        <div class="doc-toolbar">
-          <button onclick="runAction('snapshot_handoff')">Snapshot Git State</button>
-          <button onclick="startEdit('handoff')">Edit HANDOFF.md</button>
-        </div>
-        <pre class="doc">${esc(t.handoff_md || 'No HANDOFF.md yet. Click Snapshot Git State or Edit HANDOFF.md.')}</pre>`;
-    }
+  } else if (TAB === 'task') {
+    bodyHtml = `<pre class="doc">${esc(t.task_md || 'No TASK.md')}</pre>`;
   } else if (TAB === 'mockups') {
     if (!t.mockups.length) {
       bodyHtml = '<div class="empty">No mockups yet in <code>mockups/</code>.</div>';
     } else {
       const fileUrl = (kind, f) => `/api/file?id=${encodeURIComponent(t.id)}&kind=${kind}&name=${encodeURIComponent(f)}`;
       const htmlMock = t.mockups.find(f => f.endsWith('.html'));
-      bodyHtml = `<div style="margin-bottom:8px;">Files: ${t.mockups.map(f => `<a href="${fileUrl('mockups', f)}" target="_blank" style="color:var(--accent);margin-right:10px;">${esc(f)}</a>`).join('')}</div>`;
-      if (htmlMock) {
-        bodyHtml += `<iframe class="mockup" src="${fileUrl('mockups', htmlMock)}"></iframe>`;
-      }
+      bodyHtml = `<div style="margin-bottom:8px;">Files: ${t.mockups.map(f => `<a href="${fileUrl('mockups', f)}" target="_blank" style="color:var(--accent);margin-right:10px;">${esc(f)}</a>`).join('')}</div><div id="mockup-host"></div>`;
+      if (htmlMock) attachMockupSrc = fileUrl('mockups', htmlMock);
     }
   } else if (TAB === 'evidence') {
     const fileUrl = (kind, f) => `/api/file?id=${encodeURIComponent(t.id)}&kind=${kind}&name=${encodeURIComponent(f)}`;
     const imgs = t.evidence.filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f));
-    const vJson = t.verify ? `<pre class="doc">${esc(JSON.stringify(t.verify, null, 2))}</pre>` : '<div class="empty">No <code>evidence/verify.json</code> yet. Click <b>Run Verify</b> above.</div>';
-    const shots = imgs.length ? `<div class="shots">${imgs.map(f => `<div><div style="font-size:11px;color:var(--muted);margin-bottom:4px;">${esc(f)}</div><img src="${fileUrl('evidence', f)}" /></div>`).join('')}</div>` : '';
+    const vJson = t.verify
+      ? `<pre class="doc">${esc(JSON.stringify(t.verify, null, 2))}</pre>`
+      : '<div class="empty">No <code>evidence/verify.json</code> yet. Run Verify to generate.</div>';
+    const shots = imgs.length ? `<div class="shots">${imgs.map(f => `<div><div class="mono" style="margin-bottom:4px;">${esc(f)}</div><img src="${fileUrl('evidence', f)}" /></div>`).join('')}</div>` : '';
     bodyHtml = vJson + shots;
+  } else if (TAB === 'handoff') {
+    if (EDITING === 'handoff') {
+      bodyHtml = `
+        <div class="doc-toolbar">
+          <button class="btn primary" onclick="saveDoc('handoff')">Save HANDOFF.md</button>
+          <button class="btn" onclick="cancelEdit()">Cancel</button>
+        </div>
+        <textarea class="editor" id="doc-editor">${esc(t.handoff_md || '')}</textarea>`;
+    } else {
+      bodyHtml = `
+        <div class="doc-toolbar">
+          <button class="btn" onclick="runAction('snapshot_handoff')">Snapshot Git State</button>
+          <button class="btn" onclick="startEdit('handoff')">Edit HANDOFF.md</button>
+        </div>
+        <pre class="doc">${esc(t.handoff_md || 'No HANDOFF.md yet. Optional sticky note — click Snapshot Git State or Edit.')}</pre>`;
+    }
   }
 
-  const startDisabled = t.is_pre_build_gate && !t.active_worktree ? 'disabled title="Approve Build Go-Ahead first"' : '';
+  const approvalText = t.plan_approved
+    ? `${t.plan_approved_by || 'human'} · ${t.plan_approved_sha || ''}`
+    : 'pending';
+  const verifyText = t.verify ? (t.verify.ok ? 'Verified OK' : 'Verify Failed') : 'Unverified';
+  const lastAgentText = t.handoff_meta?.last_agent || '—';
 
   el.innerHTML = `
-    <div class="title-row">
+    <div class="title-bar">
       <h2>#${esc(t.id)} — ${esc(t.title)}</h2>
-      <span class="pill ${esc(t.status)}">${esc(STAGE_LABELS[t.status] || t.status)}</span>
-      <span class="pill">Tier: ${esc(t.exec_tier || 'hydrogen')}</span>
-      ${t.active_worktree ? '<span class="pill wt">Active Worktree</span>' : ''}
-      ${lastAgent}
-      ${vBadge}
+      <div class="menu-wrap">
+        <button class="btn ghost" onclick="toggleMenu('more-menu', event)" title="More actions">⋯</button>
+        <div class="menu-pop right" id="more-menu">
+          <button onclick="runAction('open_folder')">Open Task Folder</button>
+          <button onclick="copyText('${esc(t.branch)}').then(() => showToast('Copied branch: ${esc(t.branch)}'))">Copy Branch Name</button>
+          <button onclick="copyText('?beta=1&feat=${esc(t.switch)}').then(() => showToast('Copied Beta switch: ?beta=1&feat=${esc(t.switch)}'))">Copy Beta Switch</button>
+          <button onclick="copyText('${esc(t.beta_url)}').then(() => showToast('Copied Beta URL'))">Copy Beta URL</button>
+          ${t.active_worktree ? `<button onclick="runAction('start')">Refresh Brief</button>` : ''}
+          <button onclick="runAction('reopen_plan')">Reopen Plan Gate</button>
+        </div>
+      </div>
     </div>
-    ${renderStepper(t.status)}
-    ${renderMergeBar(t)}
-    ${renderConversations(t)}
-    <div class="actions">
-      ${gateBtn}
-      <button ${startDisabled} onclick="runAction('start')">${t.active_worktree ? 'Refresh Brief' : 'Start Worktree'}</button>
-      <button onclick="runAction('verify')">Run Verify</button>
-      ${t.pr_url ? `<a class="btn primary" href="${esc(t.pr_url)}" target="_blank">Open PR #${esc(t.pr)} ↗</a>` : ''}
-      <button onclick="runAction('open_folder')">Open Folder</button>
-      <button onclick="runAction('open_beta')">Beta Preview</button>
+    ${renderSequence(t)}
+    ${renderGateCallout(t)}
+    <div class="action-row">
+      ${primaryBtn}
+      <div class="menu-wrap">
+        <button class="btn" onclick="toggleMenu('brief-menu', event)">Agent Brief ▾</button>
+        <div class="menu-pop" id="brief-menu">
+          <button onclick="copyResumePrompt(true)">Copy Worker Brief (${esc(t.exec_tier || 'hydrogen')})</button>
+          <button onclick="copyResumePrompt(false)">Copy Resume Prompt</button>
+          ${hasSidecarChat() ? '<button onclick="sendResumeToChat()">Send Brief to Active Chat</button>' : ''}
+          ${hasClaude ? '<button onclick="runAction(\'launch_claude\')">Launch Fresh Claude</button>' : ''}
+        </div>
+      </div>
+      ${extraBetaBtn}
     </div>
-    <div class="log-box ${LAST_LOG ? 'show' : ''}" id="action-log">${esc(LAST_LOG)}</div>
-    <div class="kv">
+    ${renderConvoStrip(t)}
+    <div class="details-panel ${DETAILS_OPEN ? 'open' : ''}">
       <div><div class="k">Branch</div><div class="v">${esc(t.branch)}</div></div>
+      <div><div class="k">Exec Tier</div><div class="v">${esc(t.exec_tier || 'hydrogen')}</div></div>
+      <div><div class="k">Plan Approval</div><div class="v">${esc(approvalText)}</div></div>
       <div><div class="k">Beta Switch</div><div class="v">?beta=1&amp;feat=${esc(t.switch)}</div></div>
-      <div><div class="k">GitHub PR</div><div class="v">${prLink}</div></div>
-      <div><div class="k">Owned Paths</div><div class="v">${esc((t.owned_paths || []).join(', ') || '—')}</div></div>
+      <div><div class="k">Verify</div><div class="v">${esc(verifyText)}</div></div>
+      <div><div class="k">Last Agent</div><div class="v">${esc(lastAgentText)}</div></div>
+      <div style="grid-column:1/-1;"><div class="k">Owned Paths</div><div class="v">${esc((t.owned_paths || []).join(', ') || '—')}</div></div>
     </div>
     <div class="tabs">
       <div class="tab ${TAB==='plan'?'active':''}" onclick="setTab('plan')">PLAN.md</div>
-      <div class="tab ${TAB==='handoff'?'active':''}" onclick="setTab('handoff')">Handoff (Optional)</div>
       <div class="tab ${TAB==='task'?'active':''}" onclick="setTab('task')">TASK.md</div>
       <div class="tab ${TAB==='mockups'?'active':''}" onclick="setTab('mockups')">Mockups (${t.mockups.length})</div>
       <div class="tab ${TAB==='evidence'?'active':''}" onclick="setTab('evidence')">Evidence (${t.evidence.length})</div>
+      <div class="tab ${TAB==='handoff'?'active':''} ${t.handoff_md ? '' : 'dim'}" onclick="setTab('handoff')">Handoff</div>
     </div>
     ${bodyHtml}
   `;
+
+  if (attachMockupSrc) {
+    const host = document.getElementById('mockup-host');
+    if (host) {
+      host.appendChild(getPersistentMockupIframe(attachMockupSrc));
+    }
+  }
 }
 
 refresh(true);
