@@ -6,7 +6,7 @@ issue: null
 epic: null
 pr: null
 pr_url: ""
-status: "in-progress"
+status: "beta"
 branch: "feat/005-ondemand-render-bus-idle"
 switch: "idle_render_opt"
 depends_on: []
