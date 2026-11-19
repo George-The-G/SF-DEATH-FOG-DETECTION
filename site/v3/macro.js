@@ -21,9 +21,9 @@ const SKY_CIRRUS_FADE_START_M = 3000.0;// altitude (m) where high cirrus decks s
 const SKY_CIRRUS_MAX_M = 4000.0;       // altitude (m) above which cirrus decks are fully transparent
 const CITY_HOLE_DROP_M = 30;           // metres the wide terrain drops beneath the detailed city footprint to avoid z-fighting
 const SLAB_BOX_HEIGHT_M = 1500;        // bounding box height (m) for the BackSide analytic slab mesh
-const MACRO_CITY_EDGE_FADE_M = 500;    // fog2.js edgeFade (m) when the macro cloud deck is actively visible around the city
-const MACRO_FETCH_DIST_M = 6000;       // camera distance (m) that triggers fetching macro satellite frames
-const MACRO_FETCH_ALT_M = 4000;        // camera altitude (m) that triggers fetching macro satellite frames
+const MACRO_CITY_EDGE_FADE_M = 2800;   // fog2.js edgeFade (m) when the macro cloud deck is actively visible around the city (soft overlap, no razor-sharp square city border)
+const MACRO_FETCH_DIST_M = 3500;       // camera distance (m) that triggers fetching macro satellite frames
+const MACRO_FETCH_ALT_M = 1500;        // camera altitude (m) that triggers fetching macro satellite frames
 const INDEX_POLL_MS = 300000;          // 5-minute poll interval for macro/index.json
 const CULL_ALT_M = 1200;               // below this camera altitude (m) and looking steeply down, skip the macro slab pass
 
@@ -33,31 +33,50 @@ const FRAG = `
   varying vec3 vW; uniform mat4 projectionMatrix;
   uniform sampler2D uA, uB; uniform float uMix, uHasB, uOn, uEX, uTopDef, uK, uNoiseR, uTime, uSky;
   uniform vec4 uBox;            // wide grid in scene metres: x0, z0 (north edge), width, height
+  uniform vec4 uLlBox;          // satellite lon/lat box: lon0, lat0, lon1 - lon0, lat1 - lat0
+  uniform vec2 uUtm0;           // scene origin in UTM 10N metres: meta.x0, meta.y0
+  uniform vec2 uTexel;          // 1 / w, 1 / h of the satellite texture for 5-tap smoothing
   uniform vec4 uCity;           // city grid rectangle: xmin, zmin, xmax, zmax
   uniform vec3 uAmb, uSun, uSunCol; uniform float uSunI;
   float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
   float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(h21(i), h21(i + vec2(1,0)), f.x), mix(h21(i + vec2(0,1)), h21(i + vec2(1,1)), f.x), f.y); }
+  vec2 xzToUv(vec2 xz){
+    // Linearized UTM 10N -> WGS84 lon/lat around SF (37.77 N, -122.42 E, convergence -0.36 deg): accurate to < 40 m over the 120 km box (1/25th of a 1 km satellite pixel)
+    vec2 d = vec2(xz.x + uUtm0.x - 551081.0, (uUtm0.y - xz.y) - 4180455.0);
+    float lon = -122.4199 + d.x * 1.1356e-5 + d.y * 5.66e-8;
+    float lat = 37.7700 + d.y * 9.0132e-6 - d.x * 7.10e-8;
+    return vec2((lon - uLlBox.x) / max(uLlBox.z, 1e-5), (uLlBox.y + uLlBox.w - lat) / max(uLlBox.w, 1e-5));
+  }
+  vec4 samp(sampler2D t, vec2 uv){
+    // Smooth B2-spline / Gaussian 9-tap filter across 2.2 texels (~2 km): melts 1 km GOES pixels into continuous cloud banks on the GPU at zero CPU cost
+    vec2 dx = vec2(uTexel.x * 1.45, 0.), dy = vec2(0., uTexel.y * 1.45);
+    vec4 c = texture2D(t, uv) * .25
+           + (texture2D(t, uv + dx) + texture2D(t, uv - dx) + texture2D(t, uv + dy) + texture2D(t, uv - dy)) * .125
+           + (texture2D(t, uv + dx + dy) + texture2D(t, uv - dx + dy) + texture2D(t, uv + dx - dy) + texture2D(t, uv - dx - dy)) * .0625;
+    return c;
+  }
   vec4 cov(vec2 xz){
-    vec2 uv = (xz - uBox.xy) / uBox.zw; if (uv.x < 0. || uv.y < 0. || uv.x > 1. || uv.y > 1.) return vec4(0.);
-    vec4 a = texture2D(uA, uv); return uHasB > .5 ? mix(a, texture2D(uB, uv), uMix) : a;
+    vec2 uv = xzToUv(xz); if (uv.x < 0. || uv.y < 0. || uv.x > 1. || uv.y > 1.) return vec4(0.);
+    vec2 edge = smoothstep(vec2(0.), vec2(.04), uv) * (1. - smoothstep(vec2(.96), vec2(1.), uv));
+    vec4 a = samp(uA, uv); a.r *= edge.x * edge.y;
+    if (uHasB > .5) { vec4 b = samp(uB, uv); b.r *= edge.x * edge.y; return mix(a, b, uMix); }
+    return a;
   }
   float seam(vec2 xz){ float d = min(min(xz.x - uCity.x, uCity.z - xz.x), min(xz.y - uCity.y, uCity.w - xz.y)); if (d <= 0.) return 1.; float t = clamp(d / ${FADE_M.toFixed(1)}, 0., 1.); return 1. - t * t * (3. - 2. * t); }
   void main(){
     vec3 ro = cameraPosition, rd = normalize(vW - cameraPosition);
-    // top of the layer where the ray crosses the reference plane (works both from above looking down and from below looking up)
-    float tm = uTopDef * ${REF_PLANE_TOP_FRAC} * uEX, t = abs(rd.y) > 1e-4 ? (tm - ro.y) / rd.y : -1.;
+    // Keep the ray-slab intersection smoothly anchored to uTopDef (nudge gently toward the satellite top only when looking from below or when sky layers are on) so 2 km GOES height steps never create rectangular cliff walls in the sky
+    float tm = uTopDef * ${REF_PLANE_TOP_FRAC} * uEX, t = rd.y > 1e-4 ? (tm - ro.y) / rd.y : -1.;
     float topM = uTopDef;
     if (t > 0. && t < 3.0e5) {
       vec4 c0 = cov(ro.xz + rd.xz * t);
-      if (c0.b > 0.) topM = clamp(c0.b * ${GOES_TOP_MAX_M.toFixed(1)}, ${MIN_MACRO_TOP_M.toFixed(1)}, ${MAX_MACRO_TOP_M.toFixed(1)});
+      if (c0.b > 0.) {
+        float satTop = clamp(c0.b * ${GOES_TOP_MAX_M.toFixed(1)}, ${MIN_MACRO_TOP_M.toFixed(1)}, ${MAX_MACRO_TOP_M.toFixed(1)});
+        float wSat = smoothstep(.2, .75, c0.r * c0.g) * .45;
+        topM = mix(uTopDef, satTop, wSat);
+      }
     }
     float baseM = max(topM - ${BASE_THICK_M.toFixed(1)}, 0.);
-    // When sky layers (uSky > 0.5) draw an upper deck over the city, keep its base above the city fog top so the two layers never overlap vertically
-    if (uSky > .5 && topM > uTopDef + ${SKY_GAP_MIN_M.toFixed(1)}) {
-      vec2 refXZ = t > 0. && t < 3.0e5 ? ro.xz + rd.xz * t : ro.xz;
-      float cityInside = 1. - seam(refXZ);
-      baseM = mix(baseM, max(baseM, uTopDef + ${SKY_GAP_MIN_M.toFixed(1)} * .5), cityInside);
-    }
     float top = topM * uEX, base = baseM * uEX;
     // analytic slab
     float a, b;
@@ -67,11 +86,11 @@ const FRAG = `
     const int N = 8; float seg = (b - a) / float(N), od = 0., sumd = 0., sumh = 0.;
     for (int i = 0; i < N; i++) {
       float ts = a + (float(i) + .5) * seg; vec3 p = ro + rd * ts; vec4 c = cov(p.xz);
-      float near = uNoiseR * (1. - smoothstep(${NOISE_FADE_NEAR_M.toFixed(1)}, ${NOISE_FADE_FAR_M.toFixed(1)}, ts));  // detail only close to the camera: far away the smooth satellite field stands alone
+      float near = uNoiseR * (1. - smoothstep(${NOISE_FADE_NEAR_M.toFixed(1)}, ${NOISE_FADE_FAR_M.toFixed(1)}, ts) * .55);  // keep 45% of organic billow erosion even far away so 2 km GOES blocks never look rectangular
       // fine noise at three scales, so the bank has billows and ragged edges instead of 1 km blocks
-      float nz = vn(p.xz / 1200.) * .5 + vn(p.xz / 400.) * .3 + vn(p.xz / 130. + p.y / 90.) * .2;
-      float dens = c.r * mix(.35, 1., c.g);                       // low confidence: less opaque, never invented
-      dens = clamp((dens - (1. - nz) * .35 * near) * (1. + .6 * near), 0., 1.) * mix(1., .6 + .8 * nz, near * .5);   // erode the edges with the noise
+      float nz = vn(p.xz / 2400.) * .45 + vn(p.xz / 750.) * .35 + vn(p.xz / 220. + p.y / 110.) * .2;
+      float dens = smoothstep(.08, .72, c.r) * mix(.35, 1., c.g);   // smooth threshold on satellite probability + confidence
+      dens = clamp((dens - (1. - nz) * .38 * near) * (1. + .6 * near), 0., 1.) * mix(1., .6 + .8 * nz, near * .5);   // erode the edges with the noise
       float hh = clamp((p.y - base) / max(top - base, 1.), 0., 1.);
       // sky layers (guide 13, lab switch sky): inside the city grid keep cloud the satellite puts well above the fog top (a deck above the fog, not the fog itself, which the voxels draw); cirrus-high tops fade out
       float sm = seam(p.xz);
@@ -94,7 +113,8 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
 
   const U = {
     uA: { value: null }, uB: { value: null }, uMix: { value: 0 }, uHasB: { value: 0 }, uOn: { value: 0 }, uEX: { value: EX }, uTopDef: { value: 200 }, uK: { value: 2.6 / (BASE_THICK_M * EX) }, uNoiseR: { value: 1 }, uTime: { value: 0 }, uSky: { value: 0 },
-    uBox: { value: new THREE.Vector4() }, uCity: { value: new THREE.Vector4() }, uAmb: { value: new THREE.Vector3(.3, .36, .5) }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Vector3() }, uSunI: { value: 0 },
+    uBox: { value: new THREE.Vector4() }, uLlBox: { value: new THREE.Vector4(-123.1, 37.2, 1.4, 1.1) }, uUtm0: { value: new THREE.Vector2(540100, 4171500) }, uTexel: { value: new THREE.Vector2(1 / 141, 1 / 111) },
+    uCity: { value: new THREE.Vector4() }, uAmb: { value: new THREE.Vector3(.3, .36, .5) }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Vector3() }, uSunI: { value: 0 },
   };
 
   async function loadWide() {
@@ -134,18 +154,22 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
     try { const r = await fetch(st.src, { cache: 'no-store' }); if (r.ok) { const j = await r.json(); if (j && j.schema === 1) { st.idx = j; st.box = j.box; st.w = j.w; st.h = j.h; invalidate && invalidate(); } } } catch (e) { /* no macro frames: no layer */ }
     st.idxAt = performance.now(); st.fetching = false;
   }
+  let texCanvas = null, texCtx = null;
   function frameTex(file) {
     const e = texCache.get(file); if (e && e !== 'loading' && e !== 'failed') return e.tex;
     if (e || !st.wide) return null; texCache.set(file, 'loading');
-    const img = new Image(); const T = TARGET();
+    const img = new Image();
     img.onload = () => {
       try {
-        const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const cx = c.getContext('2d', { willReadFrequently: true }); cx.drawImage(img, 0, 0);
-        const px = cx.getImageData(0, 0, img.width, img.height).data; // alpha is 255 everywhere, so the colour values stay exact
-        const tex = new THREE.DataTexture(resampleMacro(px, img.width, img.height, st.box, T), T.nx, T.ny, THREE.RGBAFormat, THREE.UnsignedByteType);
+        // Upload the small 141x111 PNG directly (no 96,000-cell UTM bicubic CPU loop!); the fragment shader projects scene (x, z) to (lon, lat) UV in 10 ALU ops
+        if (!texCanvas) { texCanvas = document.createElement('canvas'); texCtx = texCanvas.getContext('2d', { willReadFrequently: true }); }
+        if (texCanvas.width !== img.width || texCanvas.height !== img.height) { texCanvas.width = img.width; texCanvas.height = img.height; }
+        texCtx.drawImage(img, 0, 0);
+        const raw = new Uint8Array(texCtx.getImageData(0, 0, img.width, img.height).data.buffer);
+        const tex = new THREE.DataTexture(raw, img.width, img.height, THREE.RGBAFormat, THREE.UnsignedByteType);
         tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.generateMipmaps = false; tex.flipY = false; tex.needsUpdate = true;
         texCache.set(file, { tex, used: performance.now() }); invalidate && invalidate();
-        if (texCache.size > 5) for (const [k, v] of texCache) { if (v !== 'loading' && v !== 'failed' && k !== file && texCache.size > 5) { v.tex.dispose(); texCache.delete(k); } }
+        if (texCache.size > 16) for (const [k, v] of texCache) { if (v !== 'loading' && v !== 'failed' && k !== file && texCache.size > 16) { v.tex.dispose(); texCache.delete(k); } }
       } catch (err) { texCache.set(file, 'failed'); }
     };
     img.onerror = () => texCache.set(file, 'failed');
@@ -194,7 +218,13 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
     // no macro pixel on screen: camera low and looking down
     camera.getWorldDirection(sample); if (camH < CULL_ALT_M && sample.y < -0.45) show = false;
     const g = getFogGrid(), m = getMeta();
-    if (g && m) { const ox = g.x0 - m.x0, oz = -(g.y0 - m.y0), hm = g.h * g.cell_m; U.uCity.value.set(ox, oz - hm, ox + g.w * g.cell_m, oz); }
+    if (g && m) {
+      const ox = g.x0 - m.x0, oz = -(g.y0 - m.y0), hm = g.h * g.cell_m;
+      U.uCity.value.set(ox, oz - hm, ox + g.w * g.cell_m, oz);
+      U.uUtm0.value.set(m.x0, m.y0);
+    }
+    if (st.box && st.box.length === 4) U.uLlBox.value.set(st.box[0], st.box[1], st.box[2] - st.box[0], st.box[3] - st.box[1]);
+    if (st.w && st.h) U.uTexel.value.set(1 / st.w, 1 / st.h);
     U.uTopDef.value = Math.max(150, fog.topM || 200); U.uSky.value = fog.params && fog.params.sky ? 1 : 0; U.uOn.value = show ? 1 : 0; U.uTime.value = performance.now() / 1000;
     st.slab.visible = show;
   }

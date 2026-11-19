@@ -249,6 +249,7 @@ const VOX_FS = COMMON_U + `
       vec3 p = ro + rd * t;
       vec2 g = (p.xz - uGo) / uGs, qg = clamp(g, 0., 1.);
       float og = length((g - qg) * uGs);
+      if (og > uEdge * 1.45) continue; // well past the noisy edge fade: zero density, never sample mirrored edge texels
       vec2 cell = min(floor(g * uOccN), ceil(uOccN) - 1.);
       vec2 oc = uSkip > 0. && og == 0. ? texelFetch(uOcc, ivec2(cell), 0).rg : vec2(1.);
       float colTop = oc.y * uHtMax * uFollow + max(uVHa, uVHb); bool emp = oc.x < .5; // a column with no fog, or a ray above its fog layer
@@ -266,12 +267,17 @@ const VOX_FS = COMMON_U + `
       float base = gh * uFollow, va = (p.y - base) / uVHa, vb = (p.y - base) / uVHb;
       if (va < 0. || min(va, vb) > 1.) continue;
       float inside = 1. - smoothstep(0., uEdge, og * (.55 + .9 * texture(uNoise, vec3(p.x / 2300., .37, p.z / 2300.)).r)); // noisy edge: no straight line where the data ends
-      vec2 gm = g; // past the edge the volume wraps mirrored (fog over the ocean keeps its texture); wobble the mirror line so it shows no seam
-      if (og > 0.) gm += (texture(uNoise, vec3(p.x / 1900., .5, p.z / 1900.)).rb - .5) * min(og, 1500.) / uGs * 1.4;
+      if (inside < .002) continue;
       vec2 dA = clamp(dA0, -${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}, ${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}), dB = clamp(dB0, -${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}, ${MAX_VOLUME_SHIFT_FRAC.toFixed(2)});
       if (uFlowOn > .5 && uDriftS > 0.) { vec2 wv = clamp((texture(uWind, qg).rg * 255. - 128.) * uWindScale * uDriftS / uGs, -${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}, ${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}); wv.y = -wv.y; dA = -wv * uMixT; dB = wv * (1. - uMixT); } // larger shapes follow the terrain-aware wind without wrapping mirrored copies across the domain
-      vec2 s = va <= 1. ? texture(uVolA, vec3(gm + dA, va)).rg : vec2(0., 1.);
-      if (uMixT > .001) s = mix(s, vb <= 1. ? texture(uVolB, vec3(gm + dB, vb)).rg : vec2(0., 1.), uMixT);
+      vec2 uvA = clamp(qg + dA, vec2(.003), vec2(.997)), uvB = clamp(qg + dB, vec2(.003), vec2(.997));
+      if (og > 0.) {
+        vec2 wob = (texture(uNoise, vec3(p.x / 2400., .5, p.z / 2400.)).rb - .5) * .06;
+        uvA = clamp(uvA + wob, vec2(.005), vec2(.995));
+        uvB = clamp(uvB + wob, vec2(.005), vec2(.995));
+      }
+      vec2 s = va <= 1. ? texture(uVolA, vec3(uvA, va)).rg : vec2(0., 1.);
+      if (uMixT > .001) s = mix(s, vb <= 1. ? texture(uVolB, vec3(uvB, vb)).rg : vec2(0., 1.), uMixT);
       float d = s.r * inside;
       if (d < .002) continue;
       // fine erosion close to the camera only (fades out where steps get long, so it cannot alias into streaks)
@@ -444,15 +450,17 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   let accN = 0, accCur = 0, lastKey = '', lastMoveT = -1e9, lastFullT = 0, phase = 'off', lastR = null, lastScn = null, lastCam = null;
   const camEls = new Float64Array(32);
   let stepMin = 60, groundM = null, windTex = null, windKey = '';
-  /* terrain-aware wind for data hour k (fogflow.solveWind, ~20 ms on the CPU, once per hour change) */
-  function updateWind(hk) { // wind field for the time hk (hours since the start): the nearest hourly wind, the top rounded to 25 m so 5-minute frames do not re-solve every step
+  /* terrain-aware wind for data hour k (fogflow.solveWind, ~20 ms on the CPU, only when the quantized wind or top actually changes) */
+  function updateWind(hk) {
     if (!P.flow || !grid || !groundM || !wx || !wx.windMs) { U.uFlowOn.value = 0; return; }
-    const i = Math.max(0, Math.min(wx.windMs.length - 1, Math.round(hk * 60 / stepMin))), sp = wx.windMs[i], dir = wx.windDir[i];
-    const q = tvOn() ? 25 : 1, seed = tvOn() ? i : Math.round(hk); // travel off: exactly as before (exact top, seed = the data hour)
-    const key = [seed, sp, dir, Math.round(topForHour(hk) / q), P.eddy].join();
-    if (key !== windKey && sp != null && dir != null) {
+    const fi = Math.max(0, Math.min(wx.windMs.length - 1, hk * 60 / stepMin)), i0 = Math.floor(fi), i1 = Math.min(wx.windMs.length - 1, i0 + 1), u = fi - i0;
+    const sp0 = wx.windMs[i0], sp1 = wx.windMs[i1], sp = sp0 != null && sp1 != null ? sp0 * (1 - u) + sp1 * u : (sp0 ?? sp1);
+    const dir = wx.windDir[Math.round(fi)];
+    const qTop = Math.round(topForHour(hk) / 50) * 50, qSp = sp != null ? Math.round(sp * 2) / 2 : null, qDir = dir != null ? Math.round(dir / 10) * 10 : null;
+    const key = [qSp, qDir, qTop, P.eddy].join();
+    if (key !== windKey && qSp != null && qDir != null) {
       windKey = key;
-      const r = solveWind({ w: grid.w, h: grid.h, cellM: grid.cell_m, ground: groundM, topM: q > 1 ? Math.round(topForHour(hk) / q) * q : topForHour(hk), speed: sp, dirFrom: dir, eddy: P.eddy, seed });
+      const r = solveWind({ w: grid.w, h: grid.h, cellM: grid.cell_m, ground: groundM, topM: qTop, speed: qSp, dirFrom: qDir, eddy: P.eddy, seed: 1 });
       if (!windTex) { windTex = new THREE.DataTexture(new Uint8Array(grid.w * grid.h * 2), grid.w, grid.h, THREE.RGFormat, THREE.UnsignedByteType); windTex.minFilter = windTex.magFilter = THREE.LinearFilter; windTex.flipY = false; }
       windTex.image.data.set(r.rg); windTex.needsUpdate = true; U.uWind.value = windTex; U.uWindScale.value = r.scale; windMs = r.ms;
       let m = 0; for (let q = 0; q < r.rg.length; q++) { const a = Math.abs(r.rg[q] - 128); if (a > m) m = a; } windMax = m * r.scale * 1.42; occKey = '';
@@ -500,7 +508,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     volKey = key; BA.uD.value = d; BB.uA.value = scratch.texture;
     return true;
   }
-  function setupVolTex(t, f) { t.format = f; t.type = THREE.UnsignedByteType; t.minFilter = t.magFilter = THREE.LinearFilter; t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; t.wrapR = THREE.ClampToEdgeWrapping; t.generateMipmaps = false; }
+  function setupVolTex(t, f) { t.format = f; t.type = THREE.UnsignedByteType; t.minFilter = t.magFilter = THREE.LinearFilter; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.wrapR = THREE.ClampToEdgeWrapping; t.generateMipmaps = false; }
   function newVolRT() {
     const [w, h, d] = volKey.split('x').map(Number);
     const r = new THREE.WebGL3DRenderTarget(w, h, d, { depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.UnsignedByteType, format: THREE.RGFormat });
@@ -517,13 +525,14 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     if (wx && wx.wind && P.advect > 0) out.set(wx.wind[0], 0, wx.wind[1]).multiplyScalar(hours * 3600 * P.advect); else out.set(0, 0, 0);
     return out;
   }
-  /* ---- 3D fog data (guide 04): index.json fog3d atlases, decoded on demand, 3 hours kept (the two in use plus one ahead) */
+  /* ---- 3D fog data (guide 04): index.json fog3d atlases, decoded on demand, 8 frames kept */
+  let d3Canvas = null, d3Ctx = null;
   const d3 = { info: null, base: '', sfx: '', keep: [], pending: new Set(), missing: new Set(),
-    zero: null, cache: createLru(3, (e) => { e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); }) };
+    zero: null, cache: createLru(8, (e) => { e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); }) };
   const d3On = () => !!(P.data3d && d3.info && grid && usable(d3.info, grid));
   function d3Fail(id) { d3.pending.delete(id); d3.missing.add(id); }
   const d3Url = (kf) => (kf.src === 'f' ? tv.dir : d3.base) + kf.vol + (kf.src === 'f' ? '' : d3.sfx); // fog5 file names carry a content hash, no suffix needed
-  function d3Load(kf) { // starts decoding key frame kf; the PNG is read through a canvas once (colMax for the occupancy) and its pixels become the texture, so no colour management or premultiply can touch them
+  function d3Load(kf) { // starts decoding key frame kf; uses one reusable scratch canvas and a 4x4 subsampled colMax scan so onload takes <1 ms on the CPU
     const I = d3.info; if (!kf || !I || d3.cache.has(kf.id) || d3.pending.has(kf.id) || d3.missing.has(kf.id)) return;
     if (kf.src === 'f' && kf.vol && !tvInfoOk()) { d3.missing.add(kf.id); return; }
     if (!kf.vol) {
@@ -538,13 +547,25 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
       if (d3.info !== info) { d3.pending.delete(id); return; } // the data changed while loading
       try {
         const W = info.cols * info.w, H = info.rows * info.h; if (img.width !== W || img.height !== H) throw new Error('atlas size');
-        const c = document.createElement('canvas'); c.width = W; c.height = H;
-        const cx = c.getContext('2d', { willReadFrequently: true }); cx.drawImage(img, 0, 0);
-        const rgba = cx.getImageData(0, 0, W, H).data, px = new Uint8Array(W * H);
+        if (!d3Canvas || d3Canvas.width !== W || d3Canvas.height !== H) {
+          d3Canvas = document.createElement('canvas'); d3Canvas.width = W; d3Canvas.height = H;
+          d3Ctx = d3Canvas.getContext('2d', { willReadFrequently: true });
+        }
+        d3Ctx.drawImage(img, 0, 0);
+        const rgba = d3Ctx.getImageData(0, 0, W, H).data, px = new Uint8Array(W * H);
         for (let i = 0, j = 0; i < px.length; i++, j += 4) px[i] = rgba[j];
         const tex = new THREE.DataTexture(px, W, H, THREE.RedFormat, THREE.UnsignedByteType);
         tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.generateMipmaps = false; tex.flipY = false; tex.needsUpdate = true;
-        d3.cache.set(id, { k: id, tex, colMax: colMax(px, info), topLayer: top }, d3.keep);
+        // Fast 320m cell-level colMax: only needs to know if any column in each 4x4 cell has fog (stride 2 scan is 4x faster and dilated by r>=1 cell in updateOcc)
+        const w = info.w, h = info.h, nz = info.nz, cols = info.cols, cm = new Uint8Array(w * h);
+        for (let k = 0; k <= top && k < nz; k++) {
+          const ox = (k % cols) * w, oy = ((k / cols) | 0) * h;
+          for (let y = 0; y < h; y += 2) {
+            const src = (oy + y) * W + ox, dst = y * w;
+            for (let x = 0; x < w; x += 2) { if (px[src + x] >= 1) cm[dst + x] = 255; }
+          }
+        }
+        d3.cache.set(id, { k: id, tex, colMax: cm, topLayer: top }, d3.keep);
         d3.pending.delete(id);
       } catch (e) { d3Fail(id); }
     };
@@ -611,11 +632,17 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   let lastVsig = null;
   function bakeHour(renderer, e, kf, d3e) {
     const t0 = performance.now(); let top = topForHour(kf.hk) * EX, vh = top * (1 + P.bump * .8) + 4; const D = vlayers();
-    if (d3e) { vh = volumeHeight(d3e.topLayer, d3.info, EX); top = vh; BA.uTex3.value = d3e.tex; BA.uUse3.value = 1; } else BA.uUse3.value = 0;
+    if (d3e) {
+      // Smooth the 3D volume ceiling with topForHour(kf.hk) so integer 25m steps in d3e.topLayer never rescale the 24 voxel layers abruptly between 5-min frames
+      const d3Vh = volumeHeight(d3e.topLayer, d3.info, EX);
+      vh = kf.src === 'f' ? Math.max(d3Vh, Math.min((d3.info.nz + 1) * d3.info.dz_m * EX, top + 50 * EX)) : d3Vh;
+      top = vh; BA.uTex3.value = d3e.tex; BA.uUse3.value = 1;
+    } else BA.uUse3.value = 0;
     const sh = kf.src === 'f' && !d3e ? tv.sheets.get(kf.tile) : null; // 3D data: the 2D tile is not read
     if (sh) { BA.uTex.value = sh.tex; BA.uTiles.value.set(sh.cols, sh.rows, grid.w, grid.h); BA.uTexel.value.set(1 / sh.W, 1 / sh.H); BA.uFrame.value = kf.slot; }
     else { BA.uTex.value = U.uTex.value; BA.uTiles.value.copy(U.uTiles.value); BA.uTexel.value.copy(U.uTexel.value); BA.uFrame.value = kf.k; }
-    BA.uTop.value = top; BA.uVH.value = vh; windOffset(kf.hk, BA.uOff.value);
+    // For 5-minute travel frames, keep uOff anchored to the rounded hour so VOX_FS's terrain-aware wind drift (dA, dB) smoothly carries the billows without fighting a per-5-min night-average uOff shift
+    BA.uTop.value = top; BA.uVH.value = vh; windOffset(kf.src === 'f' ? Math.round(kf.hk) : kf.hk, BA.uOff.value);
     for (let l = 0; l < D; l++) { BA.uLayer.value = l; renderer.setRenderTarget(scratch, l); renderer.render(bakeAScene, ortho); }
     for (let l = 0; l < D; l++) { BA.uLayer.value = l; renderer.setRenderTarget(e.rt, l); renderer.render(bakeBScene, ortho); }
     e.k = kf.id; e.hk = kf.hk; e.kf = kf; e.ver = bakeVer; e.vh = vh; e.stamp = ++bakes; e.src3 = d3e ? 1 : 0; e.d3 = d3e || null;
@@ -693,13 +720,16 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     if (P.mode !== 'voxel') U.uYmax.value = mx * P.follow + top + 2;
     windOffset(U.uFrame.value * (grid ? grid.frame_min || 60 : 60) / 60, U.uOff.value);
   }
+  let lastBakeSig = '';
   function applyParams() {
     U.uFollow.value = P.follow; U.uSoft.value = P.soft; U.uDetail.value = P.detail; U.uWarp.value = P.warp; U.uDither.value = P.dither;
     U.uEdge.value = P.edgeFade; BA.uBump.value = P.bump; U.uShadow.value = P.shadow; U.uSkip.value = P.skip ? 1 : 0;
     const K = BASE_EXTINCTION_PER_M / EX; U.uK.value = K; BB.uK.value = K * SHADOW_EXTINCTION_RATIO; // shadow uses a lower extinction: forward scattering lets more sun through
     if (P.mode === 'sheets') { if (tier !== 0) setTier(0, 'lab'); }
     else if (tier === 0) setTier(baseTier, 'lab');
-    bakeVer++; occKey = ''; applyTop(); if (lastL) setLight(lastL); tvSync();
+    const bSig = [P.mode, P.follow, P.soft, P.bump, P.warp, P.advect, P.topSrc, P.topFixed, P.topMin, P.topMax, P.smooth, P.vres, P.vlayers, P.data3d, P.travel].join('|');
+    if (bSig !== lastBakeSig) { lastBakeSig = bSig; bakeVer++; occKey = ''; }
+    applyTop(); if (lastL) setLight(lastL); tvSync();
   }
   let lightSig = '';
   function setLight(L) {
@@ -926,7 +956,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     setData3d(info, base, sfx) {
       d3.info = info || null; d3.base = base || ''; d3.sfx = sfx || ''; d3.pending.clear(); d3.missing.clear(); lastVsig = null;
       for (const k of d3.cache.keys()) { const e = d3.cache.get(k); e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); }
-      d3.cache = createLru(3, (e) => { e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); });
+      d3.cache = createLru(8, (e) => { e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); });
       if (info) { BA.uDz.value = info.dz_m; BA.uNz.value = info.nz; BA.uAt.value.set(info.cols, info.rows); BA.uT3.value.set(info.w, info.h); }
       bakeVer++; occKey = '';
     },
