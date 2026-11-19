@@ -6,7 +6,7 @@ issue: null
 epic: null
 pr: null
 pr_url: ""
-status: "ready"
+status: "beta"
 branch: "feat/006-fog2-voxel-gpu-perf"
 switch: "fog_gpu_opt"
 depends_on:
