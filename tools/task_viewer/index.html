@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Death Fog — Task Viewer</title>
+<script src="/sidecar.js" onerror="/* standalone mode */"></script>
 <style>
   :root {
     --bg: #0f131a;
@@ -17,6 +18,7 @@
     --amber: #f5b942;
     --red: #ef5350;
     --purple: #a78bfa;
+    --cyan: #38bdf8;
   }
   * { box-sizing: border-box; }
   body {
@@ -44,12 +46,23 @@
     padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
     background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
   }
+  .pill.brainstorm { color: var(--cyan); border-color: #1f5573; }
+  .pill.plan { color: var(--purple); border-color: #4f3d80; }
   .pill.ready { color: var(--accent); border-color: #264873; }
   .pill.in-progress { color: var(--amber); border-color: #6b5218; }
   .pill.review { color: var(--purple); border-color: #4f3d80; }
   .pill.beta, .pill.done { color: var(--green); border-color: #1f5c3a; }
   .pill.gpu { color: #ff8a65; border-color: #6b3524; }
   .pill.wt { color: var(--green); border-color: #1f5c3a; }
+  .pill.convo { color: var(--cyan); border-color: #1f5573; }
+  .pill.pr-link { color: var(--accent); border-color: #264873; text-decoration: none; }
+  .pill.pr-link:hover { border-color: var(--text); }
+  .merge-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 10px; margin-bottom: 10px; font-size: 11.5px;
+  }
+  .merge-bar .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 700; margin-right: 4px; }
   .layout {
     display: grid;
     grid-template-columns: 270px 1fr;
@@ -87,17 +100,55 @@
   main { padding: 14px 16px; overflow-y: auto; }
   .title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
   .title-row h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .stepper {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; margin-bottom: 10px;
+  }
+  .step {
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+    color: var(--muted); border: 1px solid var(--border); background: var(--panel2);
+  }
+  .step.done { color: var(--green); border-color: #1f5c3a; }
+  .step.current { color: var(--text); border-color: var(--accent); background: #1a2c47; }
+  .step-sep { color: var(--muted); font-size: 11px; }
   .actions {
-    display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 12px;
+    display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 10px;
   }
-  button {
+  button, a.btn {
+    display: inline-flex; align-items: center; gap: 5px;
     background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 6px; padding: 6px 11px; font-size: 12px; font-weight: 500; cursor: pointer;
+    border-radius: 6px; padding: 6px 11px; font-size: 12px; font-weight: 500;
+    cursor: pointer; text-decoration: none;
   }
-  button:hover { border-color: var(--accent); }
-  button.primary { background: #1d4e89; border-color: #2f6db8; }
-  button.primary:hover { background: #255ea3; }
-  button:disabled { opacity: .5; cursor: not-allowed; }
+  button:hover, a.btn:hover { border-color: var(--accent); }
+  button.primary, a.btn.primary { background: #1d4e89; border-color: #2f6db8; }
+  button.primary:hover, a.btn.primary:hover { background: #255ea3; }
+  button.gate { background: #1b4d3e; border-color: #2e7d5b; }
+  button.gate:hover { background: #22634f; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .convo-box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 12px;
+  }
+  .convo-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: space-between;
+  }
+  .convo-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; font-weight: 700; }
+  details.convo-history { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+  details.convo-history summary { cursor: pointer; font-size: 11.5px; color: var(--muted); user-select: none; }
+  .convo-item {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 6px 8px; margin-top: 6px; border-radius: 6px;
+    background: var(--panel2); border: 1px solid var(--border); font-size: 11.5px;
+  }
+  .link-form {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center;
+  }
+  .link-form input, .link-form select {
+    background: #0b0e14; color: var(--text); border: 1px solid var(--border);
+    border-radius: 5px; padding: 5px 8px; font-size: 11.5px;
+  }
   .kv {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 8px; background: var(--panel); border: 1px solid var(--border);
@@ -106,17 +157,25 @@
   .kv .k { font-size: 10.5px; text-transform: uppercase; color: var(--muted); }
   .kv .v { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px; word-break: break-all; }
   .kv a { color: var(--accent); text-decoration: none; }
-  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
   .tab {
     padding: 7px 12px; cursor: pointer; color: var(--muted); font-weight: 500;
     border-bottom: 2px solid transparent; font-size: 12.5px;
   }
   .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .doc-toolbar { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-bottom: 8px; }
   pre.doc {
     background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
     padding: 12px; white-space: pre-wrap; word-break: break-word;
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px;
-    margin: 0; max-height: 62vh; overflow: auto;
+    margin: 0; max-height: 58vh; overflow: auto;
+  }
+  textarea.editor {
+    width: 100%; min-height: 360px; max-height: 62vh;
+    background: #0b0e14; color: var(--text); border: 1px solid var(--accent);
+    border-radius: 8px; padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px;
+    resize: vertical;
   }
   .log-box {
     background: #0b0e14; border: 1px solid var(--border); border-radius: 8px;
@@ -141,29 +200,88 @@
 </header>
 <div class="layout">
   <aside id="sidebar"></aside>
-  <main id="detail"><div class="empty">Select a task to inspect its plan, mockups, and verification evidence.</div></main>
+  <main id="detail"><div class="empty">Select a task to inspect its stage gate, plan, handoff, mockups, and evidence.</div></main>
 </div>
 <script>
+const STAGE_ORDER = ['brainstorm', 'plan', 'ready', 'in-progress', 'review', 'beta'];
+const STAGE_LABELS = {
+  backlog: 'Backlog',
+  brainstorm: 'Brainstorm',
+  plan: 'Plan',
+  ready: 'Approved',
+  'in-progress': 'Build',
+  review: 'Review',
+  beta: 'Beta',
+  done: 'Done',
+};
+
 let STATE = null;
 let SELECTED = null;
-let TAB = 'task';
+let TAB = 'plan';
 let LAST_ACTIVE_WT = null;
+let EDITING = null; // 'plan' | 'handoff' | null
+let LAST_LOG = '';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+function hasSidecarChat() {
+  return Boolean(window.sidecar && window.sidecar.agent && typeof window.sidecar.agent.sendMessage === 'function');
+}
+
+function showLog(msg) {
+  LAST_LOG = msg;
+  const log = document.getElementById('action-log');
+  if (log) {
+    log.classList.add('show');
+    log.textContent = msg;
+  }
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {}
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (_) {}
+  document.body.removeChild(ta);
+  return ok;
+}
+
+async function postAction(payload) {
+  const r = await fetch('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return await r.json();
+}
+
 async function refresh(manual = false) {
+  // Pause DOM re-render while editing markdown or typing in link inputs
+  if (!manual && (EDITING || (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)))) {
+    return;
+  }
   try {
     const r = await fetch('/api/state', { cache: 'no-store' });
     STATE = await r.json();
-    // Auto-focus when a new worktree becomes active
     if (!SELECTED || (STATE.active_task_id && STATE.active_task_id !== LAST_ACTIVE_WT && STATE.tasks[STATE.active_task_id]?.active_worktree)) {
       SELECTED = STATE.active_task_id;
       LAST_ACTIVE_WT = STATE.active_task_id;
     }
     if (SELECTED && !STATE.tasks[SELECTED]) SELECTED = STATE.active_task_id;
-    document.getElementById('sync-status').textContent = `${Object.keys(STATE.tasks).length} tasks · live`;
+    const modeTag = hasSidecarChat() ? 'antigravity' : 'live';
+    document.getElementById('sync-status').textContent = `${Object.keys(STATE.tasks).length} tasks · ${modeTag}`;
     renderSidebar();
     renderDetail();
   } catch (e) {
@@ -181,7 +299,7 @@ function renderSidebar() {
   const seen = new Set();
   let html = '';
   STATE.waves.forEach((wave, idx) => {
-    html += `<div class="wave-hdr">Wave ${idx + 1} ${idx === 0 ? '· Parallel Ready' : '· Queued'}</div>`;
+    html += `<div class="wave-hdr">Wave ${idx + 1} ${idx === 0 ? '· Active / Ready' : '· Queued'}</div>`;
     wave.forEach(tid => { seen.add(tid); html += cardHtml(STATE.tasks[tid]); });
   });
   const done = Object.keys(STATE.tasks).filter(tid => !seen.has(tid));
@@ -197,11 +315,16 @@ function cardHtml(t) {
   const active = t.id === SELECTED ? ' active' : '';
   const wt = t.active_worktree ? '<span class="pill wt">WT</span>' : '';
   const gpu = t.gpu_required ? '<span class="pill gpu">GPU</span>' : '';
-  const pr = t.pr ? `<span class="pill">PR #${t.pr}</span>` : '';
+  const convo = t.conversations?.primary ? '<span class="pill convo">Convo</span>' : '';
+  const ms = t.merge_status || {};
+  const mergedTag = ms.in_public ? '<span class="pill beta">Main</span>' : (ms.in_beta ? '<span class="pill beta">Beta</span>' : '');
+  const pr = t.pr_url
+    ? `<a class="pill pr-link" href="${esc(t.pr_url)}" target="_blank" onclick="event.stopPropagation()">PR #${esc(t.pr)} ↗</a>`
+    : (t.pr ? `<span class="pill">PR #${esc(t.pr)}</span>` : '');
   return `<div class="task-card${active}" onclick="selectTask('${esc(t.id)}')">
     <div class="row">
-      <span class="pill ${esc(t.status)}">#${esc(t.id)} · ${esc(t.status)}</span>
-      <span style="display:flex;gap:4px;">${wt}${gpu}${pr}</span>
+      <span class="pill ${esc(t.status)}">#${esc(t.id)} · ${esc(STAGE_LABELS[t.status] || t.status)}</span>
+      <span style="display:flex;gap:4px;">${wt}${convo}${mergedTag}${gpu}${pr}</span>
     </div>
     <div class="slug">${esc(t.slug)}</div>
     <div class="meta">${esc((t.owned_paths || []).join(', ') || 'no owned_paths')}</div>
@@ -210,32 +333,227 @@ function cardHtml(t) {
 
 function selectTask(id) {
   SELECTED = id;
+  EDITING = null;
+  LAST_LOG = '';
   renderSidebar();
   renderDetail();
 }
 
 function setTab(tab) {
   TAB = tab;
+  EDITING = null;
   renderDetail();
 }
 
-async function runAction(action) {
-  if (!SELECTED) return;
-  const log = document.getElementById('action-log');
-  log.classList.add('show');
-  log.textContent = `Running '${action}' for task ${SELECTED}...`;
+function startEdit(kind) {
+  EDITING = kind;
+  renderDetail();
+}
+
+function cancelEdit() {
+  EDITING = null;
+  renderDetail();
+}
+
+async function saveDoc(kind) {
+  const ta = document.getElementById('doc-editor');
+  if (!ta || !SELECTED) return;
+  const action = kind === 'plan' ? 'save_plan' : 'save_handoff';
+  showLog(`Saving ${kind.toUpperCase()}.md...`);
   try {
-    const r = await fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, task_id: SELECTED }),
-    });
-    const res = await r.json();
-    log.textContent = (res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.output || res.error || JSON.stringify(res));
-    await refresh();
+    const res = await postAction({ action, task_id: SELECTED, content: ta.value });
+    EDITING = null;
+    showLog((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.error || JSON.stringify(res)));
+    await refresh(true);
   } catch (e) {
-    log.textContent = 'Error: ' + e.message;
+    showLog('Error: ' + e.message);
   }
+}
+
+async function runAction(action, extra = {}) {
+  if (!SELECTED) return;
+  showLog(`Running '${action}' for task ${SELECTED}...`);
+  try {
+    const res = await postAction({ action, task_id: SELECTED, ...extra });
+    showLog((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.output || res.error || JSON.stringify(res)));
+    await refresh(true);
+  } catch (e) {
+    showLog('Error: ' + e.message);
+  }
+}
+
+async function copyResumePrompt(worker = false) {
+  if (!SELECTED) return;
+  const kind = worker ? 'worker brief' : 'resume prompt';
+  showLog(`Building ${kind} for task ${SELECTED}...`);
+  try {
+    const res = await postAction({ action: 'resume_prompt', task_id: SELECTED, worker });
+    if (!res.ok) {
+      showLog(`FAILED: ` + (res.error || `Could not build ${kind}`));
+      return;
+    }
+    const ok = await copyText(res.prompt);
+    showLog(ok ? `Copied ${kind} (${res.prompt.length} chars) to clipboard.` : `${kind} ready (clipboard unavailable):\n\n` + res.prompt);
+  } catch (e) {
+    showLog('Error: ' + e.message);
+  }
+}
+
+async function sendResumeToChat() {
+  if (!SELECTED) return;
+  showLog(`Sending resume prompt for task ${SELECTED} to active Antigravity chat...`);
+  try {
+    const res = await postAction({ action: 'resume_prompt', task_id: SELECTED });
+    if (!res.ok) {
+      showLog('FAILED: ' + (res.error || 'Could not build resume prompt'));
+      return;
+    }
+    if (hasSidecarChat()) {
+      await window.sidecar.agent.sendMessage(res.prompt);
+      showLog(`Sent resume prompt (${res.prompt.length} chars) to active Antigravity chat.`);
+    } else {
+      await copyText(res.prompt);
+      showLog('Not in Antigravity sidecar — copied resume prompt to clipboard instead.');
+    }
+  } catch (e) {
+    showLog('Error: ' + e.message);
+  }
+}
+
+async function sendConvoLinkToChat(convId, label) {
+  const md = `[Open Task #${SELECTED} Convo: ${label || convId}](conversation://${convId})`;
+  if (hasSidecarChat()) {
+    try {
+      await window.sidecar.agent.sendMessage(`Jump to linked conversation: ${md}`);
+      showLog(`Sent clickable conversation link to active chat: ${convId}`);
+      return;
+    } catch (e) {
+      showLog('Sidecar send failed: ' + e.message);
+    }
+  }
+  await copyText(`conversation://${convId}`);
+  showLog(`Copied conversation://${convId} to clipboard.`);
+}
+
+async function submitLinkConvo(e) {
+  e.preventDefault();
+  if (!SELECTED) return;
+  const convId = document.getElementById('link-conv-id').value.trim();
+  const tool = document.getElementById('link-conv-tool').value;
+  const label = document.getElementById('link-conv-label').value.trim();
+  const makePrimary = document.getElementById('link-conv-primary').checked;
+  if (!convId) return;
+  await runAction('link_conversation', { conv_id: convId, tool, label, make_primary: makePrimary });
+}
+
+function renderStepper(status) {
+  const curIdx = status === 'done' ? STAGE_ORDER.length : STAGE_ORDER.indexOf(status);
+  return `<div class="stepper">
+    ${STAGE_ORDER.map((s, i) => {
+      const cls = i < curIdx ? 'done' : (i === curIdx ? 'current' : '');
+      const sep = i < STAGE_ORDER.length - 1 ? '<span class="step-sep">→</span>' : '';
+      return `<span class="step ${cls}">${esc(STAGE_LABELS[s] || s)}</span>${sep}`;
+    }).join('')}
+  </div>`;
+}
+
+function renderMergeBar(t) {
+  const ms = t.merge_status || {};
+  const prPill = ms.pr_url
+    ? `<a class="step current" href="${esc(ms.pr_url)}" target="_blank" style="text-decoration:none;">PR #${esc(ms.pr)} ↗</a>`
+    : `<span class="step">${ms.pr ? 'PR #' + esc(ms.pr) : 'No PR yet'}</span>`;
+  const betaCls = ms.in_beta ? 'done' : '';
+  const pubCls = ms.in_public ? 'done' : '';
+  const shaNote = ms.merged_sha ? `<span style="color:var(--muted);font-family:monospace;margin-left:auto;">merged ${esc(ms.merged_sha)}</span>` : '';
+  return `<div class="merge-bar">
+    <span class="lbl">Ship Track</span>
+    <span class="step ${t.active_worktree || ms.in_beta ? 'done' : ''}">${esc(ms.branch || t.branch)}</span>
+    <span class="step-sep">→</span>
+    ${prPill}
+    <span class="step-sep">→</span>
+    <span class="step ${betaCls}">${ms.in_beta ? '✓ ' : ''}Beta (v3-dev)</span>
+    <span class="step-sep">→</span>
+    <span class="step ${pubCls}">${ms.in_public ? '✓ ' : ''}Public (main)</span>
+    ${shaNote}
+  </div>`;
+}
+
+function renderConversations(t) {
+  const convs = t.conversations || { primary: null, history: [] };
+  const p = convs.primary;
+  const hist = convs.history || [];
+  const hasClaude = Boolean(STATE?.available_launchers?.claude);
+
+  let primaryHtml = '<span style="color:var(--muted);font-size:12px;">No primary conversation linked yet.</span>';
+  if (p) {
+    if (p.tool === 'antigravity') {
+      primaryHtml = `
+        <a class="btn primary" href="conversation://${esc(p.id)}" title="Open linked Antigravity conversation in left sidebar">
+          Open Antigravity Convo · ${esc(p.label || p.id.slice(0, 8))}
+        </a>
+        <button onclick="sendConvoLinkToChat('${esc(p.id)}', '${esc(p.label || '')}')" title="Send clickable conversation:// link to active chat">
+          ${hasSidecarChat() ? 'Jump via Chat' : 'Copy Convo Link'}
+        </button>`;
+    } else if (p.tool === 'claude') {
+      primaryHtml = `
+        <button class="primary" ${hasClaude ? '' : 'disabled'} onclick="runAction('launch_claude', { session_id: '${esc(p.id)}' })">
+          Resume Claude Session · ${esc(p.label || p.id.slice(0, 8))}
+        </button>`;
+    } else {
+      primaryHtml = `<span class="pill convo">${esc(p.tool)}: ${esc(p.label || p.id)}</span>`;
+    }
+  }
+
+  const histHtml = hist.map(it => {
+    const openBtn = it.tool === 'antigravity'
+      ? `<a class="btn" href="conversation://${esc(it.id)}">Open</a>`
+      : (it.tool === 'claude'
+        ? `<button ${hasClaude ? '' : 'disabled'} onclick="runAction('launch_claude', { session_id: '${esc(it.id)}' })">Resume</button>`
+        : '');
+    return `<div class="convo-item">
+      <div>
+        <span class="pill convo">${esc(it.tool)}</span>
+        <strong>${esc(it.label || it.id)}</strong>
+        <span style="color:var(--muted);margin-left:6px;font-family:monospace;">${esc(it.id.slice(0, 12))}</span>
+      </div>
+      <div style="display:flex;gap:6px;">
+        ${openBtn}
+        <button onclick="runAction('set_primary_conversation', { conv_id: '${esc(it.id)}' })">Make Primary</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="convo-box">
+    <div class="convo-row">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+        <span class="convo-label">Context &amp; Convo</span>
+        ${primaryHtml}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <button onclick="copyResumePrompt(true)" title="Compact execution brief for a fast/cheap worker agent (flash or hydrogen)">Copy Worker Brief (${esc(t.exec_tier || 'hydrogen')})</button>
+        <button onclick="copyResumePrompt(false)">Copy Resume Prompt</button>
+        ${hasSidecarChat() ? '<button onclick="sendResumeToChat()">Send Resume to Chat</button>' : ''}
+        ${hasClaude ? '<button onclick="runAction(\'launch_claude\')">Resume in Claude</button>' : ''}
+      </div>
+    </div>
+    <details class="convo-history">
+      <summary>Past Conversations (${hist.length}) &amp; Link New</summary>
+      ${histHtml || '<div style="color:var(--muted);font-size:11.5px;margin-top:6px;">No secondary conversations linked.</div>'}
+      <form class="link-form" onsubmit="submitLinkConvo(event)">
+        <input id="link-conv-id" placeholder="Conversation / Session ID" required style="min-width:210px;" />
+        <select id="link-conv-tool">
+          <option value="antigravity">Antigravity</option>
+          <option value="claude">Claude</option>
+          <option value="gemini">Gemini</option>
+        </select>
+        <input id="link-conv-label" placeholder="Label (e.g. Brainstorm)" style="min-width:130px;" />
+        <label style="font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:4px;">
+          <input type="checkbox" id="link-conv-primary" checked /> Primary
+        </label>
+        <button type="submit">+ Link</button>
+      </form>
+    </details>
+  </div>`;
 }
 
 function renderDetail() {
@@ -247,12 +565,50 @@ function renderDetail() {
   }
   const prLink = t.pr_url ? `<a href="${esc(t.pr_url)}" target="_blank">PR #${esc(t.pr)}</a>` : (t.pr ? `#${esc(t.pr)}` : '—');
   const vBadge = t.verify ? (t.verify.ok ? '<span class="pill beta">Verified OK</span>' : '<span class="pill" style="color:var(--red)">Verify Failed</span>') : '<span class="pill">Unverified</span>';
+  const lastAgent = t.handoff_meta?.last_agent ? `<span class="pill">Last: ${esc(t.handoff_meta.last_agent)}</span>` : '';
+
+  let gateBtn = '';
+  if (t.next_gate) {
+    const gateLabel = t.next_gate === 'ready'
+      ? 'Approve Build Go-Ahead'
+      : `Approve → ${STAGE_LABELS[t.next_gate] || t.next_gate}`;
+    gateBtn = `<button class="gate" onclick="runAction('approve_gate')">${esc(gateLabel)}</button>`;
+  }
 
   let bodyHtml = '';
   if (TAB === 'task') {
     bodyHtml = `<pre class="doc">${esc(t.task_md || 'No TASK.md')}</pre>`;
   } else if (TAB === 'plan') {
-    bodyHtml = `<pre class="doc">${esc(t.plan_md || 'No PLAN.md')}</pre>`;
+    if (EDITING === 'plan') {
+      bodyHtml = `
+        <div class="doc-toolbar">
+          <button class="primary" onclick="saveDoc('plan')">Save PLAN.md</button>
+          <button onclick="cancelEdit()">Cancel</button>
+        </div>
+        <textarea class="editor" id="doc-editor">${esc(t.plan_md || '')}</textarea>`;
+    } else {
+      bodyHtml = `
+        <div class="doc-toolbar">
+          <button onclick="startEdit('plan')">Edit PLAN.md</button>
+        </div>
+        <pre class="doc">${esc(t.plan_md || 'No PLAN.md')}</pre>`;
+    }
+  } else if (TAB === 'handoff') {
+    if (EDITING === 'handoff') {
+      bodyHtml = `
+        <div class="doc-toolbar">
+          <button class="primary" onclick="saveDoc('handoff')">Save HANDOFF.md</button>
+          <button onclick="cancelEdit()">Cancel</button>
+        </div>
+        <textarea class="editor" id="doc-editor">${esc(t.handoff_md || '')}</textarea>`;
+    } else {
+      bodyHtml = `
+        <div class="doc-toolbar">
+          <button onclick="runAction('snapshot_handoff')">Snapshot Git State</button>
+          <button onclick="startEdit('handoff')">Edit HANDOFF.md</button>
+        </div>
+        <pre class="doc">${esc(t.handoff_md || 'No HANDOFF.md yet. Click Snapshot Git State or Edit HANDOFF.md.')}</pre>`;
+    }
   } else if (TAB === 'mockups') {
     if (!t.mockups.length) {
       bodyHtml = '<div class="empty">No mockups yet in <code>mockups/</code>.</div>';
@@ -272,20 +628,29 @@ function renderDetail() {
     bodyHtml = vJson + shots;
   }
 
+  const startDisabled = t.is_pre_build_gate && !t.active_worktree ? 'disabled title="Approve Build Go-Ahead first"' : '';
+
   el.innerHTML = `
     <div class="title-row">
       <h2>#${esc(t.id)} — ${esc(t.title)}</h2>
-      <span class="pill ${esc(t.status)}">${esc(t.status)}</span>
+      <span class="pill ${esc(t.status)}">${esc(STAGE_LABELS[t.status] || t.status)}</span>
+      <span class="pill">Tier: ${esc(t.exec_tier || 'hydrogen')}</span>
       ${t.active_worktree ? '<span class="pill wt">Active Worktree</span>' : ''}
+      ${lastAgent}
       ${vBadge}
     </div>
+    ${renderStepper(t.status)}
+    ${renderMergeBar(t)}
+    ${renderConversations(t)}
     <div class="actions">
-      <button class="primary" onclick="runAction('open_folder')">Open Folder</button>
-      <button onclick="runAction('start')">${t.active_worktree ? 'Refresh Brief' : 'Start Worktree'}</button>
+      ${gateBtn}
+      <button ${startDisabled} onclick="runAction('start')">${t.active_worktree ? 'Refresh Brief' : 'Start Worktree'}</button>
       <button onclick="runAction('verify')">Run Verify</button>
+      ${t.pr_url ? `<a class="btn primary" href="${esc(t.pr_url)}" target="_blank">Open PR #${esc(t.pr)} ↗</a>` : ''}
+      <button onclick="runAction('open_folder')">Open Folder</button>
       <button onclick="runAction('open_beta')">Beta Preview</button>
     </div>
-    <div class="log-box" id="action-log"></div>
+    <div class="log-box ${LAST_LOG ? 'show' : ''}" id="action-log">${esc(LAST_LOG)}</div>
     <div class="kv">
       <div><div class="k">Branch</div><div class="v">${esc(t.branch)}</div></div>
       <div><div class="k">Beta Switch</div><div class="v">?beta=1&amp;feat=${esc(t.switch)}</div></div>
@@ -293,8 +658,9 @@ function renderDetail() {
       <div><div class="k">Owned Paths</div><div class="v">${esc((t.owned_paths || []).join(', ') || '—')}</div></div>
     </div>
     <div class="tabs">
-      <div class="tab ${TAB==='task'?'active':''}" onclick="setTab('task')">TASK.md</div>
       <div class="tab ${TAB==='plan'?'active':''}" onclick="setTab('plan')">PLAN.md</div>
+      <div class="tab ${TAB==='handoff'?'active':''}" onclick="setTab('handoff')">Handoff (Optional)</div>
+      <div class="tab ${TAB==='task'?'active':''}" onclick="setTab('task')">TASK.md</div>
       <div class="tab ${TAB==='mockups'?'active':''}" onclick="setTab('mockups')">Mockups (${t.mockups.length})</div>
       <div class="tab ${TAB==='evidence'?'active':''}" onclick="setTab('evidence')">Evidence (${t.evidence.length})</div>
     </div>
@@ -302,7 +668,7 @@ function renderDetail() {
   `;
 }
 
-refresh();
+refresh(true);
 setInterval(() => refresh(false), 4000);
 </script>
 </body>

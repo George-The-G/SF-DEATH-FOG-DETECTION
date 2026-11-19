@@ -33,11 +33,12 @@ const MIME = {
 };
 
 /// Invoke `tools/task_viewer/server.py` CLI mode and parse its JSON stdout.
-function pyJson(args) {
+function pyJson(args, stdinText = undefined) {
   const py = existsSync(PYTHON_BIN) ? PYTHON_BIN : 'python';
   const out = execFileSync(py, [SERVER_PY, ...args], {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
+    input: stdinText,
     timeout: 60000,
     maxBuffer: 8 * 1024 * 1024,
   });
@@ -58,7 +59,7 @@ app.api('/api/state', () => {
 
 app.api('/api/action', (data) => {
   try {
-    return pyJson(['--action-json', JSON.stringify(data || {})]);
+    return pyJson(['--action-stdin'], JSON.stringify(data || {}));
   } catch (err) {
     return { ok: false, error: String(err.message || err) };
   }

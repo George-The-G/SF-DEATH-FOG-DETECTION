@@ -7,34 +7,38 @@ description: "Use to scope major features into DAG tasks, run parallel worktrees
 
 All feature work that needs a plan and branch uses **`tools/task.py`** so plans, mockups, and verification proofs stay self-contained in `tasks/<id>-<slug>/` inside an isolated worktree (`_worktrees/wt_<id>-<slug>`).
 
-## 1. Scoping a Major Feature (Epic -> DAG Tasks)
+## 1. Stage-Gated Scoping (Brainstorm -> Plan -> Approved)
 1. Inspect affected modules first with `.\.venv\Scripts\python.exe tools/codemap.py <path>` (never read monoliths blindly).
 2. Optionally create a GitHub Epic:
    ```powershell
    .\.venv\Scripts\python.exe tools/task.py epic --title "Feature Name" --summary "Goal"
    ```
-3. Decompose the feature into atomic tasks with **non-overlapping `owned_paths`**, explicit `--depends`, and a per-feature `--switch`:
+3. Decompose the feature into atomic tasks with **non-overlapping `owned_paths`**, explicit `--depends`, and a per-feature `--switch` (defaults to `status: brainstorm`):
    ```powershell
    .\.venv\Scripts\python.exe tools/task.py new --title "..." --slug my-feat --epic 40 --owns site/v3/fog2.js --switch my_feat
    ```
-   *(Add `--local` if working offline without GitHub access.)*
-4. Inspect the conflict-free parallel execution waves:
+   *(Add `--local` if working offline, or `--quick` for small changes to start at `plan` with `exec_tier: flash`.)*
+4. **Gate 1 (`brainstorm`):** Flesh out goals, decisions, and dead ends live in `tasks/<id>-<slug>/PLAN.md`. Do **not** edit repo code or spin up a worktree. Link the active conversation (`tools/task.py link <id> --conv <uuid> --tool antigravity|claude`). Advance to `plan` only after user approval (`tools/task.py approve <id>` or Task Viewer).
+5. **Gate 2 (`plan`):** Fill in architecture, exact `codemap.py` line ranges, owned paths, and verification in `PLAN.md`. Stop and wait for explicit user **Build Go-Ahead** (`tools/task.py approve <id>` -> `ready`).
+6. Inspect the conflict-free parallel execution waves:
    ```powershell
    .\.venv\Scripts\python.exe tools/task.py dag
    ```
 
-## 2. Executing a Single Task (or a Parallel Wave)
-For each ready task in **Wave 1** (one agent per task when running in parallel):
+## 2. Executing a Single Task (Plan-Heavy -> Implement-Cheap -> Diff-Review)
+For each approved (`ready`) task in **Wave 1** (one agent per task when running in parallel):
 1. **Start & brief:**
    ```powershell
    .\.venv\Scripts\python.exe tools/task.py start <id>
    ```
-   This checks dependencies and path/GPU collisions, creates branch `feat/<id>-<slug>` + worktree `_worktrees/wt_<id>-<slug>`, and prints live `codemap.py` outlines for `owned_paths`.
-2. **Work strictly inside `_worktrees/wt_<id>-<slug>`:**
-   - Write the technical plan in `tasks/<id>-<slug>/PLAN.md`.
+   This enforces the pre-build gate (`brainstorm`/`plan` tasks are blocked), checks dependencies and path/GPU collisions, creates branch `feat/<id>-<slug>` + worktree `_worktrees/wt_<id>-<slug>`, and prints live `codemap.py` outlines for `owned_paths`.
+2. **Delegate implementation to a cheaper/faster model when well-planned:**
+   - Generate a lean execution prompt with `.\.venv\Scripts\python.exe tools/task.py resume <id> --worker` (or click **Copy Worker Brief** in the Task Viewer): use `flash` for mechanical/UI/test edits and `hydrogen` for multi-file/logic work.
+   - Iterate with targeted tests first (`pytest tests/test_<area>.py`), then run full `tools/task.py verify <id>` once before reporting.
+   - `HANDOFF.md` is **optional & overwrite-only** — do not keep a running log; only write a short sticky note if pausing mid-task with non-obvious dead ends.
    - Put any HTML/CSS/shader mockups in `tasks/<id>-<slug>/mockups/` (preview locally with `.\.venv\Scripts\python.exe tools/preview.py --serve --root tasks/<id>-<slug>/mockups`).
    - Edit only files listed in `owned_paths`. Put new viewer behavior behind `featOn('<switch>')` (`?beta=1&feat=<switch>`) or a named switch in `microclimate/live/config.py` (`BETA`).
-   - Commit normally inside the worktree with standard `git add` / `git commit`.
+   - Review the finished work cheaply with `.\.venv\Scripts\python.exe tools/task.py diff <id>` instead of re-reading whole files.
 
 ## 3. Verification Gate (Required Before Resolution)
 Never mark a task done until the automated gate passes:
