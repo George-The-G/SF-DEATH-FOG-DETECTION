@@ -21,12 +21,15 @@ Sites: `https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/` (public) and 
    - Interactive preview: `.\.venv\Scripts\python.exe tools/preview.py --serve` (`http://127.0.0.1:8130/?beta=1`) or `--root tasks/<id>-<slug>/mockups`.
 
 ## 2. Deploy to Beta (`v3-dev`) & Sync Shared Agent/Tooling Files to `main`
-1. Merge the verified feature branch into `v3-dev` with one command:
+1. **If the task introduced new pre-baked static/binary assets** (e.g. `data/live/*.bin`, `*.npz`, `*_meta.json` not tracked in git):
+   - Upload them to the `live-static-v1` GitHub Release (`gh release upload live-static-v1 <files> --clobber`).
+   - Register them in `live_ci/refresh.sh` (download loop + copy into `$NEWB/` in `beta_build()`, or `microclimate/live/outputs.py` if public) and `live_ci/fetch_previous.py` (carry across `reuse` runs).
+2. Merge the verified feature branch into `v3-dev` with one command:
    - Runtime/viewer feature: `.\.venv\Scripts\python.exe tools/task.py finish <id> --merge --deploy-beta`
    - Agent/tooling changes (`AGENTS.md`, `.agents/skills/*`, `tools/task.py`, `tools/task_viewer/`): `.\.venv\Scripts\python.exe tools/task.py finish <id> --merge --deploy-beta --sync-main`
    - Standalone parity check/sync anytime: `.\.venv\Scripts\python.exe tools/task.py sync-main --check` (or `--push` to sync `SHARED_MAIN_PATHS` from `v3-dev` to `origin/main` in an isolated worktree after running isolated tests — never hand-copy or cherry-pick onto `main`).
    - Note: `finish --deploy-beta` automatically skips `collect.yml` for tooling/docs-only tasks (pass `--force-deploy` to override).
-2. If `collect.yml` was triggered, verify published status (append `?t=<timestamp>` to bust cache):
+3. If `collect.yml` was triggered, verify published status (append `?t=<timestamp>` to bust cache):
    - `v3/live_beta/status.json`: `ok: true`, `generated_iso` updated, beta switches listed.
    - `v3/live/status.json`: `ok: true`, no unapproved beta-only switches leaked to public.
 
