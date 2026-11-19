@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 from microclimate.paths import REPO_ROOT, data_dir
-from tools import codemap
+from tools import codemap, task as task_cli
 
 ALLOWED_ROOT_FILES = {
     ".gitattributes",
@@ -125,6 +125,33 @@ class TestRepoHygiene(unittest.TestCase):
                 too_large.append(f"{rel} ({p.stat().st_size / 1e6:.1f} MB)")
         self.assertEqual(bad_npz, [], f".npz files must live in data/, never tracked in git: {bad_npz}")
         self.assertEqual(too_large, [], f"Tracked files exceeding 5 MB limit: {too_large}")
+
+    def test_no_vendor_specific_skill_dirs(self):
+        """Skills must live in the generic `.agents/skills/` directory, never vendor-specific `.claude/skills/`."""
+        self.assertFalse(
+            (REPO_ROOT / ".claude" / "skills").exists(),
+            "Vendor-specific `.claude/skills/` directory is forbidden; keep all skills in `.agents/skills/`.",
+        )
+
+    def test_task_packets_have_valid_frontmatter(self):
+        """Every `tasks/<id>-<slug>/TASK.md` must have valid YAML frontmatter matching tools/task.py schema."""
+        tdir = REPO_ROOT / "tasks"
+        if not tdir.exists():
+            return
+        errors = []
+        for child in sorted(tdir.iterdir()):
+            if not child.is_dir():
+                continue
+            tfile = child / "TASK.md"
+            if not tfile.is_file():
+                errors.append(f"{child.name}: missing TASK.md")
+                continue
+            try:
+                meta, _ = task_cli.parse_task_md(tfile)
+                errors.extend(task_cli.validate_task_meta(meta, tfile))
+            except Exception as exc:
+                errors.append(f"{tfile}: {exc}")
+        self.assertEqual(errors, [], f"Invalid task packet(s): {errors}")
 
 
 if __name__ == "__main__":

@@ -33,6 +33,13 @@ def main(argv):
             from . import compare
             ph = compare.parse_physics(ph)
         beta = "--beta" in argv
+        if beta:
+            for key in (opt(argv, "--enable-switch") or "").split(","):
+                if key.strip():
+                    config.BETA[key.strip()] = True
+            for key in (opt(argv, "--disable-switch") or "").split(","):
+                if key.strip():
+                    config.BETA[key.strip()] = False
         try:
             from .. import wetness
             wetness.check_physics(ph if ph is not None else build.settings(beta, promoted="--promoted" in argv)["physics"])

@@ -18,6 +18,15 @@ let BX = null; // data layers (beta_ui.js), loaded with import() only when UIX (
 let RNG = null; // ui2 live: visible frame window {lo, hi} of the time bar (null = every frame)
 const LIVE = UI2 && !(QP.get('live') === '0' || QP.has('night') || QP.has('src')); // live data is the default; ?live=0, ?night=<id> or ?src= open the past-night replays
 const BETA = QP.has('beta') && QP.get('beta') !== '0'; // ?beta=1: the beta preview channel (live_beta/, the NEXT settings under test) with a Beta tag; never the default
+/// Per-feature beta gate: `?beta=1&feat=<slug>` enables opt-in features; `?beta=1&feat=-<slug>` disables opt-out features.
+const FEAT_TOKENS = (QP.get('feat') || '').split(',').map((s) => s.trim()).filter(Boolean);
+function featOn(slug, defaultInBeta = false) {
+  if (!BETA) return false;
+  if (FEAT_TOKENS.includes('-' + slug)) return false;
+  if (FEAT_TOKENS.includes(slug)) return true;
+  return defaultInBeta;
+}
+window.__featOn = featOn;
 const NEWPB = BETA || QP.get('classic') !== '1'; // new playback for everyone: real time by default, chevron speed button, buses on the simulation clock; ?classic=1 brings back the old 1x/4x/16x control
 const FOGV = QP.get('fog') !== 'sheets'; // volumetric fog (and the sky that lights it) for everyone; ?fog=sheets gets the old sheets back
 /* The data layers UI (beta_ui.js) is on for everyone whose public live output says it was built with the promoted settings (status.json "promoted", written by `build --promoted`).
