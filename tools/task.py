@@ -1540,7 +1540,7 @@ def build_resume_prompt(task_id: str, *, worker: bool = False) -> dict:
             f"## Rules & Finish\n"
             f"1. Follow `AGENTS.md`. Do NOT edit files outside `owned_paths` or read unrelated monoliths.\n"
             f"2. Batch independent `read_file` calls together, and combine targeted `pytest` + `verify` runs cleanly (avoid sequential single-command turns).\n"
-            f"3. Run `python tools/task.py verify {tid}` once after committing before reporting.\n"
+            f"3. Commit, run `python tools/task.py verify {tid}` once, and once it passes run `python tools/task.py pr {tid}` so the PR is visible in GitHub and the Task Viewer (never merge into `v3-dev`/`main` without coordinator/human approval).\n"
             f"4. Do NOT write a running handoff log. Report concise diff summary, test counts, and any risks."
         )
     else:

@@ -38,8 +38,12 @@ From `833e5d95-bb3f-4a18-a7b7-0d33c9985261` (`gemini-4-neon-medium`, 65 turns ac
 - **Skip duplicate `verify`/`pytest` on coordinator:** In `SKILL.md` & `AGENTS.md`, when a worker already ran `task.py verify <id>` and `evidence/verify.json` has `"ok": true` matching `HEAD`, the coordinator reviews `task.py diff <id>` + `verify.json` instead of re-running tests.
 - **Zero-extra-cost `PLAN.md` handoff:** Coordinator copies only the `[Lstart-Lend]` ranges and symbol names it *already* read while drafting `PLAN.md` (no extra Neon reads).
 
-### 5. Tests (`tests/test_task_workflow.py`)
+### 5. PR Visibility & Idle-Worker Revision Handoff (`tools/task.py`, `SKILL.md`, `deathfog-agent-brief/SKILL.md`, `AGENTS.md`)
+- **Open PR on verify:** In `build_resume_prompt(..., worker=True)` (and `SKILL.md` / `AGENTS.md`), instruct workers to run `python tools/task.py pr <id>` right after `verify <id>` passes so the PR is immediately visible in GitHub and the Task Viewer (feature-branch PRs only; never merge into `v3-dev`/`main` without coordinator/human approval).
+- **Keep coder agent idle for PR revisions:** Do **not** `swarm(kill)` or discard a worker right after its first draft. Idle `invoke_subagent` and `waiting` `swarm` workers cost **zero tokens while idle** and keep warm file context — reuse them via `send_message` / board `@mention` for PR feedback or plan revisions, and only `swarm(kill)` when the task is actually merged (`finish`).
+
+### 6. Tests (`tests/test_task_workflow.py`)
 - Add unit tests verifying:
   - `cmd_start` emits the canonical `--worker` brief by default (without duplicating outlines) and omits it when `--no-brief` is passed.
   - `cmd_finish` prints the ask-user `/compact` / new-chat reminder.
-  - `build_resume_prompt(..., worker=True)` includes the batching rule.
+  - `build_resume_prompt(..., worker=True)` includes the batching rule and `tools/task.py pr <id>` step.

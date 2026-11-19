@@ -34,14 +34,14 @@ For each approved (`ready`) task in **Wave 1** (one agent per task when running 
    This enforces the pre-build gate (`brainstorm`/`plan` tasks are blocked), checks dependencies and path/GPU collisions, creates branch `feat/<id>-<slug>` + worktree `_worktrees/wt_<id>-<slug>`, and auto-prints the canonical `--worker` brief + recommended delegation (pass `--no-brief` to omit, or re-generate later with `tools/task.py resume <id> --worker`).
 2. **Delegate implementation to the right worker model (do NOT code directly on Neon/Opus when `PLAN.md` is approved):**
    - **Multi-agent `swarm` (large/collaborative features) vs `invoke_subagent` (fast path):**
-     - Use `swarm` whenever a task benefits from **multiple collaborating agents** (e.g., `Gemini 4 Hydrogen (Medium)` backend worker + `flash` UI/mockup/test helper on the shared board with `workspace: "share"`), when pinning `Hydrogen`/`Sonnet` by name, or across **Wave 1 parallel DAG tasks** in separate worktrees. **Swarm turn hygiene:** batch `swarm(title)` + `swarm(add)` in one turn (skip `swarm(models)` since exact model names are listed here), and batch `swarm(kill)` with review/finish turns.
+     - Use `swarm` whenever a task benefits from **multiple collaborating agents** (e.g., `Gemini 4 Hydrogen (Medium)` backend worker + `flash` UI/mockup/test helper on the shared board with `workspace: "share"`), when pinning `Hydrogen`/`Sonnet` by name, or across **Wave 1 parallel DAG tasks** in separate worktrees. **Swarm turn hygiene:** batch `swarm(title)` + `swarm(add)` in one turn (skip `swarm(models)` since exact model names are listed here), keep workers idle (`waiting`) during PR review, and batch `swarm(kill)` with `finish` once merged.
      - Use `invoke_subagent(TypeName="self", Model="flash", ...)` for standalone `flash` tasks and standalone mockups; if the same `flash` agent will also implement after plan approval, reuse it via `send_message(Recipient=<conv_id>, ...)` to preserve mockup context.
      - `exec_tier: standard` / `pro` -> `swarm(action="add", model="Claude Sonnet 5.5 (Medium)" | "Gemini 4 Neon (Medium)", ...)` or direct execution when architecture/subtle debugging requires it.
-   - Workers batch independent `read_file` calls together and combine targeted `pytest` + `verify` runs cleanly (avoid sequential single-command turns).
+   - Workers batch independent `read_file` calls together, combine targeted `pytest` + `verify` runs cleanly (avoid sequential single-command turns), and run `python tools/task.py pr <id>` once `verify <id>` passes so the PR is immediately visible in GitHub and the Task Viewer (never merging into `v3-dev`/`main` without approval).
    - `HANDOFF.md` is **optional & overwrite-only** — do not keep a running log; only write a short sticky note if pausing mid-task with non-obvious dead ends.
    - Put any HTML/CSS/shader mockups in `tasks/<id>-<slug>/mockups/` (preview locally with `.\.venv\Scripts\python.exe tools/preview.py --serve --root tasks/<id>-<slug>/mockups`).
    - Edit only files listed in `owned_paths`. Put new viewer behavior behind `featOn('<switch>')` (`?beta=1&feat=<switch>`) or a named switch in `microclimate/live/config.py` (`BETA`).
-   - Review the finished work cheaply with `.\.venv\Scripts\python.exe tools/task.py diff <id>` instead of re-reading whole files; when the worker's `evidence/verify.json` has `"ok": true` matching `HEAD`, skip duplicate coordinator `pytest`/`verify` runs.
+   - Review the finished work cheaply with `.\.venv\Scripts\python.exe tools/task.py diff <id>` instead of re-reading whole files; when the worker's `evidence/verify.json` has `"ok": true` matching `HEAD`, skip duplicate coordinator `pytest`/`verify` runs. Keep the coder agent idle (`invoke_subagent` idle or `swarm` `waiting` — zero token cost while idle) during PR review so it can handle PR feedback or plan revisions via `send_message` / board `@mention` with warm context; only `swarm(kill)` once `finish` merges the PR.
 
 ## 3. Verification Gate (Required Before Resolution)
 Never mark a task done until the automated gate passes:
@@ -52,7 +52,7 @@ This checks `TASK.md` schema, required `deliverables`, `owned_paths` scope, `pyt
 
 ## 4. Open PR, Merge to Beta & Cleanup
 Once `verify.json` has `"ok": true` matching `HEAD`:
-- **Open a PR for review** (pushes branch, creates GitHub PR against `v3-dev`, and records `pr` & `pr_url` back into `tasks/<id>-<slug>/TASK.md`):
+- **Open a PR for review** (workers run this automatically right after `verify <id>` passes; pushes branch, creates GitHub PR against `v3-dev`, and records `pr` & `pr_url` back into `tasks/<id>-<slug>/TASK.md`):
   ```powershell
   .\.venv\Scripts\python.exe tools/task.py pr <id>
   ```

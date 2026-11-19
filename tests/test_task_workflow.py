@@ -762,7 +762,7 @@ class TestTaskWorkflow(unittest.TestCase):
             self.assertIn("fresh conversation", out)
 
     def test_build_resume_prompt_worker_includes_batching_rule(self):
-        """build_resume_prompt(..., worker=True) instructs workers to batch reads and test/verify runs."""
+        """build_resume_prompt(..., worker=True) instructs workers to batch reads, test/verify runs, and open a PR."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             meta, tdir = self._make_sample_task(root, "097", status="in-progress", fill_plan=True)
@@ -771,6 +771,7 @@ class TestTaskWorkflow(unittest.TestCase):
             self.assertTrue(res["ok"])
             self.assertIn("Batch independent `read_file` calls", res["prompt"])
             self.assertIn("avoid sequential single-command turns", res["prompt"])
+            self.assertIn("tools/task.py pr 097", res["prompt"])
 
 
 if __name__ == "__main__":
