@@ -89,16 +89,22 @@ export function buildWallIndex(col) { // col = buildings group.userData.col
   return { ...grid, polyStart, pbox };
 }
 
-export function createWorld({ terrainH, EX = 1.5, G, col }) {
+export function createWorld({ terrainH, EX = 1.5, G, col, worldRoad = null }) {
   const T = TUNE.road;
-  const sg = G && G.n ? buildStreetIndex(G) : null;
+  const sg = !worldRoad && G && G.n ? buildStreetIndex(G) : null;
   const wg = col ? buildWallIndex(col) : null;
-  const q = { found: false, d: 0, e: 0, tx: 1, tz: 0, y: 0, k: -1 }; // reused result of road()
+  const q = { found: false, d: 0, e: 0, tx: 1, tz: 0, y: 0, k: -1, halfW: T.half }; // reused result of road()
 
   /* nearest street segment within R of (x, z). With a heading (hx, hz) streets running across it count as further away, so the skater
      follows the street it is on at a crossing. e = signed offset from the centre line (to the right of the travel direction positive). */
   function road(x, z, hx, hz, R = T.find) {
-    q.found = false; if (!sg) return q;
+    if (worldRoad) {
+      const r = worldRoad.roadAt(x, z, hx, hz, R);
+      q.found = r.found; q.d = r.d; q.e = r.e; q.tx = r.tx; q.tz = r.tz; q.y = r.y; q.k = r.k;
+      q.halfW = r.found ? Math.max(3.5, r.widthM * 0.5 + 1.0) : T.half;
+      return q;
+    }
+    q.found = false; q.halfW = T.half; if (!sg) return q;
     const ci = Math.floor((x - sg.x0) / CELL), cj = Math.floor((z - sg.z0) / CELL), have = hx !== undefined;
     let best = 1e18;
     for (let j = cj - 1; j <= cj + 1; j++) for (let i = ci - 1; i <= ci + 1; i++) {
@@ -132,7 +138,8 @@ export function createWorld({ terrainH, EX = 1.5, G, col }) {
     const ty = terrainH ? terrainH.at(x, z) : 0;
     road(x, z, undefined, undefined, T.half + T.blend + 1);
     if (!q.found) { ground.w = 0; return ty; }
-    const w = 1 - smooth(T.half, T.half + T.blend, q.d); ground.w = w;
+    const hw = q.halfW || T.half;
+    const w = 1 - smooth(hw, hw + T.blend, q.d); ground.w = w;
     return ty + (q.y - ty) * w;
   }
   ground.w = 0;
@@ -188,6 +195,11 @@ export function createWorld({ terrainH, EX = 1.5, G, col }) {
 
   /* closest street point to (x, z) within maxR that is clear of walls (for "Back on the street"). Returns {x, z, tx, tz, k} or null. */
   function nearestStreet(x, z, maxR = 400) {
+    if (worldRoad) {
+      const nr = worldRoad.nearestRoad(x, z, maxR);
+      if (nr && !walls(nr.x, nr.z, TUNE.r + 0.3).n) return nr;
+      return nr;
+    }
     if (!sg) return null;
     const rings = Math.ceil(maxR / CELL), ci = Math.floor((x - sg.x0) / CELL), cj = Math.floor((z - sg.z0) / CELL);
     let best = 1e18, bk = -1;
@@ -235,7 +247,7 @@ export function createWorld({ terrainH, EX = 1.5, G, col }) {
     return top;
   }
 
-  return { road, ground, roof, walls, nearestStreet, EX, terrainH, hasWalls: !!wg, hasStreets: !!sg, q };
+  return { road, ground, roof, walls, nearestStreet, EX, terrainH, hasWalls: !!wg, hasStreets: !!(worldRoad || sg), q, worldRoad };
 }
 
 /* ---------------------------------------------------------------------- 2. simulation */
@@ -464,14 +476,14 @@ export function createInput({ isTouch, doc = document, win = window, onBack, onE
 }
 
 /* ---------------------------------------------------------------------- 5. controller used by app.js */
-export function createSkate({ THREE, camera, controls, renderer, terrainH, EX, getG, getCol, skater, isTouch, toast, readout }) {
+export function createSkate({ THREE, camera, controls, renderer, terrainH, EX, getG, getCol, getRoad = null, skater, isTouch, toast, readout }) {
   let world = null, sim = null, cam = null, input = null, active = false, ema = 0.016, slowT = 0, lite = false, pr0 = 0, bumpT = 0;
   const fwd = new THREE.Vector3(), pos = new THREE.Vector3();
 
   function ensure() {
     if (world) return;
     const t0 = performance.now();
-    world = createWorld({ terrainH, EX, G: getG(), col: getCol() });
+    world = createWorld({ terrainH, EX, G: getG(), col: getCol(), worldRoad: getRoad ? getRoad() : null });
     sim = createSim(world, ENTITIES.skater.tune); cam = createChaseCam({ THREE, world, opts: ENTITIES.skater.cam });
     input = createInput({ isTouch, entity: ENTITIES.skater, onBack: () => { if (active) sim.respawn(); } });
     world.buildMs = Math.round(performance.now() - t0);
