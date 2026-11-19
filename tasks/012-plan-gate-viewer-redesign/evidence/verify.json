@@ -1,17 +1,13 @@
 {
   "task_id": "012",
   "slug": "plan-gate-viewer-redesign",
-  "git_sha": "6c853eafba1a5648ff84e57b04d1ad3eebaf2c90",
-  "timestamp_utc": "2026-11-19T10:50:23+00:00",
-  "ok": false,
+  "git_sha": "450ef3f14182db91e34667f487064cab113f3428",
+  "timestamp_utc": "2026-11-19T10:53:32+00:00",
+  "ok": true,
   "checks": {
     "schema": {
       "ok": true,
       "errors": []
-    },
-    "plan_approval": {
-      "ok": true,
-      "legacy": true
     },
     "deliverables": {
       "ok": true,
@@ -22,17 +18,17 @@
       "out_of_scope": []
     },
     "pytest": {
-      "ok": false,
-      "returncode": 1,
+      "ok": true,
+      "returncode": 0,
       "tail": [
+        "tests_mc/test_pavement.py: 14 warnings",
+        "tests_mc/test_physics.py: 1 warning",
         "tests_mc/test_sun_clear.py: 13 warnings",
         "  C:\\Users\\George\\source\\repos\\SF-DEATH-FOG-DETECTION\\.venv\\Lib\\site-packages\\pvlib\\clearsky.py:248: Pandas4Warning: DatetimeIndex.dayofyear is deprecated and will be removed in a future version. Use DatetimeIndex.day_of_year instead.",
         "    dayofyear = time_utc.dayofyear",
         "",
         "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
-        "=========================== short test summary info ===========================",
-        "FAILED tests_mc/test_fog3d_bands.py::TestBands3d::test_lock - AssertionError:...",
-        "1 failed, 496 passed, 94 warnings in 38.90s"
+        "497 passed, 94 warnings in 28.66s"
       ]
     },
     "node_test": {
@@ -46,7 +42,7 @@
         "\u2139 cancelled 0",
         "\u2139 skipped 0",
         "\u2139 todo 0",
-        "\u2139 duration_ms 488.5886"
+        "\u2139 duration_ms 153.9837"
       ]
     }
   }

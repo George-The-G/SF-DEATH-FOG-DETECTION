@@ -6,7 +6,7 @@ issue: null
 epic: null
 pr: null
 pr_url: ""
-status: "in-progress"
+status: "beta"
 branch: "feat/012-plan-gate-viewer-redesign"
 switch: "plan_gate_viewer_redesign"
 depends_on: []
@@ -28,6 +28,9 @@ deliverables:
   - "AGENTS.md"
   - ".agents/skills/deathfog-task-workflow/SKILL.md"
 exec_tier: "hydrogen"
+merged_sha: "450ef3f14182"
+merged_into:
+  - "v3-dev"
 ---
 
 # Task 012: Formal Plan Approval Gate & Task Viewer Layout Redesign
