@@ -209,6 +209,14 @@ def build_state() -> dict:
             except Exception:
                 verify_data = None
 
+        usage_path = tdir / "evidence" / "usage.json"
+        usage_data = None
+        if usage_path.is_file():
+            try:
+                usage_data = json.loads(usage_path.read_text(encoding="utf-8"))
+            except Exception:
+                usage_data = None
+
         handoff_path = tdir / "HANDOFF.md"
         handoff_md = _read_text_safe(handoff_path)
         handoff_meta: dict = {}
@@ -248,6 +256,12 @@ def build_state() -> dict:
             "mockups": _list_dir_files(tdir / "mockups"),
             "evidence": _list_dir_files(tdir / "evidence"),
             "verify": verify_data,
+            "usage": usage_data,
+            "token_usage": str(
+                meta.get("token_usage")
+                or (usage_data.get("summary") if isinstance(usage_data, dict) else "")
+                or ""
+            ),
             "beta_url": f"{BETA_BASE_URL}?beta=1&feat={meta.get('switch', slug)}",
         }
 
