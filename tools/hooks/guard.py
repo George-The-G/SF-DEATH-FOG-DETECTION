@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 PROTECTED_BRANCHES = {"v3-dev", "main", "data", "live-archive"}
-PRE_BUILD_STATUSES = {"backlog", "brainstorm", "plan"}
+PRE_BUILD_STATUSES = {"backlog", "scope", "brainstorm", "plan"}
 _WT_ADD_VALUE_FLAGS = {"-b", "-B", "--orphan", "--reason"}
 
 

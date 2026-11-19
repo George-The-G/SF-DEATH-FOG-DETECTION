@@ -50,14 +50,24 @@
     background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
     white-space: nowrap;
   }
-  .pill.brainstorm { color: var(--cyan); border-color: #1f5573; }
-  .pill.plan { color: var(--purple); border-color: #4f3d80; }
-  .pill.ready { color: var(--accent); border-color: #264873; }
-  .pill.in-progress { color: var(--amber); border-color: #6b5218; background: #261e0f; }
-  .pill.review { color: var(--purple); border-color: #4f3d80; }
-  .pill.beta, .pill.done, .pill.ok { color: var(--green); border-color: #1f5c3a; background: #12241b; }
+  .pill.backlog { color: var(--muted); border-color: var(--border); }
+  .pill.scope, .pill.brainstorm { color: var(--cyan); border-color: #1f5573; background: #10202b; }
+  .pill.plan { color: var(--purple); border-color: #4f3d80; background: #1c172b; }
+  .pill.approved, .pill.ready { color: var(--accent); border-color: #264873; background: #122033; }
+  .pill.build, .pill.in-progress { color: var(--amber); border-color: #6b5218; background: #261e0f; }
+  .pill.review { color: var(--purple); border-color: #4f3d80; background: #1c172b; }
+  .pill.beta { color: var(--green); border-color: #1f5c3a; background: #12241b; }
+  .pill.main { color: var(--cyan); border-color: #1f5573; background: #10222e; }
+  .pill.done, .pill.closed, .pill.ok { color: var(--green); border-color: #1f5c3a; background: #12241b; }
   .pill.warn { color: var(--amber); border-color: #6b5218; background: #261e0f; }
   .pill.info { color: var(--cyan); border-color: #1f5573; }
+  .pill.wave {
+    padding: 1px 6px;
+    font-size: 10px;
+    color: var(--accent);
+    border-color: #264873;
+    background: #132236;
+  }
 
   /* Dismissible Top Toast */
   .toast {
@@ -99,14 +109,44 @@
     aside.sidebar.open { display: block; }
   }
 
-  .wave-hdr {
-    font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px;
-    color: var(--muted); margin: 8px 4px 6px; font-weight: 700;
+  /* Collapsible Stage Sections */
+  .stage-sec { margin-bottom: 6px; }
+  .stage-hdr {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    width: 100%; padding: 5px 6px; border-radius: 6px; border: 1px solid transparent;
+    background: transparent; color: var(--muted); cursor: pointer; user-select: none;
+    text-align: left; transition: background .12s, color .12s;
   }
-  .wave-hdr:first-child { margin-top: 2px; }
+  .stage-hdr:hover { background: var(--panel2); color: var(--text); }
+  .stage-hdr-left { display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .stage-chev {
+    width: 11px; font-size: 11px; color: var(--muted);
+    display: inline-flex; justify-content: center; flex-shrink: 0;
+  }
+  .stage-name {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .6px; color: var(--text);
+  }
+  .stage-sec.empty .stage-name { color: var(--muted); }
+  .stage-sub {
+    font-size: 10px; font-weight: 500; color: var(--muted); opacity: .85;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .stage-count {
+    font-size: 10px; font-weight: 700; padding: 0 6px; height: 17px; line-height: 17px;
+    border-radius: 999px; background: var(--panel2); border: 1px solid var(--border);
+    color: var(--muted); flex-shrink: 0;
+  }
+  .stage-count.nonzero { color: var(--text); }
+  .stage-body { padding: 4px 0 2px 4px; }
+  .stage-sec.collapsed .stage-body { display: none; }
+  .stage-empty-note {
+    font-size: 11px; color: var(--muted); opacity: .6;
+    padding: 3px 8px 5px; font-style: italic;
+  }
   .task-card {
     padding: 7px 9px; border-radius: 7px; border: 1px solid transparent;
-    background: var(--panel2); margin-bottom: 6px; cursor: pointer;
+    background: var(--panel2); margin-bottom: 5px; cursor: pointer;
     transition: border-color .12s, background .12s;
   }
   .task-card:hover { border-color: var(--border); }
@@ -120,27 +160,33 @@
   .title-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
   .title-bar h2 { margin: 0; font-size: 15px; font-weight: 600; min-width: 0; }
 
-  /* Unified 7-Node Lifecycle Sequence */
+  /* Forked Lifecycle Sequence */
   .seq {
     display: flex; align-items: center; gap: 0; margin-bottom: 10px;
-    padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    padding: 2px 0 10px; border-bottom: 1px solid var(--border); overflow-x: auto;
   }
   .seq-node {
-    display: inline-flex; align-items: center; gap: 3px;
-    padding: 3px 7px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+    height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
     border: 1px solid var(--border); color: var(--muted); background: transparent;
-    white-space: nowrap; text-decoration: none;
+    white-space: nowrap; text-decoration: none; flex-shrink: 0;
   }
   .seq-node.done { color: var(--green); border-color: #1f5c3a; background: #12241b; }
   .seq-node.current { color: var(--text); border-color: var(--accent); background: #1a2c47; border-width: 1.5px; }
   .seq-node.locked { color: var(--amber); border-color: #8a661a; background: #261e0f; border-width: 1.5px; }
   .seq-node.clickable { cursor: pointer; }
   .seq-node.clickable:hover { border-color: var(--text); }
-  .seq-line { flex: 1; height: 1px; background: var(--border); min-width: 4px; }
+  .seq-node.fork-pill { min-width: 68px; }
+  .seq-line { flex: 1; height: 1.5px; background: var(--border); min-width: 6px; }
   .seq-line.done { background: #266b45; }
+  .seq-fork-svg { width: 34px; height: 50px; flex-shrink: 0; display: block; overflow: visible; }
+  .seq-fork-arm { fill: none; stroke: var(--border); stroke-width: 1.5; stroke-linecap: round; }
+  .seq-fork-arm.done { stroke: #266b45; }
+  .seq-fork-stack { display: flex; flex-direction: column; justify-content: space-between; height: 50px; gap: 6px; flex-shrink: 0; }
   .lbl-short { display: none; }
   @media (max-width: 560px) {
-    .seq-node { padding: 2px 5px; font-size: 10px; }
+    .seq-node { padding: 0 5px; font-size: 10px; }
+    .seq-node.fork-pill { min-width: 52px; }
     .lbl-full { display: none; }
     .lbl-short { display: inline; }
   }
@@ -378,16 +424,72 @@
 </div>
 
 <script>
+const STATUS_ALIASES = {
+  brainstorm: 'scope',
+  ready: 'approved',
+  'in-progress': 'build',
+  closed: 'done',
+};
+
+function normalizeStatus(s) {
+  const k = String(s || '').trim().toLowerCase();
+  return STATUS_ALIASES[k] || k;
+}
+
 const STAGE_LABELS = {
   backlog: 'Backlog',
+  scope: 'Scope',
   brainstorm: 'Scope',
   plan: 'Plan',
+  approved: 'Approved',
   ready: 'Approved',
+  build: 'Build',
   'in-progress': 'Build',
   review: 'Review',
   beta: 'Beta',
-  done: 'Main',
+  main: 'Main',
+  done: 'Done',
+  closed: 'Done',
 };
+
+const STAGE_STORAGE_KEY = 'df_viewer_stage_collapsed_v1';
+const STAGE_SECTIONS = [
+  { key: 'build',    label: 'Build',    sub: '',            defaultCollapsed: false },
+  { key: 'review',   label: 'Review',   sub: '',            defaultCollapsed: false },
+  { key: 'approved', label: 'Approved', sub: '',            defaultCollapsed: false },
+  { key: 'plan',     label: 'Plan',     sub: '',            defaultCollapsed: false },
+  { key: 'scope',    label: 'Scope',    sub: '',            defaultCollapsed: false },
+  { key: 'backlog',  label: 'Backlog',  sub: '',            defaultCollapsed: false },
+  { key: 'beta',     label: 'Beta',     sub: 'v3-dev only', defaultCollapsed: false },
+  { key: 'main',     label: 'Main',     sub: 'main only',   defaultCollapsed: false },
+  { key: 'done',     label: 'Done',     sub: 'both',        defaultCollapsed: true  },
+];
+
+function loadCollapsed() {
+  const defaults = {};
+  STAGE_SECTIONS.forEach(s => { defaults[s.key] = s.defaultCollapsed; });
+  try {
+    const raw = localStorage.getItem(STAGE_STORAGE_KEY);
+    if (!raw) return defaults;
+    return { ...defaults, ...JSON.parse(raw) };
+  } catch (_) {
+    return defaults;
+  }
+}
+
+function saveCollapsed(state) {
+  try {
+    localStorage.setItem(STAGE_STORAGE_KEY, JSON.stringify(state));
+  } catch (_) {}
+}
+
+let COLLAPSED = loadCollapsed();
+
+function toggleSection(key) {
+  COLLAPSED[key] = !COLLAPSED[key];
+  saveCollapsed(COLLAPSED);
+  renderSidebar();
+}
 
 let STATE = null;
 let LAST_STATE_JSON = '';
@@ -574,8 +676,15 @@ function renderSwitcher() {
     lbl.innerHTML = '<span style="color:var(--muted);">▾</span> Select task';
     return;
   }
-  const stLbl = STAGE_LABELS[t.status] || t.status;
-  lbl.innerHTML = `<span style="color:var(--muted);margin-right:4px;">▾</span><strong>#${esc(t.id)}</strong> · ${esc(t.slug)} <span class="pill ${esc(t.status)}" style="margin-left:4px;">${esc(stLbl)}</span>`;
+  const st = normalizeStatus(t.status);
+  const stLbl = STAGE_LABELS[st] || t.status;
+  lbl.innerHTML = `<span style="color:var(--muted);margin-right:4px;">▾</span><strong>#${esc(t.id)}</strong> · ${esc(t.slug)} <span class="pill ${esc(st)}" style="margin-left:4px;">${esc(stLbl)}</span>`;
+}
+
+function taskBucketFor(t) {
+  const ms = t.merge_status || {};
+  const b = normalizeStatus(t.stage_bucket || ms.stage_bucket || t.status);
+  return STAGE_SECTIONS.some(s => s.key === b) ? b : 'backlog';
 }
 
 function renderSidebar() {
@@ -584,32 +693,62 @@ function renderSidebar() {
     el.innerHTML = '<div class="empty">No tasks in tasks/</div>';
     return;
   }
-  const seen = new Set();
-  let html = '';
-  STATE.waves.forEach((wave, idx) => {
-    html += `<div class="wave-hdr">Wave ${idx + 1} ${idx === 0 ? '· Active / Ready' : '· Queued'}</div>`;
-    wave.forEach(tid => { seen.add(tid); html += cardHtml(STATE.tasks[tid]); });
+  const grouped = {};
+  STAGE_SECTIONS.forEach(s => { grouped[s.key] = []; });
+  Object.values(STATE.tasks).forEach(t => {
+    grouped[taskBucketFor(t)].push(t);
   });
-  const done = Object.keys(STATE.tasks).filter(tid => !seen.has(tid));
-  if (done.length) {
-    html += '<div class="wave-hdr">Beta / Main</div>';
-    done.forEach(tid => { html += cardHtml(STATE.tasks[tid]); });
-  }
-  el.innerHTML = html;
+  Object.values(grouped).forEach(arr => {
+    arr.sort((a, b) => ((a.wave || 999) - (b.wave || 999)) || String(a.id).localeCompare(String(b.id)));
+  });
+
+  el.innerHTML = STAGE_SECTIONS.map(sec => {
+    const items = grouped[sec.key] || [];
+    const isCollapsed = Boolean(COLLAPSED[sec.key]);
+    const chev = isCollapsed ? '▸' : '▾';
+    const secCls = `stage-sec${isCollapsed ? ' collapsed' : ''}${items.length === 0 ? ' empty' : ''}`;
+    const subHtml = sec.sub ? `<span class="stage-sub">${esc(sec.sub)}</span>` : '';
+    const countCls = `stage-count${items.length > 0 ? ' nonzero' : ''}`;
+    const bodyHtml = items.length
+      ? items.map(t => cardHtml(t)).join('')
+      : '<div class="stage-empty-note">0 tasks</div>';
+
+    return `<div class="${secCls}">
+      <button type="button" class="stage-hdr" onclick="toggleSection('${esc(sec.key)}')">
+        <span class="stage-hdr-left">
+          <span class="stage-chev">${chev}</span>
+          <span class="stage-name">${esc(sec.label)}</span>
+          ${subHtml}
+        </span>
+        <span class="${countCls}">${items.length}</span>
+      </button>
+      <div class="stage-body">${bodyHtml}</div>
+    </div>`;
+  }).join('');
 }
 
 function cardHtml(t) {
   if (!t) return '';
   const active = t.id === SELECTED ? ' active' : '';
   const ms = t.merge_status || {};
-  let badge = `<span class="pill ${esc(t.status)}">${esc(STAGE_LABELS[t.status] || t.status)}</span>`;
-  if (t.active_worktree) badge = '<span class="pill ok">WT</span>';
-  else if (ms.in_public) badge = '<span class="pill ok">Main</span>';
-  else if (ms.in_beta) badge = '<span class="pill ok">Beta</span>';
+  const st = normalizeStatus(t.status);
+  const bucket = taskBucketFor(t);
 
-  const dotColor = t.active_worktree
-    ? 'var(--amber)'
-    : (ms.in_public || ms.in_beta ? 'var(--green)' : (t.status === 'plan' ? 'var(--purple)' : 'var(--cyan)'));
+  let badge = '';
+  if (bucket === 'approved' && t.wave) badge = `<span class="pill wave">W${esc(t.wave)}</span>`;
+  else if (t.active_worktree) badge = '<span class="pill build">WT</span>';
+  else if (bucket === 'review' && ms.pr) badge = `<span class="pill review">PR #${esc(ms.pr)}</span>`;
+  else if (bucket === 'beta') badge = '<span class="pill beta">Beta</span>';
+  else if (bucket === 'main') badge = '<span class="pill main">Main</span>';
+  else if (bucket === 'done') badge = '<span class="pill done">Done</span>';
+
+  let dotColor = 'var(--muted)';
+  if (ms.in_beta) dotColor = 'var(--green)';
+  else if (ms.in_public) dotColor = 'var(--cyan)';
+  else if (t.active_worktree || st === 'build') dotColor = 'var(--amber)';
+  else if (st === 'review' || st === 'plan') dotColor = 'var(--purple)';
+  else if (st === 'approved') dotColor = 'var(--accent)';
+  else if (st === 'scope') dotColor = 'var(--cyan)';
 
   return `<div class="task-card${active}" onclick="selectTask('${esc(t.id)}')">
     <div class="r1">
@@ -982,62 +1121,90 @@ async function submitLinkConvo(e) {
 
 function renderSequence(t) {
   const ms = t.merge_status || {};
-  const order = ['brainstorm', 'plan', 'ready', 'in-progress', 'review', 'beta', 'done'];
-  let idx = order.indexOf(t.status);
-  if (idx < 0) idx = 0;
-  if (ms.in_public) idx = 6;
-  else if (ms.in_beta && idx < 5) idx = 5;
+  const st = normalizeStatus(t.status);
+  const bucket = taskBucketFor(t);
+  const preOrder = ['scope', 'plan', 'approved', 'build', 'review'];
+  const inBranches = Boolean(ms.in_beta || ms.in_public || bucket === 'beta' || bucket === 'main' || bucket === 'done');
+  const preIdx = inBranches ? preOrder.length : (st === 'backlog' ? -1 : Math.max(0, preOrder.indexOf(st)));
 
-  const nodes = [
-    { key: 'brainstorm', full: 'Scope', short: 'Scope', icon: '' },
-    { key: 'plan', full: 'Plan', short: 'Plan', icon: t.status === 'plan' || (t.status === 'ready' && t.plan_drifted) ? '🔒' : '' },
-    { key: 'ready', full: 'Approved', short: 'Appr', icon: '' },
-    { key: 'in-progress', full: 'Build', short: 'Build', icon: t.active_worktree ? '●' : '' },
-    { key: 'review', full: ms.pr ? `PR #${ms.pr}` : 'Review', short: ms.pr ? `#${ms.pr}` : 'PR', icon: '', href: ms.pr_url || '' },
-    { key: 'beta', full: 'Beta', short: 'Beta', icon: '', onclick: "runAction('open_beta')" },
-    { key: 'done', full: 'Main', short: 'Main', icon: ms.in_public || t.status === 'done' ? '🌐' : '', title: ms.merged_sha ? `Main (${ms.merged_sha})` : 'Main (public)' },
+  const preNodes = [
+    { key: 'scope',    full: 'Scope',    short: 'Scope', icon: '' },
+    { key: 'plan',     full: 'Plan',     short: 'Plan',  icon: st === 'plan' || (st === 'approved' && t.plan_drifted) ? '🔒' : '' },
+    { key: 'approved', full: 'Approved', short: 'Appr',  icon: '' },
+    { key: 'build',    full: 'Build',    short: 'Build', icon: t.active_worktree ? '●' : '' },
+    { key: 'review',   full: ms.pr ? `PR #${ms.pr}` : 'Review', short: ms.pr ? `#${ms.pr}` : 'PR', icon: '', href: ms.pr_url || '' },
   ];
 
-  return `<div class="seq">${nodes.map((n, i) => {
-    const isDone = i < idx || ((ms.in_public || t.status === 'done') && i === 6);
-    const isCur = i === idx && !(ms.in_public || t.status === 'done');
+  const preHtml = preNodes.map((n, i) => {
+    const isDone = i < preIdx;
+    const isCur = !inBranches && i === preIdx;
     const cls = isDone ? 'done' : (isCur ? (n.key === 'plan' ? 'locked' : 'current') : '');
-    const prefix = isDone && n.key !== 'done' ? '✓ ' : (n.icon ? n.icon + ' ' : '');
-    const titleAttr = esc(n.title || n.full);
+    const prefix = isDone ? '✓ ' : (n.icon ? n.icon + ' ' : '');
+    const titleAttr = esc(n.full);
     let nodeHtml = '';
     if (n.href) {
       nodeHtml = `<a class="seq-node ${cls} clickable" href="${esc(n.href)}" target="_blank" title="${titleAttr}">${prefix}<span class="lbl-full">${esc(n.full)}</span><span class="lbl-short">${esc(n.short)}</span> ↗</a>`;
-    } else if (n.onclick) {
-      nodeHtml = `<span class="seq-node ${cls} clickable" onclick="${n.onclick}" title="${titleAttr}">${prefix}<span class="lbl-full">${esc(n.full)}</span><span class="lbl-short">${esc(n.short)}</span></span>`;
     } else {
       nodeHtml = `<span class="seq-node ${cls}" title="${titleAttr}">${prefix}<span class="lbl-full">${esc(n.full)}</span><span class="lbl-short">${esc(n.short)}</span></span>`;
     }
-    const lineHtml = i < nodes.length - 1 ? `<span class="seq-line ${i < idx ? 'done' : ''}"></span>` : '';
+    const lineHtml = i < preNodes.length - 1 ? `<span class="seq-line ${i < preIdx ? 'done' : ''}"></span>` : '';
     return nodeHtml + lineHtml;
-  }).join('')}</div>`;
+  }).join('');
+
+  const betaLit = Boolean(ms.in_beta || bucket === 'beta' || bucket === 'done');
+  const mainLit = Boolean(ms.in_public || bucket === 'main' || bucket === 'done');
+  const bothLit = betaLit && mainLit;
+
+  const splitTop = `<path class="seq-fork-arm${betaLit ? ' done' : ''}" d="M 0 25 C 16 25, 16 11, 34 11" />`;
+  const splitBot = `<path class="seq-fork-arm${mainLit ? ' done' : ''}" d="M 0 25 C 16 25, 16 39, 34 39" />`;
+  const splitPaths = [
+    !betaLit ? splitTop : '',
+    !mainLit ? splitBot : '',
+    betaLit ? splitTop : '',
+    mainLit ? splitBot : '',
+  ].join('');
+
+  const mergeTop = `<path class="seq-fork-arm${bothLit ? ' done' : ''}" d="M 0 11 C 18 11, 18 25, 34 25" />`;
+  const mergeBot = `<path class="seq-fork-arm${bothLit ? ' done' : ''}" d="M 0 39 C 18 39, 18 25, 34 25" />`;
+
+  const betaNode = `<span class="seq-node fork-pill clickable ${betaLit ? 'done' : ''}" onclick="runAction('open_beta')" title="Open Beta (v3-dev) Preview">${betaLit ? '✓ ' : ''}Beta</span>`;
+  const mainTitle = ms.merged_sha ? `Main (${ms.merged_sha})` : 'Main (public)';
+  const mainNode = `<span class="seq-node fork-pill ${mainLit ? 'done' : ''}" title="${esc(mainTitle)}">${mainLit ? '✓ ' : ''}Main</span>`;
+  const doneNode = `<span class="seq-node ${bothLit ? 'done' : ''}" title="Converged in both v3-dev and main">${bothLit ? '✓ ' : ''}Done</span>`;
+
+  return `<div class="seq">
+    ${preHtml}
+    <svg class="seq-fork-svg" viewBox="0 0 34 50" aria-hidden="true">${splitPaths}</svg>
+    <div class="seq-fork-stack">
+      ${betaNode}
+      ${mainNode}
+    </div>
+    <svg class="seq-fork-svg" viewBox="0 0 34 50" aria-hidden="true">${mergeTop}${mergeBot}</svg>
+    ${doneNode}
+  </div>`;
 }
 
 function renderGateCallout(t) {
-  const st = t.status;
+  const st = normalizeStatus(t.status);
   const rd = t.plan_readiness || {};
   const drifted = Boolean(t.plan_drifted);
 
-  if (st === 'backlog' || st === 'brainstorm') {
-    const nextLbl = st === 'backlog' ? 'Brainstorm' : 'Plan Stage';
+  if (st === 'backlog' || st === 'scope') {
+    const nextLbl = st === 'backlog' ? 'Scope' : 'Plan Stage';
     return `<div class="gate-card">
       <div class="gate-hdr">
-        <span class="gate-title">Gate 1 · ${st === 'backlog' ? 'Backlog' : 'Brainstorm'}</span>
+        <span class="gate-title">Gate 1 · ${st === 'backlog' ? 'Backlog' : 'Scope'}</span>
         <span class="pill info">Code Locked</span>
       </div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Capture goals &amp; decisions in PLAN.md before advancing to the formal Plan stage.</div>
       <div class="gate-foot">
         <button class="btn gate" onclick="runAction('approve_gate')">Advance → ${nextLbl}</button>
-        <button class="btn" onclick="setTab('plan');startEdit('plan')">Edit PLAN.md</button>
+        <button class="btn" onclick="openTaskFile('PLAN.md');startEdit('plan')">Edit PLAN.md</button>
       </div>
     </div>`;
   }
 
-  if (st === 'plan' || (st === 'ready' && drifted)) {
+  if (st === 'plan' || (st === 'approved' && drifted)) {
     const checks = rd.checks || [];
     const chkHtml = checks.map(c => `<span class="chk ${c.ok ? 'ok' : 'pending'}">${c.ok ? '✓' : '○'} ${esc(c.label)}</span>`).join('');
     const canApprove = Boolean(rd.ready && REVIEWED_CHK);
@@ -1227,22 +1394,23 @@ function renderDetail() {
   }
 
   const ms = t.merge_status || {};
+  const st = normalizeStatus(t.status);
   const hasClaude = Boolean(STATE?.available_launchers?.claude);
 
   let primaryBtn = '';
-  if (t.status === 'ready' && !t.plan_drifted) {
+  if (st === 'approved' && !t.plan_drifted) {
     primaryBtn = `<button class="btn primary" onclick="runAction('start')">▶ Start Worktree</button>`;
-  } else if (t.status === 'in-progress') {
+  } else if (st === 'build') {
     primaryBtn = `<button class="btn primary" onclick="runAction('verify')">✓ Run Verify</button>`;
-  } else if (t.status === 'review') {
+  } else if (st === 'review') {
     primaryBtn = ms.pr_url
       ? `<a class="btn primary" href="${esc(ms.pr_url)}" target="_blank">Open PR #${esc(ms.pr)} ↗</a> <button class="btn" onclick="runAction('verify')">✓ Run Verify</button>`
       : `<button class="btn primary" onclick="runAction('verify')">✓ Run Verify</button>`;
-  } else if (t.status === 'beta' || t.status === 'done') {
+  } else if (st === 'beta' || st === 'main' || st === 'done') {
     primaryBtn = `<button class="btn primary" onclick="runAction('open_beta')">Beta Preview ↗</button>`;
   }
 
-  const extraBetaBtn = t.status === 'in-progress'
+  const extraBetaBtn = st === 'build'
     ? `<button class="btn" onclick="runAction('open_beta')">Beta Preview ↗</button>`
     : '';
 
