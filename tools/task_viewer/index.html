@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Death Fog — Task Viewer</title>
+<style>
+  :root {
+    --bg: #0f131a;
+    --panel: #161b24;
+    --panel2: #1c2330;
+    --border: #273142;
+    --text: #e6edf7;
+    --muted: #8b9bb4;
+    --accent: #4ea1ff;
+    --green: #38c172;
+    --amber: #f5b942;
+    --red: #ef5350;
+    --purple: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { font-size: 14px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+  }
+  .pill.ready { color: var(--accent); border-color: #264873; }
+  .pill.in-progress { color: var(--amber); border-color: #6b5218; }
+  .pill.review { color: var(--purple); border-color: #4f3d80; }
+  .pill.beta, .pill.done { color: var(--green); border-color: #1f5c3a; }
+  .pill.gpu { color: #ff8a65; border-color: #6b3524; }
+  .pill.wt { color: var(--green); border-color: #1f5c3a; }
+  .layout {
+    display: grid;
+    grid-template-columns: 270px 1fr;
+    min-height: calc(100vh - 44px);
+  }
+  @media (max-width: 720px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { border-right: none; border-bottom: 1px solid var(--border); max-height: 240px; }
+  }
+  aside {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 10px;
+    overflow-y: auto;
+  }
+  .wave-hdr {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--muted); margin: 10px 4px 6px; font-weight: 700;
+  }
+  .wave-hdr:first-child { margin-top: 2px; }
+  .task-card {
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: var(--panel2);
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: border-color .12s, background .12s;
+  }
+  .task-card:hover { border-color: var(--border); }
+  .task-card.active { border-color: var(--accent); background: #1a2639; }
+  .task-card .row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .task-card .slug { font-weight: 600; font-size: 12.5px; color: var(--text); margin-top: 3px; }
+  .task-card .meta { font-size: 11px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  main { padding: 14px 16px; overflow-y: auto; }
+  .title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .title-row h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .actions {
+    display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 12px;
+  }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 11px; font-size: 12px; font-weight: 500; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: #1d4e89; border-color: #2f6db8; }
+  button.primary:hover { background: #255ea3; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .kv {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;
+  }
+  .kv .k { font-size: 10.5px; text-transform: uppercase; color: var(--muted); }
+  .kv .v { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px; word-break: break-all; }
+  .kv a { color: var(--accent); text-decoration: none; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .tab {
+    padding: 7px 12px; cursor: pointer; color: var(--muted); font-weight: 500;
+    border-bottom: 2px solid transparent; font-size: 12.5px;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  pre.doc {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; white-space: pre-wrap; word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px;
+    margin: 0; max-height: 62vh; overflow: auto;
+  }
+  .log-box {
+    background: #0b0e14; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 12px; font-family: ui-monospace, Consolas, monospace;
+    font-size: 11.5px; white-space: pre-wrap; max-height: 180px; overflow: auto;
+    display: none;
+  }
+  .log-box.show { display: block; }
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-top: 10px; }
+  .shots img { width: 100%; border-radius: 8px; border: 1px solid var(--border); }
+  iframe.mockup { width: 100%; height: 480px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+  .empty { color: var(--muted); padding: 18px; text-align: center; background: var(--panel); border: 1px dashed var(--border); border-radius: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Death Fog — Task Viewer</h1>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span class="pill" id="sync-status">Loading...</span>
+    <button onclick="refresh(true)">Refresh</button>
+  </div>
+</header>
+<div class="layout">
+  <aside id="sidebar"></aside>
+  <main id="detail"><div class="empty">Select a task to inspect its plan, mockups, and verification evidence.</div></main>
+</div>
+<script>
+let STATE = null;
+let SELECTED = null;
+let TAB = 'task';
+let LAST_ACTIVE_WT = null;
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function refresh(manual = false) {
+  try {
+    const r = await fetch('/api/state', { cache: 'no-store' });
+    STATE = await r.json();
+    // Auto-focus when a new worktree becomes active
+    if (!SELECTED || (STATE.active_task_id && STATE.active_task_id !== LAST_ACTIVE_WT && STATE.tasks[STATE.active_task_id]?.active_worktree)) {
+      SELECTED = STATE.active_task_id;
+      LAST_ACTIVE_WT = STATE.active_task_id;
+    }
+    if (SELECTED && !STATE.tasks[SELECTED]) SELECTED = STATE.active_task_id;
+    document.getElementById('sync-status').textContent = `${Object.keys(STATE.tasks).length} tasks · live`;
+    renderSidebar();
+    renderDetail();
+  } catch (e) {
+    document.getElementById('sync-status').textContent = 'Offline';
+    if (manual) console.error(e);
+  }
+}
+
+function renderSidebar() {
+  const el = document.getElementById('sidebar');
+  if (!STATE || !Object.keys(STATE.tasks).length) {
+    el.innerHTML = '<div class="empty">No tasks in tasks/</div>';
+    return;
+  }
+  const seen = new Set();
+  let html = '';
+  STATE.waves.forEach((wave, idx) => {
+    html += `<div class="wave-hdr">Wave ${idx + 1} ${idx === 0 ? '· Parallel Ready' : '· Queued'}</div>`;
+    wave.forEach(tid => { seen.add(tid); html += cardHtml(STATE.tasks[tid]); });
+  });
+  const done = Object.keys(STATE.tasks).filter(tid => !seen.has(tid));
+  if (done.length) {
+    html += '<div class="wave-hdr">Beta / Done</div>';
+    done.forEach(tid => { html += cardHtml(STATE.tasks[tid]); });
+  }
+  el.innerHTML = html;
+}
+
+function cardHtml(t) {
+  if (!t) return '';
+  const active = t.id === SELECTED ? ' active' : '';
+  const wt = t.active_worktree ? '<span class="pill wt">WT</span>' : '';
+  const gpu = t.gpu_required ? '<span class="pill gpu">GPU</span>' : '';
+  const pr = t.pr ? `<span class="pill">PR #${t.pr}</span>` : '';
+  return `<div class="task-card${active}" onclick="selectTask('${esc(t.id)}')">
+    <div class="row">
+      <span class="pill ${esc(t.status)}">#${esc(t.id)} · ${esc(t.status)}</span>
+      <span style="display:flex;gap:4px;">${wt}${gpu}${pr}</span>
+    </div>
+    <div class="slug">${esc(t.slug)}</div>
+    <div class="meta">${esc((t.owned_paths || []).join(', ') || 'no owned_paths')}</div>
+  </div>`;
+}
+
+function selectTask(id) {
+  SELECTED = id;
+  renderSidebar();
+  renderDetail();
+}
+
+function setTab(tab) {
+  TAB = tab;
+  renderDetail();
+}
+
+async function runAction(action) {
+  if (!SELECTED) return;
+  const log = document.getElementById('action-log');
+  log.classList.add('show');
+  log.textContent = `Running '${action}' for task ${SELECTED}...`;
+  try {
+    const r = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, task_id: SELECTED }),
+    });
+    const res = await r.json();
+    log.textContent = (res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.output || res.error || JSON.stringify(res));
+    await refresh();
+  } catch (e) {
+    log.textContent = 'Error: ' + e.message;
+  }
+}
+
+function renderDetail() {
+  const el = document.getElementById('detail');
+  const t = STATE && SELECTED ? STATE.tasks[SELECTED] : null;
+  if (!t) {
+    el.innerHTML = '<div class="empty">Select a task to inspect.</div>';
+    return;
+  }
+  const prLink = t.pr_url ? `<a href="${esc(t.pr_url)}" target="_blank">PR #${esc(t.pr)}</a>` : (t.pr ? `#${esc(t.pr)}` : '—');
+  const vBadge = t.verify ? (t.verify.ok ? '<span class="pill beta">Verified OK</span>' : '<span class="pill" style="color:var(--red)">Verify Failed</span>') : '<span class="pill">Unverified</span>';
+
+  let bodyHtml = '';
+  if (TAB === 'task') {
+    bodyHtml = `<pre class="doc">${esc(t.task_md || 'No TASK.md')}</pre>`;
+  } else if (TAB === 'plan') {
+    bodyHtml = `<pre class="doc">${esc(t.plan_md || 'No PLAN.md')}</pre>`;
+  } else if (TAB === 'mockups') {
+    if (!t.mockups.length) {
+      bodyHtml = '<div class="empty">No mockups yet in <code>mockups/</code>.</div>';
+    } else {
+      const fileUrl = (kind, f) => `/api/file?id=${encodeURIComponent(t.id)}&kind=${kind}&name=${encodeURIComponent(f)}`;
+      const htmlMock = t.mockups.find(f => f.endsWith('.html'));
+      bodyHtml = `<div style="margin-bottom:8px;">Files: ${t.mockups.map(f => `<a href="${fileUrl('mockups', f)}" target="_blank" style="color:var(--accent);margin-right:10px;">${esc(f)}</a>`).join('')}</div>`;
+      if (htmlMock) {
+        bodyHtml += `<iframe class="mockup" src="${fileUrl('mockups', htmlMock)}"></iframe>`;
+      }
+    }
+  } else if (TAB === 'evidence') {
+    const fileUrl = (kind, f) => `/api/file?id=${encodeURIComponent(t.id)}&kind=${kind}&name=${encodeURIComponent(f)}`;
+    const imgs = t.evidence.filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f));
+    const vJson = t.verify ? `<pre class="doc">${esc(JSON.stringify(t.verify, null, 2))}</pre>` : '<div class="empty">No <code>evidence/verify.json</code> yet. Click <b>Run Verify</b> above.</div>';
+    const shots = imgs.length ? `<div class="shots">${imgs.map(f => `<div><div style="font-size:11px;color:var(--muted);margin-bottom:4px;">${esc(f)}</div><img src="${fileUrl('evidence', f)}" /></div>`).join('')}</div>` : '';
+    bodyHtml = vJson + shots;
+  }
+
+  el.innerHTML = `
+    <div class="title-row">
+      <h2>#${esc(t.id)} — ${esc(t.title)}</h2>
+      <span class="pill ${esc(t.status)}">${esc(t.status)}</span>
+      ${t.active_worktree ? '<span class="pill wt">Active Worktree</span>' : ''}
+      ${vBadge}
+    </div>
+    <div class="actions">
+      <button class="primary" onclick="runAction('open_folder')">Open Folder</button>
+      <button onclick="runAction('start')">${t.active_worktree ? 'Refresh Brief' : 'Start Worktree'}</button>
+      <button onclick="runAction('verify')">Run Verify</button>
+      <button onclick="runAction('open_beta')">Beta Preview</button>
+    </div>
+    <div class="log-box" id="action-log"></div>
+    <div class="kv">
+      <div><div class="k">Branch</div><div class="v">${esc(t.branch)}</div></div>
+      <div><div class="k">Beta Switch</div><div class="v">?beta=1&amp;feat=${esc(t.switch)}</div></div>
+      <div><div class="k">GitHub PR</div><div class="v">${prLink}</div></div>
+      <div><div class="k">Owned Paths</div><div class="v">${esc((t.owned_paths || []).join(', ') || '—')}</div></div>
+    </div>
+    <div class="tabs">
+      <div class="tab ${TAB==='task'?'active':''}" onclick="setTab('task')">TASK.md</div>
+      <div class="tab ${TAB==='plan'?'active':''}" onclick="setTab('plan')">PLAN.md</div>
+      <div class="tab ${TAB==='mockups'?'active':''}" onclick="setTab('mockups')">Mockups (${t.mockups.length})</div>
+      <div class="tab ${TAB==='evidence'?'active':''}" onclick="setTab('evidence')">Evidence (${t.evidence.length})</div>
+    </div>
+    ${bodyHtml}
+  `;
+}
+
+refresh();
+setInterval(() => refresh(false), 4000);
+</script>
+</body>
+</html>

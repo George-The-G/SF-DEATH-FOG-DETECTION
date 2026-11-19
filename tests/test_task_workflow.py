@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from tools import task
+from tools.task_viewer import install_antigravity_plugin, server as task_viewer_server
 
 
 class TestTaskWorkflow(unittest.TestCase):
@@ -75,6 +76,17 @@ class TestTaskWorkflow(unittest.TestCase):
         self.assertEqual(wave_ids[0], ["001", "002", "005"])
         # Wave 2 runs 003 (fog2.js), 004 (depends on 001+002), and 006 (GPU #2) in parallel
         self.assertEqual(wave_ids[1], ["003", "004", "006"])
+
+    def test_task_viewer_state_and_plugin_installer(self):
+        """Task viewer state builder and Antigravity plugin installer produce valid JSON."""
+        state = task_viewer_server.build_state()
+        self.assertIn("waves", state)
+        self.assertIn("tasks", state)
+        self.assertGreaterEqual(len(state["tasks"]), 4)
+        with tempfile.TemporaryDirectory() as td:
+            out = install_antigravity_plugin.install_plugin(Path(td) / "deathfog-tasks")
+            self.assertTrue((out / "plugin.json").is_file())
+            self.assertTrue((out / "sidecars" / "task_viewer" / "sidecar.json").is_file())
 
 
 if __name__ == "__main__":
