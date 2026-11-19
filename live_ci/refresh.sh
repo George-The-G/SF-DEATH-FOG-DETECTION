@@ -103,6 +103,9 @@ beta_build() {
   RCB=$?
   echo "beta build exit code $RCB after $(( $(date +%s) - S0 )) s"
   grep -E "Maximum resident|Elapsed" live_time_beta.log 2>/dev/null || true
+  for fn in roadnet_city.bin roadnet_meta.json; do
+    if [ -s "$STATIC/$fn" ]; then cp "$STATIC/$fn" "$NEWB/$fn"; fi
+  done
   python3 live_ci/finalize.py "$NEWB" "$OUTB" "$RCB" ""
   return 0
 }
@@ -131,7 +134,7 @@ echo "::endgroup::"
 
 echo "::group::static tables (release live-static-v1)"
 mkdir -p "$STATIC"
-for f in live_static.npz live_ribbons.npz ribbons_city.bin ribbons_city_meta.json live_extra.npz station_wind.npz live_east.npz live_tracer3d.npz live_static_walls.npz station_wind_walls.npz live_east_walls.npz live_tracer3d_walls.npz; do   # live_extra.npz (guide 06): fetched when missing, also on a cache hit; a failed download only means flat asphalt streets. station_wind.npz (guide 03): optional, the wind anchors stay off without it. live_tracer3d.npz (guide 03): optional, only the beta build with fog3d reads it (no 3D fog files without it). live_east.npz (guide 14): optional, only the beta build with wind_east reads it (the old live_static.npz stays valid; the switch is simply not applied without it)
+for f in live_static.npz live_ribbons.npz ribbons_city.bin ribbons_city_meta.json roadnet_city.bin roadnet_meta.json live_extra.npz station_wind.npz live_east.npz live_tracer3d.npz live_static_walls.npz station_wind_walls.npz live_east_walls.npz live_tracer3d_walls.npz; do   # live_extra.npz (guide 06): fetched when missing, also on a cache hit; a failed download only means flat asphalt streets. station_wind.npz (guide 03): optional, the wind anchors stay off without it. live_tracer3d.npz (guide 03): optional, only the beta build with fog3d reads it (no 3D fog files without it). live_east.npz (guide 14): optional, only the beta build with wind_east reads it (the old live_static.npz stays valid; the switch is simply not applied without it)
   [ -s "$STATIC/$f" ] || gh release download live-static-v1 -p "$f" -D "$STATIC" --repo "$REPO" --clobber || echo "download of $f failed (live_extra.npz: flat asphalt streets; station_wind.npz: the wind anchors stay off; live_east.npz: east wind not applied)"
 done
 ls -l "$STATIC"

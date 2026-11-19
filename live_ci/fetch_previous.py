@@ -86,7 +86,7 @@ for n in names:
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"fetched {len(names)} files of the previous live output")
 # Beta channel: stations.json and the rolling GOES sunlight cache (dsr_cache.json) are carried too, best effort.
-for n in (("stations.json", "dsr_cache.json", "fog_base_dbg.png") if EXTRAS else ()):   # fog_base_dbg.png: guide 05 debug picture, best effort
+for n in (("stations.json", "dsr_cache.json", "fog_base_dbg.png", "roadnet_city.bin", "roadnet_meta.json") if EXTRAS else ()):   # fog_base_dbg.png: guide 05 debug picture, best effort
     try:
         (out / n).write_bytes(get(n))
         print("fetched", n)
