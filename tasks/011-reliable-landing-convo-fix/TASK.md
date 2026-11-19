@@ -16,6 +16,7 @@ owned_paths:
   - "tools/task_viewer/index.html"
   - "tests/test_task_workflow.py"
   - ".agents/skills/deathfog-ship/SKILL.md"
+  - ".agents/skills/deathfog-task-workflow/SKILL.md"
 gpu_required: false
 deliverables:
   - "tasks/011-reliable-landing-convo-fix/PLAN.md"
@@ -25,6 +26,7 @@ deliverables:
   - "tools/task_viewer/index.html"
   - "tests/test_task_workflow.py"
   - ".agents/skills/deathfog-ship/SKILL.md"
+  - ".agents/skills/deathfog-task-workflow/SKILL.md"
 exec_tier: "hydrogen"
 ---
 

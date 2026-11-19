@@ -1228,6 +1228,13 @@ def build_resume_prompt(task_id: str, *, worker: bool = False) -> dict:
     gs = git_summary(checkout_root)
     convs = load_conversations(tdir)
     tier = str(meta.get("exec_tier") or "hydrogen")
+    delegation_tool = (
+        'invoke_subagent(TypeName="self", Model="flash")'
+        if tier == "flash"
+        else 'swarm(action="add", model="Gemini 4 Hydrogen (Medium)")'
+        if tier == "hydrogen"
+        else 'swarm(action="add", model="Claude Sonnet 5.5 (Medium)")'
+    )
 
     handoff_text = (tdir / "HANDOFF.md").read_text(encoding="utf-8", errors="replace").strip() if (tdir / "HANDOFF.md").is_file() else ""
     verify_path = tdir / "evidence" / "verify.json"
@@ -1302,6 +1309,7 @@ def build_resume_prompt(task_id: str, *, worker: bool = False) -> dict:
         "id": tid,
         "stage": stage,
         "exec_tier": tier,
+        "recommended_delegation": delegation_tool,
         "worker": worker,
         "checkout_root": str(checkout_root),
         "active_worktree": is_wt,
