@@ -26,16 +26,17 @@ const MACRO_FETCH_DIST_M = 3500;       // camera distance (m) that triggers fetc
 const MACRO_FETCH_ALT_M = 1500;        // camera altitude (m) that triggers fetching macro satellite frames
 const INDEX_POLL_MS = 300000;          // 5-minute poll interval for macro/index.json
 const CULL_ALT_M = 1200;               // below this camera altitude (m) and looking steeply down, skip the macro slab pass
+const MOVE_SETTLE_MS = 140;            // ms after camera motion stops before requesting a crisp 9-tap settle frame
 
 const VERT = `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const FRAG = `
   precision highp float;
   varying vec3 vW; uniform mat4 projectionMatrix;
-  uniform sampler2D uA, uB; uniform float uMix, uHasB, uOn, uEX, uTopDef, uK, uNoiseR, uTime, uSky;
+  uniform sampler2D uA, uB; uniform float uMix, uHasB, uOn, uEX, uTopDef, uK, uNoiseR, uTime, uSky, uMoving;
   uniform vec4 uBox;            // wide grid in scene metres: x0, z0 (north edge), width, height
   uniform vec4 uLlBox;          // satellite lon/lat box: lon0, lat0, lon1 - lon0, lat1 - lat0
   uniform vec2 uUtm0;           // scene origin in UTM 10N metres: meta.x0, meta.y0
-  uniform vec2 uTexel;          // 1 / w, 1 / h of the satellite texture for 5-tap smoothing
+  uniform vec2 uTexel;          // 1 / w, 1 / h of the satellite texture for smoothing
   uniform vec4 uCity;           // city grid rectangle: xmin, zmin, xmax, zmax
   uniform vec3 uAmb, uSun, uSunCol; uniform float uSunI;
   float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -48,6 +49,12 @@ const FRAG = `
     return vec2((lon - uLlBox.x) / max(uLlBox.z, 1e-5), (uLlBox.y + uLlBox.w - lat) / max(uLlBox.w, 1e-5));
   }
   vec4 samp(sampler2D t, vec2 uv){
+    // Adaptive LOD: fast 4-tap bilinear filter while camera is moving, full 9-tap B2-spline/Gaussian when still
+    if (uMoving > .5) {
+      vec2 d = uTexel * .75;
+      return (texture2D(t, uv + vec2(d.x, d.y)) + texture2D(t, uv + vec2(-d.x, d.y))
+            + texture2D(t, uv + vec2(d.x, -d.y)) + texture2D(t, uv + vec2(-d.x, -d.y))) * .25;
+    }
     // Smooth B2-spline / Gaussian 9-tap filter across 2.2 texels (~2 km): melts 1 km GOES pixels into continuous cloud banks on the GPU at zero CPU cost
     vec2 dx = vec2(uTexel.x * 1.45, 0.), dy = vec2(0., uTexel.y * 1.45);
     vec4 c = texture2D(t, uv) * .25
@@ -55,11 +62,13 @@ const FRAG = `
            + (texture2D(t, uv + dx + dy) + texture2D(t, uv - dx + dy) + texture2D(t, uv + dx - dy) + texture2D(t, uv - dx - dy)) * .0625;
     return c;
   }
-  vec4 cov(vec2 xz){
-    vec2 uv = xzToUv(xz); if (uv.x < 0. || uv.y < 0. || uv.x > 1. || uv.y > 1.) return vec4(0.);
+  vec4 covUv(vec2 uv){
+    if (uv.x <= 0. || uv.y <= 0. || uv.x >= 1. || uv.y >= 1.) return vec4(0.);
     vec2 edge = smoothstep(vec2(0.), vec2(.04), uv) * (1. - smoothstep(vec2(.96), vec2(1.), uv));
-    vec4 a = samp(uA, uv); a.r *= edge.x * edge.y;
-    if (uHasB > .5) { vec4 b = samp(uB, uv); b.r *= edge.x * edge.y; return mix(a, b, uMix); }
+    float edgeMask = edge.x * edge.y;
+    if (edgeMask <= 0.) return vec4(0.);
+    vec4 a = samp(uA, uv); a.r *= edgeMask;
+    if (uHasB > .5) { vec4 b = samp(uB, uv); b.r *= edgeMask; return mix(a, b, uMix); }
     return a;
   }
   float seam(vec2 xz){ float d = min(min(xz.x - uCity.x, uCity.z - xz.x), min(xz.y - uCity.y, uCity.w - xz.y)); if (d <= 0.) return 1.; float t = clamp(d / ${FADE_M.toFixed(1)}, 0., 1.); return 1. - t * t * (3. - 2. * t); }
@@ -69,11 +78,15 @@ const FRAG = `
     float tm = uTopDef * ${REF_PLANE_TOP_FRAC} * uEX, t = rd.y > 1e-4 ? (tm - ro.y) / rd.y : -1.;
     float topM = uTopDef;
     if (t > 0. && t < 3.0e5) {
-      vec4 c0 = cov(ro.xz + rd.xz * t);
-      if (c0.b > 0.) {
-        float satTop = clamp(c0.b * ${GOES_TOP_MAX_M.toFixed(1)}, ${MIN_MACRO_TOP_M.toFixed(1)}, ${MAX_MACRO_TOP_M.toFixed(1)});
-        float wSat = smoothstep(.2, .75, c0.r * c0.g) * .45;
-        topM = mix(uTopDef, satTop, wSat);
+      vec2 p0 = ro.xz + rd.xz * t;
+      vec2 uv0 = xzToUv(p0);
+      if (uv0.x > 0. && uv0.y > 0. && uv0.x < 1. && uv0.y < 1. && (uSky > .5 || seam(p0) >= .002)) {
+        vec4 c0 = covUv(uv0);
+        if (c0.b > 0.) {
+          float satTop = clamp(c0.b * ${GOES_TOP_MAX_M.toFixed(1)}, ${MIN_MACRO_TOP_M.toFixed(1)}, ${MAX_MACRO_TOP_M.toFixed(1)});
+          float wSat = smoothstep(.2, .75, c0.r * c0.g) * .45;
+          topM = mix(uTopDef, satTop, wSat);
+        }
       }
     }
     float baseM = max(topM - ${BASE_THICK_M.toFixed(1)}, 0.);
@@ -83,18 +96,32 @@ const FRAG = `
     if (abs(rd.y) < 1e-5) { if (ro.y < base || ro.y > top) discard; a = 0.; b = 3.0e5; }
     else { a = (base - ro.y) / rd.y; b = (top - ro.y) / rd.y; if (a > b) { float s = a; a = b; b = s; } if (b < 0.) discard; a = max(a, 0.); b = min(b, 2.6e5); }
     if (b <= a) discard;
+    // Early whole-ray discard: both the inset city interior and GOES [0,1] UV box are convex in XZ, so checking endpoints [a, b] skips all texture fetches & noise when the ray cannot contribute
+    vec2 pA = ro.xz + rd.xz * a, pB = ro.xz + rd.xz * b;
+    if (uSky < .5) {
+      float cityFade = max(seam(pA), seam(pB));
+      if (cityFade < .002) discard;
+    }
+    vec2 uvA = xzToUv(pA), uvB = xzToUv(pB);
+    if (max(uvA.x, uvB.x) <= 0. || min(uvA.x, uvB.x) >= 1. || max(uvA.y, uvB.y) <= 0. || min(uvA.y, uvB.y) >= 1.) discard;
     const int N = 8; float seg = (b - a) / float(N), od = 0., sumd = 0., sumh = 0.;
     for (int i = 0; i < N; i++) {
-      float ts = a + (float(i) + .5) * seg; vec3 p = ro + rd * ts; vec4 c = cov(p.xz);
+      float ts = a + (float(i) + .5) * seg; vec3 p = ro + rd * ts;
+      float sm = seam(p.xz);
+      if (uSky < .5 && sm < .002) continue;
+      vec2 uv = xzToUv(p.xz);
+      if (uv.x <= 0. || uv.y <= 0. || uv.x >= 1. || uv.y >= 1.) continue;
+      vec4 c = covUv(uv);
+      if (c.r <= .08) continue;
+      // sky layers (guide 13, lab switch sky): inside the city grid keep cloud the satellite puts well above the fog top (a deck above the fog, not the fog itself, which the voxels draw); cirrus-high tops fade out
+      if (uSky > .5) { float tm8 = c.b * ${GOES_TOP_MAX_M.toFixed(1)}; float up = smoothstep(0., 1., (tm8 - uTopDef - ${SKY_GAP_MIN_M.toFixed(1)}) / ${SKY_GAP_RAMP_M.toFixed(1)}) * (1. - smoothstep(${SKY_CIRRUS_FADE_START_M.toFixed(1)}, ${SKY_CIRRUS_MAX_M.toFixed(1)}, tm8)); sm = max(sm, up); }
+      if (sm < .002) continue;
       float near = uNoiseR * (1. - smoothstep(${NOISE_FADE_NEAR_M.toFixed(1)}, ${NOISE_FADE_FAR_M.toFixed(1)}, ts) * .55);  // keep 45% of organic billow erosion even far away so 2 km GOES blocks never look rectangular
       // fine noise at three scales, so the bank has billows and ragged edges instead of 1 km blocks
       float nz = vn(p.xz / 2400.) * .45 + vn(p.xz / 750.) * .35 + vn(p.xz / 220. + p.y / 110.) * .2;
       float dens = smoothstep(.08, .72, c.r) * mix(.35, 1., c.g);   // smooth threshold on satellite probability + confidence
       dens = clamp((dens - (1. - nz) * .38 * near) * (1. + .6 * near), 0., 1.) * mix(1., .6 + .8 * nz, near * .5);   // erode the edges with the noise
       float hh = clamp((p.y - base) / max(top - base, 1.), 0., 1.);
-      // sky layers (guide 13, lab switch sky): inside the city grid keep cloud the satellite puts well above the fog top (a deck above the fog, not the fog itself, which the voxels draw); cirrus-high tops fade out
-      float sm = seam(p.xz);
-      if (uSky > .5) { float tm8 = c.b * ${GOES_TOP_MAX_M.toFixed(1)}; float up = smoothstep(0., 1., (tm8 - uTopDef - ${SKY_GAP_MIN_M.toFixed(1)}) / ${SKY_GAP_RAMP_M.toFixed(1)}) * (1. - smoothstep(${SKY_CIRRUS_FADE_START_M.toFixed(1)}, ${SKY_CIRRUS_MAX_M.toFixed(1)}, tm8)); sm = max(sm, up); }
       float w = dens * sm; od += w * seg; sumd += w; sumh += w * hh;
     }
     od *= uK; float hmean = sumd > 0. ? sumh / sumd : .5;
@@ -106,13 +133,15 @@ const FRAG = `
   }`;
 
 export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFogGrid, getTerrainH, fog, invalidate }) {
-  const st = { src: null, base: '', idx: null, idxAt: 0, fetching: false, wide: null, wideBuild: false, wideMesh: null, slab: null, on: false, edgeBackup: null, tMs: 0, lim: null, near: 8, light: null };
-  const texCache = new Map(); // file -> { tex } | 'loading' | 'failed'
+  const st = { src: null, base: '', srcGen: 0, idx: null, idxAt: 0, fetching: false, wide: null, wideBuild: false, wideMesh: null, slab: null, on: false, edgeBackup: null, tMs: 0, lim: null, near: 8, light: null, prevDist: -1, settleTimer: null };
+  const texCache = new Map(); // file -> { tex, bmp, used } | 'loading' | 'failed'
   const sample = new THREE.Vector3();
+  const prevPos = new THREE.Vector3();
+  const prevDir = new THREE.Vector3();
   const TARGET = () => (st.wide ? { x0: st.wide.x0, y0: st.wide.y0, cell: st.wide.cell, nx: st.wide.nx, ny: st.wide.ny } : null);
 
   const U = {
-    uA: { value: null }, uB: { value: null }, uMix: { value: 0 }, uHasB: { value: 0 }, uOn: { value: 0 }, uEX: { value: EX }, uTopDef: { value: 200 }, uK: { value: 2.6 / (BASE_THICK_M * EX) }, uNoiseR: { value: 1 }, uTime: { value: 0 }, uSky: { value: 0 },
+    uA: { value: null }, uB: { value: null }, uMix: { value: 0 }, uHasB: { value: 0 }, uOn: { value: 0 }, uEX: { value: EX }, uTopDef: { value: 200 }, uK: { value: 2.6 / (BASE_THICK_M * EX) }, uNoiseR: { value: 1 }, uTime: { value: 0 }, uSky: { value: 0 }, uMoving: { value: 0 },
     uBox: { value: new THREE.Vector4() }, uLlBox: { value: new THREE.Vector4(-123.1, 37.2, 1.4, 1.1) }, uUtm0: { value: new THREE.Vector2(540100, 4171500) }, uTexel: { value: new THREE.Vector2(1 / 141, 1 / 111) },
     uCity: { value: new THREE.Vector4() }, uAmb: { value: new THREE.Vector3(.3, .36, .5) }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Vector3() }, uSunI: { value: 0 },
   };
@@ -155,25 +184,67 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
     st.idxAt = performance.now(); st.fetching = false;
   }
   let texCanvas = null, texCtx = null;
+  /** Dispose a cached macro texture entry and close any backing ImageBitmap. */
+  function disposeEntry(v) {
+    if (!v || typeof v === 'string') return;
+    if (v.tex) v.tex.dispose();
+    if (v.bmp && typeof v.bmp.close === 'function') v.bmp.close();
+  }
+  /** Store a decoded macro frame texture in cache and evict oldest entries beyond 16. */
+  function storeTex(file, tex, bmp) {
+    texCache.set(file, { tex, bmp: bmp || null, used: performance.now() });
+    invalidate && invalidate();
+    if (texCache.size > 16) {
+      for (const [k, v] of texCache) {
+        if (v !== 'loading' && v !== 'failed' && k !== file && texCache.size > 16) {
+          disposeEntry(v);
+          texCache.delete(k);
+        }
+      }
+    }
+  }
+  /** Fetch and asynchronously decode a macro GOES PNG frame into a GPU texture. */
   function frameTex(file) {
-    const e = texCache.get(file); if (e && e !== 'loading' && e !== 'failed') return e.tex;
-    if (e || !st.wide) return null; texCache.set(file, 'loading');
+    const e = texCache.get(file);
+    if (e && e !== 'loading' && e !== 'failed') { e.used = performance.now(); return e.tex; }
+    if (e || !st.wide) return null;
+    texCache.set(file, 'loading');
+    const gen = st.srcGen;
+    const url = st.base + file + '?v=' + encodeURIComponent((st.idx && st.idx.frames.find((f) => f.file === file) || {}).t || '');
+    if (typeof createImageBitmap === 'function') {
+      // Off-main-thread PNG decode via createImageBitmap, uploaded directly to WebGL without 2D canvas readback
+      fetch(url)
+        .then((r) => { if (!r.ok) throw new Error('http ' + r.status); return r.blob(); })
+        .then((blob) => createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }).catch(() => createImageBitmap(blob)))
+        .then((bmp) => {
+          if (gen !== st.srcGen) { if (typeof bmp.close === 'function') bmp.close(); return; }
+          const tex = new THREE.Texture(bmp);
+          tex.minFilter = tex.magFilter = THREE.LinearFilter;
+          tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+          tex.generateMipmaps = false;
+          tex.flipY = false;
+          tex.needsUpdate = true;
+          storeTex(file, tex, bmp);
+        })
+        .catch(() => { if (gen === st.srcGen) texCache.set(file, 'failed'); });
+      return null;
+    }
     const img = new Image();
     img.onload = () => {
+      if (gen !== st.srcGen) return;
       try {
-        // Upload the small 141x111 PNG directly (no 96,000-cell UTM bicubic CPU loop!); the fragment shader projects scene (x, z) to (lon, lat) UV in 10 ALU ops
+        // Fallback when createImageBitmap is unavailable: upload via scratch canvas DataTexture
         if (!texCanvas) { texCanvas = document.createElement('canvas'); texCtx = texCanvas.getContext('2d', { willReadFrequently: true }); }
         if (texCanvas.width !== img.width || texCanvas.height !== img.height) { texCanvas.width = img.width; texCanvas.height = img.height; }
         texCtx.drawImage(img, 0, 0);
         const raw = new Uint8Array(texCtx.getImageData(0, 0, img.width, img.height).data.buffer);
         const tex = new THREE.DataTexture(raw, img.width, img.height, THREE.RGBAFormat, THREE.UnsignedByteType);
         tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.generateMipmaps = false; tex.flipY = false; tex.needsUpdate = true;
-        texCache.set(file, { tex, used: performance.now() }); invalidate && invalidate();
-        if (texCache.size > 16) for (const [k, v] of texCache) { if (v !== 'loading' && v !== 'failed' && k !== file && texCache.size > 16) { v.tex.dispose(); texCache.delete(k); } }
+        storeTex(file, tex, null);
       } catch (err) { texCache.set(file, 'failed'); }
     };
-    img.onerror = () => texCache.set(file, 'failed');
-    img.src = st.base + file + '?v=' + encodeURIComponent((st.idx && st.idx.frames.find((f) => f.file === file) || {}).t || '');
+    img.onerror = () => { if (gen === st.srcGen) texCache.set(file, 'failed'); };
+    img.src = url;
     return null;
   }
 
@@ -194,10 +265,23 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
     else if (!on && st.edgeBackup !== null) { fog.setParams({ edgeFade: st.edgeBackup }); st.edgeBackup = null; }
   }
 
+  /** Clear any pending camera-settle redraw timer. */
+  function clearSettle() {
+    if (st.settleTimer !== null) { clearTimeout(st.settleTimer); st.settleTimer = null; }
+  }
+
   /* called every frame before the fog pass; dist = camera to target */
   function update(dist) {
     const want = !!(fog.params && fog.params.macro) && !!st.src;
-    if (!want) { if (st.on) { st.on = false; limits(false); edgeFade(false); if (st.wideMesh) st.wideMesh.visible = false; if (st.slab) st.slab.visible = false; } return; }
+    if (!want) {
+      if (st.on) {
+        st.on = false; clearSettle(); st.prevDist = -1; U.uMoving.value = 0;
+        limits(false); edgeFade(false);
+        if (st.wideMesh) st.wideMesh.visible = false;
+        if (st.slab) st.slab.visible = false;
+      }
+      return;
+    }
     if (!st.on) { st.on = true; limits(true); if (st.light) setLight(st.light); }
     const camH = camera.position.y / EX;
     // near plane rises with the camera height so the buildings keep their depth precision with the far plane at 300 km
@@ -217,6 +301,21 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
     edgeFade(!!br && show);
     // no macro pixel on screen: camera low and looking down
     camera.getWorldDirection(sample); if (camH < CULL_ALT_M && sample.y < -0.45) show = false;
+    // Detect camera motion for adaptive 4-tap (moving) vs 9-tap (still) filtering, and schedule a settle frame when motion stops
+    const moved = st.prevDist >= 0 && (
+      Math.abs(dist - st.prevDist) > 1e-2 ||
+      camera.position.distanceToSquared(prevPos) > 1e-2 ||
+      sample.distanceToSquared(prevDir) > 1e-6
+    );
+    prevPos.copy(camera.position); prevDir.copy(sample); st.prevDist = dist;
+    if (moved) {
+      U.uMoving.value = 1;
+      clearSettle();
+      st.settleTimer = setTimeout(() => { st.settleTimer = null; U.uMoving.value = 0; invalidate && invalidate(); }, MOVE_SETTLE_MS);
+    } else {
+      U.uMoving.value = 0;
+      clearSettle();
+    }
     const g = getFogGrid(), m = getMeta();
     if (g && m) {
       const ox = g.x0 - m.x0, oz = -(g.y0 - m.y0), hm = g.h * g.cell_m;
@@ -232,10 +331,10 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
   return {
     update, setLight,
     /* the macro folder index (macro/index.json) of the live output, or null */
-    setSource(url) { st.src = url || null; st.base = url ? url.replace(/[^/]*$/, '') : ''; st.idx = null; st.idxAt = 0; for (const v of texCache.values()) if (v && v.tex) v.tex.dispose(); texCache.clear(); },
+    setSource(url) { st.srcGen++; st.src = url || null; st.base = url ? url.replace(/[^/]*$/, '') : ''; st.idx = null; st.idxAt = 0; for (const v of texCache.values()) disposeEntry(v); texCache.clear(); },
     setTime(ms) { st.tMs = ms; },
     get active() { return st.on; },
-    debug() { const br = st.idx ? macroBracket(st.idx, st.tMs) : null; return { tMs: st.tMs, t: new Date(st.tMs).toISOString(), br: br && [br.a.file, br.b.file, br.mix], tex: [...texCache.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : 'ok']), src: st.src, uOn: U.uOn.value, vis: st.slab && st.slab.visible }; },
+    debug() { const br = st.idx ? macroBracket(st.idx, st.tMs) : null; return { tMs: st.tMs, t: new Date(st.tMs).toISOString(), br: br && [br.a.file, br.b.file, br.mix], tex: [...texCache.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : 'ok']), src: st.src, uOn: U.uOn.value, uMoving: U.uMoving.value, vis: st.slab && st.slab.visible }; },
     info() { return st.on ? `macro: wide terrain ${st.wide ? 'loaded' : 'not yet'}, ${st.idx ? st.idx.frames.length + ' frames' : 'no frames'}, layer ${U.uOn.value ? 'on' : 'off'}` : 'macro off'; },
   };
 }
