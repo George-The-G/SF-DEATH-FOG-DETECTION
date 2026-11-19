@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Task 012 Mockup — Redesigned Death Fog Task Viewer</title>
+<style>
+  :root {
+    --bg: #0f131a;
+    --panel: #151b24;
+    --panel2: #1b2230;
+    --border: #263142;
+    --text: #e6edf7;
+    --muted: #8b9bb4;
+    --accent: #4ea1ff;
+    --green: #38c172;
+    --amber: #f5b942;
+    --red: #ef5350;
+    --purple: #a78bfa;
+    --cyan: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #090c11;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  /* Mockup Controls Bar */
+  .demo-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 8px 12px; background: #101622; border-bottom: 1px solid #2b3a55;
+    font-size: 11.5px; position: sticky; top: 0; z-index: 40;
+  }
+  .demo-bar strong { color: var(--cyan); }
+  .demo-bar button, .demo-bar select {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 5px; padding: 4px 8px; font-size: 11.5px; cursor: pointer;
+  }
+  .demo-bar button.on { background: #1d4e89; border-color: var(--accent); }
+  .demo-stage {
+    display: flex; justify-content: center; padding: 14px;
+  }
+  .viewport {
+    width: 100%; max-width: 1120px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    box-shadow: 0 12px 36px rgba(0,0,0,.45); transition: max-width .2s ease;
+    position: relative;
+  }
+  .viewport.narrow { max-width: 470px; }
+
+  /* App Header */
+  header.app-hdr {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  header.app-hdr h1 { margin: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+  .hdr-right { display: flex; align-items: center; gap: 6px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+    white-space: nowrap;
+  }
+  .pill.ok { color: var(--green); border-color: #1f5c3a; background: #12241b; }
+  .pill.warn { color: var(--amber); border-color: #6b5218; background: #261e0f; }
+  .pill.info { color: var(--cyan); border-color: #1f5573; }
+  .pill.plan { color: var(--purple); border-color: #4f3d80; }
+
+  /* Dismissible Toast */
+  .toast {
+    display: none; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 12px; background: #132236; border-bottom: 1px solid #264873;
+    font-size: 12px; color: var(--text);
+  }
+  .toast.show { display: flex; }
+  .toast button { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 14px; }
+
+  /* Narrow 1-line Task Switcher */
+  .switcher-bar {
+    display: none; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 12px; background: var(--panel2); border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none;
+  }
+  .viewport.narrow .switcher-bar { display: flex; }
+
+  /* Layout */
+  .app-layout { display: grid; grid-template-columns: 235px 1fr; min-height: 580px; }
+  .viewport.narrow .app-layout { grid-template-columns: 1fr; }
+  aside.sidebar {
+    background: var(--panel); border-right: 1px solid var(--border); padding: 10px;
+  }
+  .viewport.narrow aside.sidebar {
+    display: none; position: absolute; top: 76px; left: 0; right: 0; bottom: 0;
+    z-index: 25; border-right: none; overflow-y: auto;
+  }
+  .viewport.narrow aside.sidebar.open { display: block; }
+
+  .wave-hdr {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--muted); margin: 8px 4px 6px; font-weight: 700;
+  }
+  .task-card {
+    padding: 7px 9px; border-radius: 7px; border: 1px solid transparent;
+    background: var(--panel2); margin-bottom: 6px; cursor: pointer;
+  }
+  .task-card.active { border-color: var(--accent); background: #19263a; }
+  .task-card .r1 { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; font-weight: 600; }
+  .task-card .r2 { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+  /* Main Detail */
+  main { padding: 12px 14px; min-width: 0; }
+  .title-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .title-bar h2 { margin: 0; font-size: 15px; font-weight: 600; }
+
+  /* Unified 7-node Lifecycle Sequence */
+  .seq {
+    display: flex; align-items: center; gap: 0; margin-bottom: 12px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .seq-node {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 3px 7px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    border: 1px solid var(--border); color: var(--muted); background: transparent;
+    white-space: nowrap; text-decoration: none;
+  }
+  .seq-node.done { color: var(--green); border-color: #1f5c3a; background: #12241b; }
+  .seq-node.current { color: var(--text); border-color: var(--accent); background: #1a2c47; border-width: 1.5px; }
+  .seq-node.locked { color: var(--amber); border-color: #8a661a; background: #261e0f; border-width: 1.5px; }
+  .seq-node.clickable { cursor: pointer; }
+  .seq-node.clickable:hover { border-color: var(--text); }
+  .seq-line { flex: 1; height: 1px; background: var(--border); min-width: 4px; }
+  .seq-line.done { background: #266b45; }
+  .viewport.narrow .seq-node { padding: 2px 5px; font-size: 10px; }
+  .viewport.narrow .lbl-full { display: none; }
+  .viewport:not(.narrow) .lbl-short { display: none; }
+
+  /* Formal Plan Approval Gate Banner */
+  .gate-card {
+    background: var(--panel); border: 1px solid #6b5218; border-left: 3px solid var(--amber);
+    border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;
+  }
+  .gate-card.drift { border-color: #8c2d2d; border-left-color: var(--red); }
+  .gate-hdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .gate-title { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; color: var(--amber); }
+  .gate-card.drift .gate-title { color: var(--red); }
+  .checklist { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; margin: 6px 0 8px; }
+  .chk.ok { color: var(--green); }
+  .chk.pending { color: var(--muted); }
+  .gate-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+  /* Buttons & Menus */
+  button.btn, a.btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 500;
+    cursor: pointer; text-decoration: none; white-space: nowrap;
+  }
+  button.btn:hover, a.btn:hover { border-color: var(--accent); }
+  button.btn.primary { background: #1d4e89; border-color: #2f6db8; }
+  button.btn.gate { background: #1b4d3e; border-color: #2e7d5b; }
+  button.btn.gate:disabled { opacity: .45; cursor: not-allowed; }
+  button.btn.ghost { background: transparent; padding: 4px 7px; }
+  .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; position: relative; }
+  .menu-wrap { position: relative; display: inline-block; }
+  .menu-pop {
+    display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 30;
+    min-width: 210px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  }
+  .menu-pop.right { left: auto; right: 0; }
+  .menu-pop.open { display: block; }
+  .menu-pop button {
+    display: flex; width: 100%; text-align: left; background: transparent; border: none;
+    color: var(--text); padding: 6px 9px; border-radius: 5px; font-size: 12px; cursor: pointer;
+  }
+  .menu-pop button:hover { background: var(--panel2); }
+
+  /* Consolidated 1-line Context & Convo Strip */
+  .context-strip {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 7px 0; margin-bottom: 10px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; color: var(--muted); }
+  .details-panel {
+    display: none; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 11px; margin-bottom: 10px; font-size: 11.5px;
+  }
+  .details-panel.open { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+  .details-panel .k { font-size: 10px; text-transform: uppercase; color: var(--muted); }
+
+  /* Tabs & Doc */
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 10px; overflow-x: auto; }
+  .tab { padding: 6px 10px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; font-size: 12px; white-space: nowrap; }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab.dim { opacity: .55; }
+  pre.doc {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 11px; margin: 0; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace;
+    font-size: 11.5px; color: #d5e0f0;
+  }
+
+  /* Zero-Token Inline Convo Preview Modal */
+  .modal-bg {
+    display: none; position: fixed; inset: 0; background: rgba(5,8,13,.75);
+    z-index: 60; align-items: center; justify-content: center; padding: 16px;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    width: 100%; max-width: 560px; max-height: 82vh; overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.6);
+  }
+  .modal-hdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .turn { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; margin-bottom: 6px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <strong>Task 012 Interactive Mockup</strong>
+  <button id="btn-narrow" class="on" onclick="setWidth(true)">Aux Pane (470px)</button>
+  <button id="btn-wide" onclick="setWidth(false)">Desktop (1120px)</button>
+  <label>Stage:
+    <select id="stage-sel" onchange="setStage(this.value)">
+      <option value="brainstorm">brainstorm</option>
+      <option value="plan" selected>plan (Gated)</option>
+      <option value="ready">ready (Approved)</option>
+      <option value="in-progress">in-progress (Build)</option>
+      <option value="review">review (PR #12)</option>
+      <option value="beta">beta (v3-dev)</option>
+      <option value="done">done (Main)</option>
+    </select>
+  </label>
+  <label style="display:flex;align-items:center;gap:4px;">
+    <input type="checkbox" id="drift-chk" onchange="render()" /> Simulate Plan Drift
+  </label>
+</div>
+
+<div class="demo-stage">
+  <div class="viewport narrow" id="vp">
+    <header class="app-hdr">
+      <h1>Death Fog Tasks</h1>
+      <div class="hdr-right">
+        <span class="pill ok" title="Shared agent/tooling files match origin/main">main↔beta ✓</span>
+        <span class="pill">12</span>
+        <button class="btn ghost" onclick="showToast('Refreshed 12 tasks (0 tokens)')">↻</button>
+      </div>
+    </header>
+    <div class="toast" id="toast">
+      <span id="toast-msg"></span>
+      <button onclick="document.getElementById('toast').classList.remove('show')">×</button>
+    </div>
+
+    <div class="switcher-bar" onclick="toggleDrawer()">
+      <div>
+        <span style="color:var(--muted);margin-right:4px;">▾</span>
+        <strong>#012</strong> · plan-gate-viewer-redesign
+        <span class="pill plan" id="sw-stage" style="margin-left:4px;">Plan</span>
+      </div>
+      <span class="mono">12 tasks</span>
+    </div>
+
+    <div class="app-layout">
+      <aside class="sidebar" id="sidebar">
+        <div class="wave-hdr">Wave 1 · Active / Ready</div>
+        <div class="task-card active" onclick="toggleDrawer(false)">
+          <div class="r1">
+            <span><span class="dot" style="background:var(--purple)"></span> #012 plan-gate-viewer-redesign</span>
+            <span class="pill plan">Plan</span>
+          </div>
+          <div class="r2">tools/task.py, tools/task_viewer/index.html</div>
+        </div>
+        <div class="task-card" onclick="toggleDrawer(false)">
+          <div class="r1">
+            <span><span class="dot" style="background:var(--amber)"></span> #009 citywide-road-ribbons</span>
+            <span class="pill ok">WT</span>
+          </div>
+          <div class="r2">microclimate/live/roadnet.py, site/v3/roadnet.js</div>
+        </div>
+        <div class="wave-hdr">Beta / Main</div>
+        <div class="task-card" onclick="toggleDrawer(false)">
+          <div class="r1">
+            <span><span class="dot" style="background:var(--green)"></span> #011 reliable-landing-convo-fix</span>
+            <span class="pill ok">Main</span>
+          </div>
+          <div class="r2">tools/task.py, tools/task_viewer/server.py</div>
+        </div>
+      </aside>
+
+      <main id="main-area"></main>
+    </div>
+  </div>
+</div>
+
+<!-- Zero-Token Inline Convo Preview Modal -->
+<div class="modal-bg" id="convo-modal" onclick="if(event.target===this) closeModal()">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div>
+        <strong style="font-size:14px;">Linked Antigravity Conversation</strong>
+        <span class="pill ok" style="margin-left:6px;">Local · 0 Tokens</span>
+        <div class="mono" style="margin-top:2px;">833e5d95-bb3f-4a18-a7b7-0d33c9985261</div>
+      </div>
+      <button class="btn ghost" onclick="closeModal()">✕</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+      <button class="btn primary" onclick="copyId(this)">Copy Conversation ID</button>
+      <button class="btn" onclick="showToast('Opened ~/.gemini/antigravity/brain/833e5d95.../ in Explorer')">Open Brain Folder</button>
+    </div>
+    <div style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:6px;">Recent Turns (from local transcript.jsonl)</div>
+    <div class="turn"><strong>User:</strong> Add a gate that a plan must be formally approved before implementation begins...</div>
+    <div class="turn"><strong>Assistant:</strong> Created Task 012, ran UI/UX Design Reviewer, and recorded findings in PLAN.md...</div>
+    <div class="turn"><strong>User:</strong> Yes plan and then which subagent is going to implement?</div>
+  </div>
+</div>
+
+<script>
+let STAGE = 'plan';
+let APPROVED = false;
+let REVIEWED_CHK = false;
+let DETAILS_OPEN = false;
+
+function setWidth(narrow) {
+  document.getElementById('vp').classList.toggle('narrow', narrow);
+  document.getElementById('btn-narrow').classList.toggle('on', narrow);
+  document.getElementById('btn-wide').classList.toggle('on', !narrow);
+}
+function setStage(st) {
+  STAGE = st;
+  APPROVED = ['ready','in-progress','review','beta','done'].includes(st);
+  render();
+}
+function toggleDrawer(force) {
+  const sb = document.getElementById('sidebar');
+  sb.classList.toggle('open', force !== undefined ? force : !sb.classList.contains('open'));
+}
+function toggleMenu(id) {
+  document.querySelectorAll('.menu-pop').forEach(m => { if (m.id !== id) m.classList.remove('open'); });
+  document.getElementById(id)?.classList.toggle('open');
+}
+function showToast(msg) {
+  document.getElementById('toast-msg').textContent = msg;
+  document.getElementById('toast').classList.add('show');
+}
+function openModal() { document.getElementById('convo-modal').classList.add('open'); }
+function closeModal() { document.getElementById('convo-modal').classList.remove('open'); }
+function copyId(btn) {
+  const orig = btn.textContent;
+  btn.textContent = 'Copied ✓';
+  setTimeout(() => btn.textContent = orig, 1400);
+}
+function approvePlan() {
+  APPROVED = true;
+  STAGE = 'ready';
+  document.getElementById('stage-sel').value = 'ready';
+  document.getElementById('drift-chk').checked = false;
+  showToast('Formally approved PLAN.md (sha 9a4f1c2e8b01, by human-ui) — Build unlocked!');
+  render();
+}
+
+function render() {
+  const drifted = document.getElementById('drift-chk').checked && APPROVED;
+  const order = ['brainstorm','plan','ready','in-progress','review','beta','done'];
+  const idx = order.indexOf(STAGE);
+  document.getElementById('sw-stage').textContent = STAGE === 'done' ? 'Main' : STAGE;
+
+  const nodes = [
+    { key:'brainstorm', full:'Scope', short:'Scope', icon:'' },
+    { key:'plan', full:'Plan', short:'Plan', icon: STAGE==='plan' ? '🔒' : '' },
+    { key:'ready', full:'Approved', short:'Appr', icon:'' },
+    { key:'in-progress', full:'Build', short:'Build', icon: STAGE==='in-progress' ? '●' : '' },
+    { key:'review', full:'Review', short:'PR', icon:'', click: idx>=4 ? "showToast('Opening GitHub PR #12')" : '' },
+    { key:'beta', full:'Beta', short:'Beta', icon:'', click: "showToast('Opening Beta Preview (?beta=1&feat=plan_gate_viewer_redesign)')" },
+    { key:'done', full:'Main', short:'Main', icon: STAGE==='done' ? '🌐' : '' },
+  ];
+
+  const seqHtml = `<div class="seq">${nodes.map((n, i) => {
+    const isDone = i < idx || (STAGE==='done' && i===6);
+    const isCur = i === idx && STAGE !== 'done';
+    const cls = isDone ? 'done' : (isCur ? (n.key==='plan' ? 'locked' : 'current') : '');
+    const prefix = isDone && n.key!=='done' ? '✓ ' : (n.icon ? n.icon + ' ' : '');
+    const clickAttr = n.click ? `onclick="${n.click}"` : '';
+    const nodeHtml = `<span class="seq-node ${cls} ${n.click ? 'clickable' : ''}" ${clickAttr} title="${n.full}">${prefix}<span class="lbl-full">${n.full}</span><span class="lbl-short">${n.short}</span></span>`;
+    const lineHtml = i < nodes.length - 1 ? `<span class="seq-line ${i < idx ? 'done' : ''}"></span>` : '';
+    return nodeHtml + lineHtml;
+  }).join('')}</div>`;
+
+  let gateHtml = '';
+  if (STAGE === 'brainstorm') {
+    gateHtml = `<div class="gate-card">
+      <div class="gate-hdr"><span class="gate-title">Gate 1 · Brainstorm</span><span class="pill info">Code Locked</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Capture goals &amp; decisions in PLAN.md before moving to the formal Plan stage.</div>
+      <div class="gate-foot">
+        <button class="btn gate" onclick="setStage('plan');document.getElementById('stage-sel').value='plan'">Advance → Plan Stage</button>
+        <button class="btn" onclick="showToast('Editing PLAN.md')">Edit PLAN.md</button>
+      </div>
+    </div>`;
+  } else if (STAGE === 'plan' || (STAGE === 'ready' && drifted)) {
+    gateHtml = `<div class="gate-card ${drifted ? 'drift' : ''}">
+      <div class="gate-hdr">
+        <span class="gate-title">${drifted ? '⚠ Plan Drifted Since Approval' : '🔒 Formal Plan Approval Gate'}</span>
+        <span class="pill warn">Build Locked</span>
+      </div>
+      <div class="checklist">
+        <span class="chk ok">✓ PLAN.md written</span>
+        <span class="chk ok">✓ Plan spec filled</span>
+        <span class="chk ok">✓ Owned paths (6)</span>
+        <span class="chk pending">○ Human sign-off</span>
+      </div>
+      <div class="gate-foot">
+        <label style="font-size:11.5px;display:flex;align-items:center;gap:5px;cursor:pointer;">
+          <input type="checkbox" ${REVIEWED_CHK ? 'checked' : ''} onchange="REVIEWED_CHK=this.checked;render()" />
+          I reviewed PLAN.md
+        </label>
+        <button class="btn gate" ${REVIEWED_CHK ? '' : 'disabled'} onclick="approvePlan()">✓ Approve Plan &amp; Unlock Build</button>
+      </div>
+    </div>`;
+  }
+
+  let primaryBtn = '';
+  if (STAGE === 'ready' && !drifted) primaryBtn = `<button class="btn primary" onclick="setStage('in-progress');document.getElementById('stage-sel').value='in-progress';showToast('Created worktree _worktrees/wt_012-...')">▶ Start Worktree</button>`;
+  else if (STAGE === 'in-progress') primaryBtn = `<button class="btn primary" onclick="showToast('Running tools/task.py verify 012...')">✓ Run Verify</button>`;
+  else if (STAGE === 'review') primaryBtn = `<button class="btn primary" onclick="showToast('Opening PR #12 on GitHub')">Open PR #12 ↗</button>`;
+  else if (STAGE === 'beta' || STAGE === 'done') primaryBtn = `<button class="btn primary" onclick="showToast('Opening Beta Preview')">Beta Preview ↗</button>`;
+
+  document.getElementById('main-area').innerHTML = `
+    <div class="title-bar">
+      <h2>#012 — Formal Plan Approval Gate &amp; Viewer Redesign</h2>
+      <div class="menu-wrap">
+        <button class="btn ghost" onclick="toggleMenu('more-menu')" title="More actions">⋯</button>
+        <div class="menu-pop right" id="more-menu">
+          <button onclick="showToast('Opened tasks/012-plan-gate-viewer-redesign/')">Open Task Folder</button>
+          <button onclick="showToast('Copied feat/012-plan-gate-viewer-redesign')">Copy Branch Name</button>
+          <button onclick="showToast('Copied ?beta=1&feat=plan_gate_viewer_redesign')">Copy Beta Switch</button>
+          <button onclick="setStage('plan');document.getElementById('stage-sel').value='plan';showToast('Reopened plan gate')">Reopen Plan Gate</button>
+        </div>
+      </div>
+    </div>
+    ${seqHtml}
+    ${gateHtml}
+    <div class="action-row">
+      ${primaryBtn}
+      <div class="menu-wrap">
+        <button class="btn" onclick="toggleMenu('brief-menu')">Agent Brief ▾</button>
+        <div class="menu-pop" id="brief-menu">
+          <button onclick="showToast('Copied lean Worker Brief (hydrogen)')">Copy Worker Brief (hydrogen)</button>
+          <button onclick="showToast('Copied full Resume Prompt')">Copy Resume Prompt</button>
+          <button onclick="showToast('Sent brief to active Antigravity chat')">Send Brief to Active Chat</button>
+          <button onclick="showToast('Launched Claude Code in worktree')">Launch Fresh Claude</button>
+        </div>
+      </div>
+      ${STAGE==='in-progress' ? `<button class="btn" onclick="showToast('Opening Beta Preview')">Beta Preview ↗</button>` : ''}
+    </div>
+
+    <div class="context-strip">
+      <span class="pill info">AG</span>
+      <strong>Brainstorm &amp; Design</strong>
+      <span class="mono">833e5d95</span>
+      <button class="btn ghost" onclick="openModal()">Preview</button>
+      <button class="btn ghost" onclick="copyId(this)">Copy ID</button>
+      <span style="margin-left:auto;display:flex;gap:4px;">
+        <button class="btn ghost" onclick="DETAILS_OPEN=!DETAILS_OPEN;render()">${DETAILS_OPEN ? 'Details ▴' : 'Details ▾'}</button>
+      </span>
+    </div>
+
+    <div class="details-panel ${DETAILS_OPEN ? 'open' : ''}">
+      <div><div class="k">Branch</div><div class="mono">feat/012-plan-gate-viewer-redesign</div></div>
+      <div><div class="k">Exec Tier</div><div class="mono">hydrogen</div></div>
+      <div><div class="k">Plan Approval</div><div class="mono">${APPROVED ? 'human-ui · 9a4f1c2e' : 'pending'}</div></div>
+      <div><div class="k">Owned Paths</div><div class="mono">tools/task.py, tools/task_viewer/*, tests/*, AGENTS.md</div></div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active">PLAN.md</div>
+      <div class="tab">TASK.md</div>
+      <div class="tab">Mockups (1)</div>
+      <div class="tab">Evidence (0)</div>
+      <div class="tab dim">Handoff</div>
+    </div>
+    <pre class="doc"># Plan — Task 012: Formal Plan Approval Gate &amp; Task Viewer Redesign
+
+## Plan — Architecture, Owned Paths &amp; Verification
+- Formal Plan Approval Gate in tools/task.py (plan_approved + SHA)
+- Zero-token inline Convo Preview modal in server.py + index.html
+- Unified 7-node top sequence ending in Main (🌐)
+- Narrow 470px aux-pane switcher reclaiming ~200px vertical space</pre>
+  `;
+}
+
+render();
+</script>
+</body>
+</html>

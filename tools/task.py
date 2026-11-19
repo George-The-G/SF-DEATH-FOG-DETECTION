@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -150,6 +151,10 @@ def dump_task_md(meta: dict, body: str) -> str:
         "pr",
         "pr_url",
         "status",
+        "plan_approved",
+        "plan_approved_at",
+        "plan_approved_by",
+        "plan_approved_sha",
         "branch",
         "switch",
         "depends_on",
@@ -195,6 +200,8 @@ def validate_task_meta(meta: dict, path: Path) -> list[str]:
             errs.append(f"{path}: '{list_field}' must be a list")
     if "gpu_required" in meta and not isinstance(meta["gpu_required"], bool):
         errs.append(f"{path}: 'gpu_required' must be true or false")
+    if "plan_approved" in meta and not isinstance(meta["plan_approved"], bool):
+        errs.append(f"{path}: 'plan_approved' must be true or false")
     return errs
 
 
@@ -460,6 +467,13 @@ def cmd_new(args: argparse.Namespace) -> int:
 
     quick = bool(getattr(args, "quick", False))
     initial_status = getattr(args, "status", "") or ("plan" if quick else "brainstorm")
+    if initial_status in ("ready", "in-progress", "review", "beta", "done"):
+        print(
+            f"Rejected: initial status '{initial_status}' is not allowed. "
+            "New tasks must start in 'backlog', 'brainstorm', or 'plan' (via --quick) "
+            "and pass the formal plan approval gate before build."
+        )
+        return 1
     exec_tier = getattr(args, "tier", "") or ("flash" if quick else "hydrogen")
     issue_num: int | None = None
     tid = _next_local_id()
@@ -501,6 +515,10 @@ def cmd_new(args: argparse.Namespace) -> int:
         "pr": None,
         "pr_url": "",
         "status": initial_status,
+        "plan_approved": False,
+        "plan_approved_at": "",
+        "plan_approved_by": "",
+        "plan_approved_sha": "",
         "exec_tier": exec_tier,
         "branch": f"feat/{tid}-{slug}",
         "switch": switch,
@@ -535,15 +553,39 @@ def cmd_start(args: argparse.Namespace) -> int:
     slug = meta["slug"]
     branch = meta["branch"]
 
-    # Enforce human-approved pre-build stage gates (brainstorm -> plan -> ready)
-    if meta.get("status") in PRE_BUILD_GATES and not args.force:
-        nxt = next_gate_status(str(meta.get("status", ""))) or "ready"
+    # Enforce formal human plan approval gate (brainstorm -> plan -> ready, never bypassed by --force)
+    wt_path = WORKTREES_DIR / f"wt_{tid}-{slug}"
+    already_active = meta.get("status") == "in-progress" and wt_path.exists()
+    readiness = check_plan_readiness(tfile.parent, meta)
+    if not already_active:
+        if meta.get("status") in PRE_BUILD_GATES:
+            nxt = next_gate_status(str(meta.get("status", ""))) or "ready"
+            print(
+                f"Blocked: task {tid} is at the '{meta.get('status')}' gate. "
+                f"Advance to '{nxt}' (and 'ready' via `python tools/task.py approve {tid} --approve-plan` "
+                "or the Task Viewer) before starting a worktree. (--force cannot bypass plan approval.)"
+            )
+            return 1
+        if meta.get("plan_approved") is not True:
+            print(
+                f"Blocked: task {tid} does not have formal plan approval (`plan_approved: true`). "
+                f"Run `python tools/task.py approve {tid} --to ready --approve-plan` or approve in Task Viewer. "
+                "(--force cannot bypass plan approval.)"
+            )
+            return 1
+        if readiness["plan_drifted"]:
+            print(
+                f"Blocked: task {tid} PLAN.md drifted since approval "
+                f"(approved {readiness['plan_approved_sha']}, current {readiness['plan_sha']}). "
+                f"Re-approve via `python tools/task.py approve {tid} --to ready --approve-plan` or Task Viewer. "
+                "(--force cannot bypass plan approval.)"
+            )
+            return 1
+    elif readiness["plan_drifted"]:
         print(
-            f"Blocked: task {tid} is at the '{meta.get('status')}' gate. "
-            f"Advance to '{nxt}' (and 'ready' for build go-ahead) via "
-            f"`python tools/task.py approve {tid}` or the Task Viewer before starting a worktree."
+            f"Warning: task {tid} PLAN.md drifted since approval "
+            f"(approved {readiness['plan_approved_sha']}, current {readiness['plan_sha']})."
         )
-        return 1
 
     # Check dependencies
     all_tasks = load_all_tasks(MAIN_ROOT)
@@ -662,6 +704,24 @@ def cmd_verify(args: argparse.Namespace) -> int:
     schema_errs = validate_task_meta(meta, tfile)
     checks["schema"] = {"ok": len(schema_errs) == 0, "errors": schema_errs}
     ok = ok and checks["schema"]["ok"]
+
+    # 1b. Formal plan approval check (backward-compatible for legacy tasks without plan_approved)
+    if "plan_approved" not in meta:
+        checks["plan_approval"] = {"ok": True, "legacy": True}
+    elif meta.get("plan_approved") is True:
+        readiness = check_plan_readiness(tfile.parent, meta)
+        checks["plan_approval"] = {
+            "ok": True,
+            "approved_by": str(meta.get("plan_approved_by") or ""),
+            "approved_sha": str(meta.get("plan_approved_sha") or ""),
+            "drifted": readiness["plan_drifted"],
+        }
+    else:
+        checks["plan_approval"] = {
+            "ok": False,
+            "error": "Plan has not been formally approved (plan_approved is false).",
+        }
+    ok = ok and checks["plan_approval"]["ok"]
 
     # 2. Deliverables check (verify.json is written at the end)
     missing_deliv = []
@@ -1021,12 +1081,84 @@ def cmd_sync(_args: argparse.Namespace) -> int:
 
 
 # @sec: handoff — Stage gate approval, HANDOFF.md checkpoints, conversation links, and resume prompts
+def compute_plan_sha(task_dir: Path) -> str:
+    """Compute a 12-char SHA-256 hash of LF-normalized `PLAN.md`, or empty string if missing."""
+    plan_path = task_dir / "PLAN.md"
+    if not plan_path.is_file():
+        return ""
+    text = plan_path.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def _is_plan_template_line(line: str) -> bool:
+    """Return True if a `PLAN.md` line is an untouched scaffold placeholder."""
+    s = line.strip()
+    if not s or s.startswith("<!--"):
+        return True
+    if s in ("TBD", "TODO", "*(To be finalized...)*"):
+        return True
+    if re.match(r"^-\s+\*\*(Switch|Gate):\*\*", s, re.I):
+        return True
+    if re.match(r"^-\s+\*\*(Implementation Steps|Architecture|Owned Paths):\*\*\s*(TBD|TODO|\*\(To be finalized.*\)\*)?$", s, re.I):
+        return True
+    if re.match(r"^-\s+\*\*Affected Symbols.*:\*\*\s*(TBD|TODO)?$", s, re.I):
+        return True
+    if re.match(r"^(?:\d+\.|-)\s*(TBD|TODO)$", s, re.I):
+        return True
+    return False
+
+
+def check_plan_readiness(task_dir: Path, meta: dict) -> dict:
+    """Validate `PLAN.md` readiness, owned_paths, and post-approval drift against `plan_approved_sha`."""
+    plan_path = task_dir / "PLAN.md"
+    text = plan_path.read_text(encoding="utf-8", errors="replace") if plan_path.is_file() else ""
+    plan_exists = plan_path.is_file() and len(text.strip()) >= 120
+
+    sec_match = re.search(r"^##\s+Plan\b[^\n]*\n(.*)$", text, flags=re.M | re.S)
+    plan_has_spec = False
+    if sec_match:
+        sec_body = re.split(r"^##\s+", sec_match.group(1), maxsplit=1, flags=re.M)[0]
+        meaningful = [ln.strip() for ln in sec_body.splitlines() if not _is_plan_template_line(ln)]
+        plan_has_spec = len("\n".join(meaningful)) >= 20
+
+    owns = meta.get("owned_paths") or []
+    owned_paths_set = bool(owns)
+    plan_sha = compute_plan_sha(task_dir)
+    plan_approved = bool(meta.get("plan_approved", False))
+    approved_sha = str(meta.get("plan_approved_sha") or "")
+    plan_drifted = bool(plan_approved and approved_sha and plan_sha != approved_sha)
+
+    checks = [
+        {"id": "plan_exists", "label": "PLAN.md written", "ok": plan_exists},
+        {"id": "plan_has_spec", "label": "Plan spec filled", "ok": plan_has_spec},
+        {"id": "owned_paths_set", "label": f"Owned paths ({len(owns)})", "ok": owned_paths_set},
+        {"id": "human_approved", "label": "Human approval", "ok": plan_approved and not plan_drifted},
+    ]
+    ready = plan_exists and plan_has_spec and owned_paths_set
+    return {
+        "ready": ready,
+        "checks": checks,
+        "plan_sha": plan_sha,
+        "plan_approved": plan_approved,
+        "plan_drifted": plan_drifted,
+        "plan_approved_at": str(meta.get("plan_approved_at") or ""),
+        "plan_approved_by": str(meta.get("plan_approved_by") or ""),
+        "plan_approved_sha": approved_sha,
+    }
+
+
 def next_gate_status(status: str) -> str | None:
     """Return the next pre-build gate status (`backlog -> brainstorm -> plan -> ready`), or None."""
     return GATE_NEXT.get(str(status))
 
 
-def approve_task_gate(task_id: str, target_status: str | None = None) -> dict:
+def approve_task_gate(
+    task_id: str,
+    target_status: str | None = None,
+    *,
+    approve_plan: bool = False,
+    approved_by: str = "human-cli",
+) -> dict:
     """Advance a task's stage gate in `TASK.md` and return a result summary dict."""
     meta, tfile, _ = find_task(task_id)
     prev = str(meta.get("status", ""))
@@ -1035,7 +1167,32 @@ def approve_task_gate(task_id: str, target_status: str | None = None) -> dict:
         return {"ok": False, "error": f"Task {meta['id']} is already at '{prev}'; specify --to <status> explicitly."}
     if nxt not in VALID_STATUSES:
         return {"ok": False, "error": f"Invalid target status '{nxt}'. Valid: {', '.join(VALID_STATUSES)}"}
+
     _, body = parse_task_md(tfile)
+    if nxt == "ready":
+        if not approve_plan:
+            return {
+                "ok": False,
+                "error": "Formal plan approval required: pass --approve-plan (or click 'Approve Plan & Unlock Build' in Task Viewer).",
+            }
+        readiness = check_plan_readiness(tfile.parent, meta)
+        if not readiness["ready"]:
+            missing = [c["label"] for c in readiness["checks"] if c["id"] != "human_approved" and not c["ok"]]
+            return {
+                "ok": False,
+                "error": f"PLAN.md is not ready for approval: {', '.join(missing)}",
+                "plan_readiness": readiness,
+            }
+        meta["plan_approved"] = True
+        meta["plan_approved_at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+        meta["plan_approved_by"] = approved_by or "human-cli"
+        meta["plan_approved_sha"] = readiness["plan_sha"]
+    elif nxt in ("backlog", "brainstorm", "plan"):
+        meta["plan_approved"] = False
+        meta["plan_approved_at"] = ""
+        meta["plan_approved_by"] = ""
+        meta["plan_approved_sha"] = ""
+
     meta["status"] = nxt
     tfile.write_text(dump_task_md(meta, body), encoding="utf-8")
     return {
@@ -1043,6 +1200,8 @@ def approve_task_gate(task_id: str, target_status: str | None = None) -> dict:
         "id": str(meta["id"]),
         "previous_status": prev,
         "status": nxt,
+        "plan_approved": bool(meta.get("plan_approved", False)),
+        "plan_approved_sha": str(meta.get("plan_approved_sha") or ""),
         "message": f"Task {meta['id']} advanced: {prev} -> {nxt}",
     }
 
@@ -1352,7 +1511,12 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
 def cmd_approve(args: argparse.Namespace) -> int:
     """Advance a task's human-approved stage gate (`brainstorm -> plan -> ready`)."""
-    res = approve_task_gate(args.id, target_status=args.to or None)
+    res = approve_task_gate(
+        args.id,
+        target_status=args.to or None,
+        approve_plan=bool(getattr(args, "approve_plan", False)),
+        approved_by=getattr(args, "by", "human-cli") or "human-cli",
+    )
     print(res.get("message") or res.get("error"))
     return 0 if res.get("ok") else 1
 
@@ -1430,6 +1594,8 @@ def main(argv: list[str]) -> int:
     p_approve = sub.add_parser("approve", help="Advance a task's stage gate (brainstorm -> plan -> ready).")
     p_approve.add_argument("id")
     p_approve.add_argument("--to", default="", choices=("",) + VALID_STATUSES, help="Explicit target gate status.")
+    p_approve.add_argument("--approve-plan", action="store_true", help="Formally approve PLAN.md when advancing to 'ready'.")
+    p_approve.add_argument("--by", default="human-cli", help="Approver label recorded in TASK.md (default: human-cli).")
 
     p_link = sub.add_parser("link", help="Link an Antigravity or Claude conversation ID to a task.")
     p_link.add_argument("id")
