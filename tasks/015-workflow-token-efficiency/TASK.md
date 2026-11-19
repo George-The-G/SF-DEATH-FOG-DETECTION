@@ -6,11 +6,12 @@ issue: null
 epic: null
 pr: 46
 pr_url: "https://github.com/George-The-G/SF-DEATH-FOG-DETECTION/pull/46"
-status: "in-progress"
+status: "beta"
 plan_approved: true
 plan_approved_at: "2026-11-19T12:28:51+00:00"
 plan_approved_by: "human-cli"
 plan_approved_sha: "6b12049caae6"
+token_usage: "in:783.7k cache:5.03M out:63.2k (2 convos)"
 branch: "feat/015-workflow-token-efficiency"
 switch: "workflow_token_efficiency"
 depends_on: []
@@ -30,6 +31,9 @@ deliverables:
   - "AGENTS.md"
   - "tests/test_task_workflow.py"
 exec_tier: "flash"
+merged_sha: "cb53bd94ccd2"
+merged_into:
+  - "v3-dev"
 ---
 
 # Task 015: Workflow Token Efficiency Improvements
