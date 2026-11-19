@@ -647,22 +647,11 @@ def cmd_start(args: argparse.Namespace) -> int:
     if meta.get("issue"):
         _run(["gh", "issue", "edit", str(meta["issue"]), "--add-label", "status:in-progress", "--remove-label", "status:ready"], cwd=MAIN_ROOT)
 
-    # Emit compact agent brief with live codemap lines for owned_paths
-    print(f"=== TASK BRIEF: {tid}-{slug} ===")
-    print(f"Worktree : {wt_path}")
-    print(f"Branch   : {branch}")
-    print(f"Switch   : {meta['switch']} (viewer: ?beta=1&feat={meta['switch']})")
-    print(f"Owns     : {', '.join(meta.get('owned_paths', [])) or '(none)'}")
-    print(f"Packet   : tasks/{tid}-{slug}/ (edit PLAN.md, mockups/, evidence/)")
-    print(f"Verify   : .\\.venv\\Scripts\\python.exe tools/task.py verify {tid}")
-    print("\n--- Owned File Outlines (tools/codemap.py) ---")
-    for rel in meta.get("owned_paths", []):
-        p = wt_path / rel
-        if p.is_file() and p.suffix in (".py", ".js", ".mjs"):
-            info = codemap.parse_python(p) if p.suffix == ".py" else codemap.parse_js(p)
-            print(f"{rel} ({info['lines']}L): {info['doc']}")
-            for ln, sec in info["sections"]:
-                print(f"  @sec L{ln}: {sec}")
+    print(f"Started worktree {wt_path} on branch {branch} (switch: {meta['switch']}).")
+    if not getattr(args, "no_brief", False):
+        res = build_resume_prompt(tid, worker=True)
+        print(res["prompt"], end="")
+        print(f"Recommended delegation: {res['recommended_delegation']}")
     return 0
 
 
@@ -963,6 +952,7 @@ def cmd_finish(args: argparse.Namespace) -> int:
         print(sync_res.get("message") or sync_res.get("error"))
         if not sync_res.get("ok"):
             return 1
+    print("Reminder: If more tasks are queued, ask the user whether to /compact or start a fresh conversation before starting the next task.")
     return 0
 
 
@@ -1549,8 +1539,9 @@ def build_resume_prompt(task_id: str, *, worker: bool = False) -> dict:
         sections.append(
             f"## Rules & Finish\n"
             f"1. Follow `AGENTS.md`. Do NOT edit files outside `owned_paths` or read unrelated monoliths.\n"
-            f"2. Iterate with targeted tests first; then run `python tools/task.py verify {tid}` once before reporting.\n"
-            f"3. Do NOT write a running handoff log. Report concise diff summary, test counts, and any risks."
+            f"2. Batch independent `read_file` calls together, and combine targeted `pytest` + `verify` runs cleanly (avoid sequential single-command turns).\n"
+            f"3. Run `python tools/task.py verify {tid}` once after committing before reporting.\n"
+            f"4. Do NOT write a running handoff log. Report concise diff summary, test counts, and any risks."
         )
     else:
         gate_note = (
@@ -1748,6 +1739,7 @@ def main(argv: list[str]) -> int:
     p_start.add_argument("id")
     p_start.add_argument("--base", default="v3-dev", help="Base git ref for the feature branch (default: v3-dev).")
     p_start.add_argument("--force", action="store_true", help="Override dependency or path-overlap guardrails.")
+    p_start.add_argument("--no-brief", action="store_true", help="Omit the canonical --worker execution brief from stdout.")
 
     p_verify = sub.add_parser("verify", help="Run deliverables, scope, pytest, JS tests, and Playwright checks.")
     p_verify.add_argument("id")

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import tempfile
 import unittest
@@ -689,6 +691,86 @@ class TestTaskWorkflow(unittest.TestCase):
         self.assertIn("read_task_file", html)
         self.assertIn("Send Worker Brief to Active Chat", html)
         self.assertIn("Worktree ready", html)
+
+    def test_cmd_start_emits_worker_brief_and_respects_no_brief(self):
+        """cmd_start prints the canonical --worker brief by default and omits it when --no-brief is passed."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "095", status="plan", fill_plan=True)
+            tfile = tdir / "TASK.md"
+
+            def _find_live(_tid):
+                wt_tfile = root / "_worktrees" / "wt_095-plan-gate-test" / "tasks" / "095-plan-gate-test" / "TASK.md"
+                active_file = wt_tfile if wt_tfile.is_file() else tfile
+                m, _ = task.parse_task_md(active_file)
+                return m, active_file, active_file.parent.parent.parent
+
+            wt_dir = root / "_worktrees"
+            wt_path = wt_dir / "wt_095-plan-gate-test"
+            with mock.patch.object(task, "MAIN_ROOT", root), \
+                 mock.patch.object(task, "WORKTREES_DIR", wt_dir), \
+                 mock.patch.object(task, "find_task", side_effect=_find_live), \
+                 mock.patch.object(task, "load_all_tasks", return_value={"095": (meta, tfile)}), \
+                 mock.patch.object(task, "active_worktree_tasks", return_value={}):
+                app = task.approve_task_gate("095", approve_plan=True, approved_by="human-cli")
+                self.assertTrue(app["ok"])
+
+                wt_path.mkdir(parents=True, exist_ok=True)
+                buf_default = io.StringIO()
+                with contextlib.redirect_stdout(buf_default):
+                    rc1 = task.cmd_start(argparse.Namespace(id="095", base="v3-dev", force=False, no_brief=False))
+                self.assertEqual(rc1, 0)
+                out1 = buf_default.getvalue()
+                self.assertIn("Started worktree ", out1)
+                self.assertIn("# Worker Brief — Task 095:", out1)
+                self.assertIn("Recommended delegation:", out1)
+                self.assertNotIn("=== TASK BRIEF:", out1)
+                self.assertNotIn("--- Owned File Outlines", out1)
+
+                buf_no_brief = io.StringIO()
+                with contextlib.redirect_stdout(buf_no_brief):
+                    rc2 = task.cmd_start(argparse.Namespace(id="095", base="v3-dev", force=False, no_brief=True))
+                self.assertEqual(rc2, 0)
+                out2 = buf_no_brief.getvalue()
+                self.assertIn("Started worktree ", out2)
+                self.assertNotIn("# Worker Brief", out2)
+                self.assertNotIn("Recommended delegation:", out2)
+
+    def test_cmd_finish_prints_compact_reminder(self):
+        """cmd_finish emits an ask-first /compact or new-conversation reminder before returning."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "096", status="in-progress", fill_plan=True)
+            tfile = tdir / "TASK.md"
+            (tdir / "evidence" / "verify.json").write_text(
+                json.dumps({"ok": True, "git_sha": "deadbeef1234"}),
+                encoding="utf-8",
+            )
+            fake_head = argparse.Namespace(returncode=0, stdout="deadbeef1234\n", stderr="")
+            empty_usage = {"totals": {"turns": 0}, "summary": ""}
+            buf = io.StringIO()
+            with mock.patch.object(task, "find_task", return_value=(meta, tfile, root)), \
+                 mock.patch.object(task, "_run", return_value=fake_head), \
+                 mock.patch.object(task, "collect_token_usage", return_value=empty_usage), \
+                 contextlib.redirect_stdout(buf):
+                rc = task.cmd_finish(argparse.Namespace(
+                    id="096", merge=False, allow_stale=False, deploy_beta=False, sync_main=False
+                ))
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+            self.assertIn("/compact", out)
+            self.assertIn("fresh conversation", out)
+
+    def test_build_resume_prompt_worker_includes_batching_rule(self):
+        """build_resume_prompt(..., worker=True) instructs workers to batch reads and test/verify runs."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "097", status="in-progress", fill_plan=True)
+            with mock.patch.object(task, "find_task", return_value=(meta, tdir / "TASK.md", root)):
+                res = task.build_resume_prompt("097", worker=True)
+            self.assertTrue(res["ok"])
+            self.assertIn("Batch independent `read_file` calls", res["prompt"])
+            self.assertIn("avoid sequential single-command turns", res["prompt"])
 
 
 if __name__ == "__main__":

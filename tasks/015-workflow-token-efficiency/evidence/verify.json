@@ -1,0 +1,55 @@
+{
+  "task_id": "015",
+  "slug": "workflow-token-efficiency",
+  "git_sha": "a9cd61417633f9b123a8c663fd079bbda2019784",
+  "timestamp_utc": "2026-11-19T12:13:40+00:00",
+  "ok": false,
+  "checks": {
+    "schema": {
+      "ok": true,
+      "errors": []
+    },
+    "plan_approval": {
+      "ok": true,
+      "approved_by": "human-cli",
+      "approved_sha": "e41be1557600",
+      "drifted": false
+    },
+    "deliverables": {
+      "ok": true,
+      "missing": []
+    },
+    "scope": {
+      "ok": true,
+      "out_of_scope": []
+    },
+    "pytest": {
+      "ok": false,
+      "returncode": 3221226505,
+      "tail": [
+        "  File \"C:\\Users\\George\\source\\repos\\SF-DEATH-FOG-DETECTION\\.venv\\Lib\\site-packages\\pluggy\\_execution.py\", line 147 in _multicall",
+        "  File \"C:\\Users\\George\\source\\repos\\SF-DEATH-FOG-DETECTION\\.venv\\Lib\\site-packages\\pluggy\\_manager.py\", line 183 in _hookexec",
+        "  File \"C:\\Users\\George\\source\\repos\\SF-DEATH-FOG-DETECTION\\.venv\\Lib\\site-packages\\pluggy\\_caller.py\", line 197 in __call__",
+        "  File \"C:\\Users\\George\\source\\repos\\SF-DEATH-FOG-DETECTION\\.venv\\Lib\\site-packages\\_pytest\\config\\__init__.py\", line 262 in _main",
+        "  File \"C:\\Users\\George\\source\\repos\\SF-DEATH-FOG-DETECTION\\.venv\\Lib\\site-packages\\_pytest\\config\\__init__.py\", line 286 in _console_main",
+        "  File \"C:\\Users\\George\\source\\repos\\SF-DEATH-FOG-DETECTION\\.venv\\Lib\\site-packages\\pytest\\__main__.py\", line 9 in <module>",
+        "  File \"<frozen runpy>\", line 88 in _run_code",
+        "  File \"<frozen runpy>\", line 198 in _run_module_as_main"
+      ]
+    },
+    "node_test": {
+      "ok": true,
+      "returncode": 0,
+      "tail": [
+        "\u2139 tests 13",
+        "\u2139 suites 0",
+        "\u2139 pass 13",
+        "\u2139 fail 0",
+        "\u2139 cancelled 0",
+        "\u2139 skipped 0",
+        "\u2139 todo 0",
+        "\u2139 duration_ms 178.0375"
+      ]
+    }
+  }
+}
