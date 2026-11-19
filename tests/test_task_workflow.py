@@ -602,6 +602,94 @@ class TestTaskWorkflow(unittest.TestCase):
             self.assertEqual(task_state["usage"], usage_payload)
             self.assertEqual(task_state["token_usage"], usage_payload["summary"])
 
+    def test_list_and_read_task_files_safely(self):
+        """_list_task_files() groups/orders files and _read_task_file_safe() blocks path traversal."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _, tdir = self._make_sample_task(root, "092", status="plan", fill_plan=True)
+            (tdir / "HANDOFF.md").write_text("# Handoff\nNote", encoding="utf-8")
+            (tdir / "conversations.json").write_text('{"primary_id": "abc", "items": []}', encoding="utf-8")
+            (tdir / "mockups" / ".gitkeep").write_text("", encoding="utf-8")
+            (tdir / "mockups" / "demo.html").write_text("<h1>Mockup</h1>", encoding="utf-8")
+            (tdir / "evidence" / "shot.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+            (tdir / "evidence" / "verify.json").write_text('{"ok": true}', encoding="utf-8")
+
+            files = task_viewer_server._list_task_files(tdir)
+            paths = [f["path"] for f in files]
+            self.assertNotIn("mockups/.gitkeep", paths)
+            self.assertEqual(
+                paths[:4],
+                ["PLAN.md", "TASK.md", "HANDOFF.md", "conversations.json"],
+            )
+            self.assertIn("mockups/demo.html", paths)
+            self.assertIn("evidence/verify.json", paths)
+            self.assertIn("evidence/shot.png", paths)
+            by_path = {f["path"]: f for f in files}
+            self.assertEqual(by_path["PLAN.md"]["group"], "root")
+            self.assertEqual(by_path["mockups/demo.html"]["group"], "mockups")
+            self.assertEqual(by_path["evidence/verify.json"]["group"], "evidence")
+
+            md_res = task_viewer_server._read_task_file_safe(tdir, "PLAN.md")
+            self.assertTrue(md_res["ok"])
+            self.assertIn("# Plan", md_res["content"])
+
+            json_res = task_viewer_server._read_task_file_safe(tdir, "evidence/verify.json")
+            self.assertTrue(json_res["ok"])
+            self.assertEqual(json_res["content"], '{"ok": true}')
+
+            bin_res = task_viewer_server._read_task_file_safe(tdir, "evidence/shot.png")
+            self.assertTrue(bin_res["ok"])
+            self.assertTrue(bin_res.get("binary"))
+
+            for bad in ("", "../secret.txt", "mockups/../../etc/passwd", "a\\b.md", "/etc/passwd"):
+                bad_res = task_viewer_server._read_task_file_safe(tdir, bad)
+                self.assertFalse(bad_res["ok"], f"Expected rejection for {bad!r}")
+
+    def test_viewer_state_exposes_task_files_and_read_action(self):
+        """build_state() includes `task_files` and run_action('read_task_file') reads safely."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "093", status="ready", fill_plan=True)
+            tfile = tdir / "TASK.md"
+            (tdir / "conversations.json").write_text('{"primary_id": "conv-1", "items": []}', encoding="utf-8")
+
+            with mock.patch.object(task, "MAIN_ROOT", root), \
+                 mock.patch.object(task, "load_all_tasks", return_value={"093": (meta, tfile)}), \
+                 mock.patch.object(task, "active_worktree_tasks", return_value={}), \
+                 mock.patch.object(task, "shared_main_drift", return_value={"ok": True, "drifted": []}), \
+                 mock.patch.object(task, "merge_status", return_value={}), \
+                 mock.patch.object(task_viewer_server, "detect_launchers", return_value={}):
+                state = task_viewer_server.build_state()
+                self.assertIn("task_files", state["tasks"]["093"])
+                tf_paths = [f["path"] for f in state["tasks"]["093"]["task_files"]]
+                self.assertIn("PLAN.md", tf_paths)
+                self.assertIn("conversations.json", tf_paths)
+
+                res = task_viewer_server.run_action({
+                    "action": "read_task_file",
+                    "task_id": "093",
+                    "path": "conversations.json",
+                })
+                self.assertTrue(res["ok"])
+                self.assertIn("conv-1", res["content"])
+
+                bad = task_viewer_server.run_action({
+                    "action": "read_task_file",
+                    "task_id": "093",
+                    "path": "../TASK.md",
+                })
+                self.assertFalse(bad["ok"])
+
+    def test_viewer_html_has_markdown_renderer_and_file_browser(self):
+        """Task Viewer HTML contains renderMarkdown, .file-browser, read_task_file, and post-start brief CTA."""
+        html_path = Path(__file__).resolve().parent.parent / "tools" / "task_viewer" / "index.html"
+        html = html_path.read_text(encoding="utf-8")
+        self.assertIn("function renderMarkdown(", html)
+        self.assertIn(".file-browser", html)
+        self.assertIn("read_task_file", html)
+        self.assertIn("Send Worker Brief to Active Chat", html)
+        self.assertIn("Worktree ready", html)
+
 
 if __name__ == "__main__":
     unittest.main()

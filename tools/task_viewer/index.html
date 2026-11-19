@@ -217,17 +217,94 @@
     border-radius: 5px; padding: 5px 8px; font-size: 11.5px;
   }
 
-  /* Tabs & Doc */
-  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 10px; overflow-x: auto; }
-  .tab { padding: 6px 10px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; font-size: 12px; white-space: nowrap; }
-  .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
-  .tab.dim { opacity: .55; }
-  .doc-toolbar { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-bottom: 8px; }
+  /* Document Workspace & Right-Hand File Browser */
+  .doc-workspace {
+    display: grid; grid-template-columns: 1fr 210px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); overflow: hidden; position: relative; min-height: 420px;
+  }
+  .doc-workspace.no-files { grid-template-columns: 1fr; }
+  .doc-main { min-width: 0; display: flex; flex-direction: column; }
+  .doc-toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
+    padding: 7px 11px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .doc-title {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px; font-weight: 600; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .doc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg button {
+    background: var(--panel2); color: var(--muted); border: none;
+    padding: 4px 9px; font-size: 11.5px; cursor: pointer;
+  }
+  .seg button.active { background: #1d4e89; color: var(--text); font-weight: 600; }
+  .doc-pane { padding: 12px 14px; overflow-y: auto; max-height: 62vh; min-width: 0; }
+
+  .file-browser {
+    background: var(--panel); border-left: 1px solid var(--border);
+    padding: 10px 8px; overflow-y: auto; max-height: calc(62vh + 44px);
+  }
+  .doc-workspace.no-files .file-browser { display: none; }
+  @media (max-width: 760px) {
+    .doc-workspace { grid-template-columns: 1fr; }
+    .file-browser {
+      display: none; position: absolute; top: 0; right: 0; bottom: 0; width: 220px;
+      max-height: none; z-index: 20; box-shadow: -8px 0 24px rgba(0,0,0,.55);
+    }
+    .file-browser.open { display: block; }
+  }
+  .fb-grp {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+    color: var(--muted); font-weight: 700; margin: 9px 6px 4px;
+  }
+  .fb-grp:first-child { margin-top: 2px; }
+  .fb-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--muted);
+    border: 1px solid transparent;
+  }
+  .fb-item:hover { background: var(--panel2); color: var(--text); }
+  .fb-item.active { background: #19263a; color: var(--text); font-weight: 600; border-color: #2b456b; }
+  .fb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fb-sz { font-size: 10px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; opacity: .7; flex-shrink: 0; }
+
+  /* Rendered Markdown Typography */
+  .md-body { font-size: 13px; line-height: 1.55; color: var(--text); word-break: break-word; }
+  .md-body h1 { font-size: 17px; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .md-body h2 { font-size: 14.5px; margin: 15px 0 6px; color: var(--cyan); }
+  .md-body h3 { font-size: 13px; margin: 12px 0 4px; color: var(--text); }
+  .md-body h4 { font-size: 12.5px; margin: 10px 0 4px; color: var(--muted); }
+  .md-body p { margin: 6px 0; }
+  .md-body ul, .md-body ol { padding-left: 18px; margin: 6px 0; }
+  .md-body li { margin: 3px 0; }
+  .md-body li.md-chk { list-style: none; margin-left: -14px; }
+  .md-body li.md-chk-done { color: var(--green); }
+  .md-body code {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 4px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px;
+  }
+  .md-body pre {
+    background: #0b0e14; border: 1px solid var(--border); border-radius: 7px;
+    padding: 10px; overflow-x: auto; font-size: 11.5px; margin: 8px 0;
+  }
+  .md-body pre code { background: none; border: none; padding: 0; }
+  .md-body blockquote {
+    margin: 8px 0; padding: 6px 10px; border-left: 3px solid var(--accent);
+    background: var(--panel); color: var(--muted); border-radius: 0 6px 6px 0;
+  }
+  .md-body table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; display: block; overflow-x: auto; }
+  .md-body th, .md-body td { border: 1px solid var(--border); padding: 5px 8px; text-align: left; }
+  .md-body th { background: var(--panel); color: var(--muted); font-size: 11px; text-transform: uppercase; }
+  .md-body a { color: var(--accent); text-decoration: none; }
+  .md-body a:hover { text-decoration: underline; }
+  .md-body hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
   pre.doc {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-    padding: 11px; margin: 0; white-space: pre-wrap; word-break: break-word;
+    margin: 0; white-space: pre-wrap; word-break: break-word;
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px; color: #d5e0f0;
-    max-height: 58vh; overflow: auto;
   }
   textarea.editor {
     width: 100%; min-height: 340px; max-height: 60vh;
@@ -281,6 +358,7 @@
 
 <div class="toast" id="toast">
   <span class="toast-msg" id="toast-msg"></span>
+  <span id="toast-actions" style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0;"></span>
   <button class="toast-x" onclick="hideToast()" title="Dismiss">×</button>
 </div>
 
@@ -314,7 +392,10 @@ const STAGE_LABELS = {
 let STATE = null;
 let LAST_STATE_JSON = '';
 let SELECTED = null;
-let TAB = 'plan';
+let ACTIVE_FILE = 'PLAN.md';
+let MD_MODE = 'rendered'; // 'rendered' | 'raw'
+let FILES_OPEN = window.innerWidth > 760;
+let FILE_CACHE = {}; // `${taskId}:${path}` -> { content, loading, error, binary }
 let LAST_ACTIVE_WT = null;
 let EDITING = null; // 'plan' | 'handoff' | null
 let REVIEWED_CHK = false;
@@ -341,11 +422,13 @@ function hasSidecarChat() {
   return Boolean(sc && sc.agent && typeof sc.agent.sendMessage === 'function');
 }
 
-function showToast(msg, isErr = false) {
+function showToast(msg, isErr = false, actionsHtml = '') {
   const el = document.getElementById('toast');
   const m = document.getElementById('toast-msg');
+  const act = document.getElementById('toast-actions');
   if (!el || !m) return;
   m.textContent = msg;
+  if (act) act.innerHTML = actionsHtml || '';
   el.classList.toggle('err', Boolean(isErr));
   el.classList.add('show');
 }
@@ -527,6 +610,7 @@ function cardHtml(t) {
 
 function selectTask(id) {
   SELECTED = id;
+  ACTIVE_FILE = 'PLAN.md';
   EDITING = null;
   REVIEWED_CHK = false;
   CONVO_HIST_OPEN = false;
@@ -536,10 +620,184 @@ function selectTask(id) {
   renderDetail();
 }
 
-function setTab(tab) {
-  TAB = tab;
+/** Toggle visibility of the right-hand Task Files browser. */
+function toggleFiles() {
+  FILES_OPEN = !FILES_OPEN;
+  renderDetail();
+}
+
+/** Switch Markdown display mode between 'rendered' and 'raw'. */
+function setMdMode(mode) {
+  MD_MODE = mode;
   EDITING = null;
   renderDetail();
+}
+
+/** Open a file from the Task Files browser and fetch its contents if needed. */
+function openTaskFile(path) {
+  ACTIVE_FILE = path;
+  EDITING = null;
+  if (window.innerWidth <= 760) FILES_OPEN = false;
+  const t = STATE && SELECTED ? STATE.tasks[SELECTED] : null;
+  if (t && !['PLAN.md', 'TASK.md', 'HANDOFF.md'].includes(path) && !/\.(html?|png|jpe?g|webp|gif|svg)$/i.test(path)) {
+    const key = `${t.id}:${path}`;
+    if (!FILE_CACHE[key]) {
+      fetchTaskFile(t.id, path);
+    }
+  }
+  renderDetail();
+}
+
+/** Fetch a task file via the safe `read_task_file` action and cache it. */
+async function fetchTaskFile(taskId, path) {
+  const key = `${taskId}:${path}`;
+  FILE_CACHE[key] = { loading: true };
+  try {
+    const res = await postAction({ action: 'read_task_file', task_id: taskId, path });
+    if (res.ok) {
+      FILE_CACHE[key] = { content: res.content ?? '', binary: Boolean(res.binary), truncated: Boolean(res.truncated) };
+    } else {
+      FILE_CACHE[key] = { error: res.error || 'Could not read file.' };
+    }
+  } catch (e) {
+    FILE_CACHE[key] = { error: e.message };
+  }
+  if (SELECTED === taskId && ACTIVE_FILE === path) {
+    renderDetail();
+  }
+}
+
+/** Format byte size into a compact human-readable string. */
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+  return n + ' B';
+}
+
+/** Render Markdown string to sanitized HTML without external dependencies. */
+function renderMarkdown(md) {
+  const codeBlocks = [];
+  const inlineCodes = [];
+  let text = String(md ?? '').replace(/\r\n/g, '\n');
+
+  text = text.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(`<pre><code${lang ? ` class="lang-${esc(lang)}"` : ''}>${esc(code.replace(/\n$/, ''))}</code></pre>`);
+    return `\x00CB${idx}\x00`;
+  });
+
+  text = esc(text);
+
+  text = text.replace(/`([^`\n]+)`/g, (_, code) => {
+    const idx = inlineCodes.length;
+    inlineCodes.push(`<code>${code}</code>`);
+    return `\x00IC${idx}\x00`;
+  });
+
+  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+  );
+
+  text = text.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+
+    const cbMatch = line.trim().match(/^\x00CB(\d+)\x00$/);
+    if (cbMatch) {
+      out.push(codeBlocks[Number(cbMatch[1])]);
+      i++;
+      continue;
+    }
+
+    if (/^(\s*[-*_]){3,}\s*$/.test(line)) {
+      out.push('<hr />');
+      i++;
+      continue;
+    }
+
+    const hMatch = line.match(/^(#{1,4})\s+(.+)$/);
+    if (hMatch) {
+      const lvl = hMatch[1].length;
+      out.push(`<h${lvl}>${hMatch[2]}</h${lvl}>`);
+      i++;
+      continue;
+    }
+
+    if (/^&gt;\s?/.test(line)) {
+      const bq = [];
+      while (i < lines.length && /^&gt;\s?/.test(lines[i])) {
+        bq.push(lines[i].replace(/^&gt;\s?/, ''));
+        i++;
+      }
+      out.push(`<blockquote>${bq.join('<br />')}</blockquote>`);
+      continue;
+    }
+
+    if (line.includes('|') && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1])) {
+      const parseRow = (r) => r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+      const headers = parseRow(line);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') {
+        rows.push(parseRow(lines[i]));
+        i++;
+      }
+      const thead = `<thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>`;
+      const tbody = `<tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>`;
+      out.push(`<table>${thead}${tbody}</table>`);
+      continue;
+    }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        const item = lines[i].replace(/^\s*[-*]\s+/, '');
+        if (/^\[[xX]\]\s+/.test(item)) {
+          items.push(`<li class="md-chk md-chk-done">☑ ${item.slice(4)}</li>`);
+        } else if (/^\[ \]\s+/.test(item)) {
+          items.push(`<li class="md-chk">☐ ${item.slice(4)}</li>`);
+        } else {
+          items.push(`<li>${item}</li>`);
+        }
+        i++;
+      }
+      out.push(`<ul>${items.join('')}</ul>`);
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        items.push(`<li>${lines[i].replace(/^\s*\d+\.\s+/, '')}</li>`);
+        i++;
+      }
+      out.push(`<ol>${items.join('')}</ol>`);
+      continue;
+    }
+
+    const para = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== '' &&
+      !/^(#{1,4}\s+|&gt;\s?|\s*[-*]\s+|\s*\d+\.\s+|\x00CB\d+\x00)/.test(lines[i])
+    ) {
+      para.push(lines[i]);
+      i++;
+    }
+    out.push(`<p>${para.join('<br />')}</p>`);
+  }
+
+  let html = out.join('\n');
+  html = html.replace(/\x00CB(\d+)\x00/g, (_, idx) => codeBlocks[Number(idx)]);
+  html = html.replace(/\x00IC(\d+)\x00/g, (_, idx) => inlineCodes[Number(idx)]);
+  return `<div class="md-body">${html}</div>`;
 }
 
 function startEdit(kind) {
@@ -575,7 +833,14 @@ async function runAction(action, extra = {}) {
     if (res.ok && action === 'approve_plan') {
       REVIEWED_CHK = false;
     }
-    showToast((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.output || res.error || JSON.stringify(res)), !res.ok);
+    if (res.ok && action === 'start') {
+      const ctaBtn = hasSidecarChat()
+        ? `<button class="btn primary" style="padding:3px 8px;font-size:11.5px;" onclick="sendWorkerBriefToChat()">Send Worker Brief to Active Chat</button>`
+        : `<button class="btn primary" style="padding:3px 8px;font-size:11.5px;" onclick="copyResumePrompt(true)">Copy Worker Brief</button>`;
+      showToast('Worktree ready — send brief to agent to begin implementation', false, ctaBtn);
+    } else {
+      showToast((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.output || res.error || JSON.stringify(res)), !res.ok);
+    }
     await refresh(true);
   } catch (e) {
     showToast('Error: ' + e.message, true);
@@ -593,6 +858,27 @@ async function copyResumePrompt(worker = false) {
     }
     const ok = await copyText(res.prompt);
     showToast(ok ? `Copied ${kind} (${res.prompt.length} chars) to clipboard.` : `${kind} ready (clipboard unavailable):\n${res.prompt}`);
+  } catch (e) {
+    showToast('Error: ' + e.message, true);
+  }
+}
+
+/** Build and send the worker brief to the active Antigravity chat (or clipboard fallback). */
+async function sendWorkerBriefToChat() {
+  if (!SELECTED) return;
+  try {
+    const res = await postAction({ action: 'resume_prompt', task_id: SELECTED, worker: true });
+    if (!res.ok) {
+      showToast('FAILED: ' + (res.error || 'Could not build worker brief'), true);
+      return;
+    }
+    if (hasSidecarChat()) {
+      await getSidecarBridge().agent.sendMessage(res.prompt);
+      showToast(`Sent worker brief (${res.prompt.length} chars) to active Antigravity chat.`);
+    } else {
+      await copyText(res.prompt);
+      showToast('Not in Antigravity sidecar — copied worker brief to clipboard instead.');
+    }
   } catch (e) {
     showToast('Error: ' + e.message, true);
   }
@@ -948,60 +1234,116 @@ function renderDetail() {
     ? `<button class="btn" onclick="runAction('open_beta')">Beta Preview ↗</button>`
     : '';
 
+  const taskFiles = Array.isArray(t.task_files) && t.task_files.length
+    ? t.task_files
+    : [
+        ...(t.plan_md ? [{ path: 'PLAN.md', group: 'root', name: 'PLAN.md', ext: '.md', size: t.plan_md.length }] : []),
+        ...(t.task_md ? [{ path: 'TASK.md', group: 'root', name: 'TASK.md', ext: '.md', size: t.task_md.length }] : []),
+        ...(t.handoff_md ? [{ path: 'HANDOFF.md', group: 'root', name: 'HANDOFF.md', ext: '.md', size: t.handoff_md.length }] : []),
+        ...(t.mockups || []).map(f => ({ path: `mockups/${f}`, group: 'mockups', name: f, ext: f.includes('.') ? '.' + f.split('.').pop().toLowerCase() : '', size: 0 })),
+        ...(t.evidence || []).map(f => ({ path: `evidence/${f}`, group: 'evidence', name: f, ext: f.includes('.') ? '.' + f.split('.').pop().toLowerCase() : '', size: 0 })),
+      ];
+
+  if (!ACTIVE_FILE || (!['PLAN.md', 'TASK.md', 'HANDOFF.md'].includes(ACTIVE_FILE) && !taskFiles.some(f => f.path === ACTIVE_FILE))) {
+    ACTIVE_FILE = taskFiles.some(f => f.path === 'PLAN.md') ? 'PLAN.md' : (taskFiles[0]?.path || 'PLAN.md');
+  }
+
+  const fileUrl = (kind, f) => `/api/file?id=${encodeURIComponent(t.id)}&kind=${kind}&name=${encodeURIComponent(f)}`;
+  const isMd = /\.md$/i.test(ACTIVE_FILE);
+  const isHtmlMockup = /^mockups\/.+\.html?$/i.test(ACTIVE_FILE);
+  const isImage = /^(mockups|evidence)\/.+\.(png|jpe?g|webp|gif|svg)$/i.test(ACTIVE_FILE);
+  const isJson = /\.json$/i.test(ACTIVE_FILE);
+
+  let toolbarBtns = '';
   let bodyHtml = '';
   let attachMockupSrc = '';
-  if (TAB === 'plan') {
-    if (EDITING === 'plan') {
-      bodyHtml = `
-        <div class="doc-toolbar">
-          <button class="btn primary" onclick="saveDoc('plan')">Save PLAN.md</button>
-          <button class="btn" onclick="cancelEdit()">Cancel</button>
-        </div>
-        <textarea class="editor" id="doc-editor">${esc(t.plan_md || '')}</textarea>`;
-    } else {
-      bodyHtml = `
-        <div class="doc-toolbar">
-          <button class="btn" onclick="startEdit('plan')">Edit PLAN.md</button>
-        </div>
-        <pre class="doc">${esc(t.plan_md || 'No PLAN.md')}</pre>`;
+
+  if (EDITING === 'plan' || EDITING === 'handoff') {
+    const label = EDITING === 'plan' ? 'PLAN.md' : 'HANDOFF.md';
+    const rawVal = EDITING === 'plan' ? (t.plan_md || '') : (t.handoff_md || '');
+    toolbarBtns = `
+      <button class="btn primary" onclick="saveDoc('${EDITING}')">Save ${label}</button>
+      <button class="btn" onclick="cancelEdit()">Cancel</button>`;
+    bodyHtml = `<textarea class="editor" id="doc-editor">${esc(rawVal)}</textarea>`;
+  } else {
+    if (isMd) {
+      toolbarBtns += `
+        <div class="seg">
+          <button class="${MD_MODE === 'rendered' ? 'active' : ''}" onclick="setMdMode('rendered')">Rendered</button>
+          <button class="${MD_MODE === 'raw' ? 'active' : ''}" onclick="setMdMode('raw')">Raw</button>
+        </div>`;
     }
-  } else if (TAB === 'task') {
-    bodyHtml = `<pre class="doc">${esc(t.task_md || 'No TASK.md')}</pre>`;
-  } else if (TAB === 'mockups') {
-    if (!t.mockups.length) {
-      bodyHtml = '<div class="empty">No mockups yet in <code>mockups/</code>.</div>';
-    } else {
-      const fileUrl = (kind, f) => `/api/file?id=${encodeURIComponent(t.id)}&kind=${kind}&name=${encodeURIComponent(f)}`;
-      const htmlMock = t.mockups.find(f => f.endsWith('.html'));
-      bodyHtml = `<div style="margin-bottom:8px;">Files: ${t.mockups.map(f => `<a href="${fileUrl('mockups', f)}" target="_blank" style="color:var(--accent);margin-right:10px;">${esc(f)}</a>`).join('')}</div><div id="mockup-host"></div>`;
-      if (htmlMock) attachMockupSrc = fileUrl('mockups', htmlMock);
+    if (ACTIVE_FILE === 'PLAN.md') {
+      toolbarBtns += `<button class="btn" onclick="startEdit('plan')">Edit</button>`;
+    } else if (ACTIVE_FILE === 'HANDOFF.md') {
+      toolbarBtns += `<button class="btn" onclick="runAction('snapshot_handoff')">Snapshot Git</button>
+        <button class="btn" onclick="startEdit('handoff')">Edit</button>`;
     }
-  } else if (TAB === 'evidence') {
-    const fileUrl = (kind, f) => `/api/file?id=${encodeURIComponent(t.id)}&kind=${kind}&name=${encodeURIComponent(f)}`;
-    const imgs = t.evidence.filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f));
-    const usageHtml = renderUsageCard(t);
-    const vJson = t.verify
-      ? `<pre class="doc">${esc(JSON.stringify(t.verify, null, 2))}</pre>`
-      : '<div class="empty">No <code>evidence/verify.json</code> yet. Run Verify to generate.</div>';
-    const shots = imgs.length ? `<div class="shots">${imgs.map(f => `<div><div class="mono" style="margin-bottom:4px;">${esc(f)}</div><img src="${fileUrl('evidence', f)}" /></div>`).join('')}</div>` : '';
-    bodyHtml = usageHtml + vJson + shots;
-  } else if (TAB === 'handoff') {
-    if (EDITING === 'handoff') {
-      bodyHtml = `
-        <div class="doc-toolbar">
-          <button class="btn primary" onclick="saveDoc('handoff')">Save HANDOFF.md</button>
-          <button class="btn" onclick="cancelEdit()">Cancel</button>
-        </div>
-        <textarea class="editor" id="doc-editor">${esc(t.handoff_md || '')}</textarea>`;
+
+    if (ACTIVE_FILE === 'PLAN.md' || ACTIVE_FILE === 'TASK.md' || ACTIVE_FILE === 'HANDOFF.md') {
+      const mdText = ACTIVE_FILE === 'PLAN.md'
+        ? (t.plan_md || 'No PLAN.md')
+        : ACTIVE_FILE === 'TASK.md'
+          ? (t.task_md || 'No TASK.md')
+          : (t.handoff_md || 'No HANDOFF.md yet. Optional sticky note — click Snapshot Git or Edit.');
+      bodyHtml = MD_MODE === 'rendered'
+        ? renderMarkdown(mdText)
+        : `<pre class="doc">${esc(mdText)}</pre>`;
+    } else if (isHtmlMockup) {
+      const name = ACTIVE_FILE.slice('mockups/'.length);
+      attachMockupSrc = fileUrl('mockups', name);
+      bodyHtml = `<div id="mockup-host"></div>`;
+    } else if (isImage) {
+      const slashIdx = ACTIVE_FILE.indexOf('/');
+      const kind = ACTIVE_FILE.slice(0, slashIdx);
+      const name = ACTIVE_FILE.slice(slashIdx + 1);
+      bodyHtml = `<div class="shots"><img src="${fileUrl(kind, name)}" alt="${esc(ACTIVE_FILE)}" /></div>`;
+    } else if (ACTIVE_FILE === 'evidence/verify.json') {
+      const usageHtml = renderUsageCard(t);
+      const vJson = t.verify
+        ? `<pre class="doc">${esc(JSON.stringify(t.verify, null, 2))}</pre>`
+        : '<div class="empty">No <code>evidence/verify.json</code> yet. Run Verify to generate.</div>';
+      bodyHtml = usageHtml + vJson;
     } else {
-      bodyHtml = `
-        <div class="doc-toolbar">
-          <button class="btn" onclick="runAction('snapshot_handoff')">Snapshot Git State</button>
-          <button class="btn" onclick="startEdit('handoff')">Edit HANDOFF.md</button>
-        </div>
-        <pre class="doc">${esc(t.handoff_md || 'No HANDOFF.md yet. Optional sticky note — click Snapshot Git State or Edit.')}</pre>`;
+      const cacheKey = `${t.id}:${ACTIVE_FILE}`;
+      const cached = FILE_CACHE[cacheKey];
+      if (!cached) {
+        fetchTaskFile(t.id, ACTIVE_FILE);
+        bodyHtml = `<div class="empty">Loading <code>${esc(ACTIVE_FILE)}</code>...</div>`;
+      } else if (cached.loading) {
+        bodyHtml = `<div class="empty">Loading <code>${esc(ACTIVE_FILE)}</code>...</div>`;
+      } else if (cached.error) {
+        bodyHtml = `<div class="empty">${esc(cached.error)}</div>`;
+      } else if (cached.binary) {
+        bodyHtml = `<div class="empty">Binary file (${esc(ACTIVE_FILE)}).</div>`;
+      } else if (isMd) {
+        bodyHtml = MD_MODE === 'rendered'
+          ? renderMarkdown(cached.content)
+          : `<pre class="doc">${esc(cached.content)}</pre>`;
+      } else if (isJson) {
+        let pretty = cached.content;
+        try { pretty = JSON.stringify(JSON.parse(cached.content), null, 2); } catch (_) {}
+        bodyHtml = `<pre class="doc">${esc(pretty)}</pre>`;
+      } else {
+        bodyHtml = `<pre class="doc">${esc(cached.content)}</pre>`;
+      }
     }
   }
+
+  const fileGroups = [
+    { key: 'root', label: 'Task Docs' },
+    { key: 'mockups', label: 'Mockups' },
+    { key: 'evidence', label: 'Evidence' },
+  ];
+  const fileBrowserHtml = fileGroups.map(g => {
+    const items = taskFiles.filter(f => f.group === g.key);
+    if (!items.length) return '';
+    return `<div class="fb-grp">${g.label}</div>` + items.map(f => `
+      <div class="fb-item ${f.path === ACTIVE_FILE ? 'active' : ''}" onclick="openTaskFile('${esc(f.path)}')" title="${esc(f.path)}">
+        <span class="fb-name">${esc(f.name)}</span>
+        <span class="fb-sz">${f.size ? esc(formatBytes(f.size)) : ''}</span>
+      </div>`).join('');
+  }).join('') || '<div class="empty" style="padding:10px;font-size:11.5px;">No task files</div>';
 
   const approvalText = t.plan_approved
     ? `${t.plan_approved_by || 'human'} · ${t.plan_approved_sha || ''}`
@@ -1052,14 +1394,19 @@ function renderDetail() {
       <div><div class="k">Last Agent</div><div class="v">${esc(lastAgentText)}</div></div>
       <div style="grid-column:1/-1;"><div class="k">Owned Paths</div><div class="v">${esc((t.owned_paths || []).join(', ') || '—')}</div></div>
     </div>
-    <div class="tabs">
-      <div class="tab ${TAB==='plan'?'active':''}" onclick="setTab('plan')">PLAN.md</div>
-      <div class="tab ${TAB==='task'?'active':''}" onclick="setTab('task')">TASK.md</div>
-      <div class="tab ${TAB==='mockups'?'active':''}" onclick="setTab('mockups')">Mockups (${t.mockups.length})</div>
-      <div class="tab ${TAB==='evidence'?'active':''}" onclick="setTab('evidence')">Evidence (${t.evidence.length})</div>
-      <div class="tab ${TAB==='handoff'?'active':''} ${t.handoff_md ? '' : 'dim'}" onclick="setTab('handoff')">Handoff</div>
+    <div class="doc-workspace ${FILES_OPEN ? '' : 'no-files'}">
+      <div class="doc-main">
+        <div class="doc-toolbar">
+          <span class="doc-title">${esc(ACTIVE_FILE)}</span>
+          <div class="doc-actions">
+            ${toolbarBtns}
+            <button class="btn" onclick="toggleFiles()">Files (${taskFiles.length})</button>
+          </div>
+        </div>
+        <div class="doc-pane">${bodyHtml}</div>
+      </div>
+      <aside class="file-browser ${FILES_OPEN ? 'open' : ''}">${fileBrowserHtml}</aside>
     </div>
-    ${bodyHtml}
   `;
 
   if (attachMockupSrc) {
