@@ -1,0 +1,47 @@
+{
+  "collected_at": "2026-11-19T12:35:58Z",
+  "convo_count": 2,
+  "summary": "in:783.7k cache:5.03M out:63.2k (2 convos)",
+  "totals": {
+    "input_tokens": 783734,
+    "cache_read_tokens": 5033779,
+    "output_tokens": 63230,
+    "turns": 85
+  },
+  "by_model": {
+    "gemini-4-hydrogen-tiered-high": {
+      "input_tokens": 218775,
+      "cache_read_tokens": 2399934,
+      "output_tokens": 26274,
+      "turns": 39
+    },
+    "gemini-4-hydrogen-medium": {
+      "input_tokens": 256422,
+      "cache_read_tokens": 984043,
+      "output_tokens": 24427,
+      "turns": 24
+    },
+    "gemini-4-neon-medium": {
+      "input_tokens": 308537,
+      "cache_read_tokens": 1649802,
+      "output_tokens": 12529,
+      "turns": 22
+    }
+  },
+  "conversations": {
+    "28fb43ae-6cc5-4e52-aedd-4bfdc017193d": {
+      "label": "Flash Worker 015",
+      "input_tokens": 218775,
+      "cache_read_tokens": 2399934,
+      "output_tokens": 26274,
+      "turns": 39
+    },
+    "ea225cdc-a5f4-4c32-b4c5-229820dcf309": {
+      "label": "Task 015 Brainstorm",
+      "input_tokens": 564959,
+      "cache_read_tokens": 2633845,
+      "output_tokens": 36956,
+      "turns": 46
+    }
+  }
+}
