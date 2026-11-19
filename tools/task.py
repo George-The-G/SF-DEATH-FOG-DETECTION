@@ -18,7 +18,9 @@ import argparse
 import datetime as dt
 import fnmatch
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -26,12 +28,37 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from microclimate.paths import data_dir, main_repo_root  # noqa: E402
+try:
+    from microclimate.paths import data_dir, main_repo_root  # noqa: E402
+except ImportError:
+    def main_repo_root() -> Path:
+        """Fallback main repository root resolver when `microclimate/` is absent (e.g. on `main`)."""
+        if ROOT.parent.name == "_worktrees":
+            return ROOT.parent.parent
+        return ROOT
+
+    def data_dir() -> Path:
+        """Fallback data directory resolver when `microclimate/` is absent."""
+        return main_repo_root() / "data"
+
 from tools import codemap  # noqa: E402
 
 MAIN_ROOT = main_repo_root()
 TASKS_DIR = ROOT / "tasks"
 WORKTREES_DIR = MAIN_ROOT / "_worktrees"
+
+SHARED_MAIN_PATHS = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".agents/skills/deathfog-agent-brief/SKILL.md",
+    ".agents/skills/deathfog-task-workflow/SKILL.md",
+    ".agents/skills/deathfog-ship/SKILL.md",
+    "tools/codemap.py",
+    "tools/task.py",
+    "tools/task_viewer",
+    "tests/test_task_workflow.py",
+)
+DEPLOY_TRIGGER_PREFIXES = ("site/v3/", "microclimate/", "live_ci/", "deathfog/", "run.py")
 
 REQUIRED_FIELDS = (
     "id",
@@ -554,9 +581,20 @@ def cmd_start(args: argparse.Namespace) -> int:
             print(res.stderr or res.stdout)
             return res.returncode
 
-    # Ensure task packet exists inside the worktree and mark in-progress
+    # Ensure task packet exists inside the worktree, carrying over pre-build plan/convo/mockups
     meta["status"] = "in-progress"
     wt_tdir = scaffold_task_dir(wt_path, meta)
+    src_tdir = tfile.parent
+    if src_tdir.resolve() != wt_tdir.resolve():
+        for fname in ("PLAN.md", "HANDOFF.md", "conversations.json"):
+            src_f = src_tdir / fname
+            if src_f.is_file():
+                shutil.copy2(src_f, wt_tdir / fname)
+        src_mockups = src_tdir / "mockups"
+        if src_mockups.is_dir():
+            for mf in src_mockups.iterdir():
+                if mf.is_file() and mf.name != ".gitkeep":
+                    shutil.copy2(mf, wt_tdir / "mockups" / mf.name)
     wt_task_md = wt_tdir / "TASK.md"
     _, body = parse_task_md(tfile) if tfile.exists() else (meta, "")
     wt_task_md.write_text(dump_task_md(meta, body), encoding="utf-8")
@@ -805,16 +843,26 @@ def cmd_finish(args: argparse.Namespace) -> int:
         if wt_root != MAIN_ROOT:
             dirty = _run(["git", "status", "--porcelain"], cwd=wt_root).stdout.strip()
             if dirty:
-                _run(["git", "add", str(tfile.relative_to(wt_root))], cwd=wt_root, check=True)
-                _run(["git", "commit", "-m", f"task({tid}): mark {slug} status={new_status}"], cwd=wt_root)
+                rel_packet = f"tasks/{tid}-{slug}"
+                _run(["git", "add", rel_packet], cwd=wt_root, check=True)
+                _run(["git", "commit", "-m", f"task({tid}): mark {slug} status={new_status} and stage evidence"], cwd=wt_root)
+        # Clean any stale untracked duplicate task packet in MAIN_ROOT before merge
+        main_tdir = MAIN_ROOT / "tasks" / f"{tid}-{slug}"
+        if wt_root != MAIN_ROOT and main_tdir.is_dir():
+            tracked = _run(["git", "ls-files", f"tasks/{tid}-{slug}"], cwd=MAIN_ROOT).stdout.strip()
+            if not tracked:
+                shutil.rmtree(main_tdir)
         res = _run(["git", "merge", "--no-ff", branch, "-m", f"Merge {branch} (task {tid})"], cwd=MAIN_ROOT)
         if res.returncode != 0:
             print(res.stderr or res.stdout)
             return res.returncode
         if wt_root != MAIN_ROOT and wt_root.exists():
-            _run(["git", "worktree", "remove", str(wt_root)], cwd=MAIN_ROOT)
-            _run(["git", "branch", "-d", branch], cwd=MAIN_ROOT)
-        print(f"Merged {branch} into v3-dev and removed worktree {wt_root.name}.")
+            rm_res = _run(["git", "worktree", "remove", str(wt_root)], cwd=MAIN_ROOT)
+            if rm_res.returncode != 0:
+                print(f"Warning: merged {branch} into v3-dev, but could not remove {wt_root.name}: {(rm_res.stderr or rm_res.stdout).strip()}")
+            else:
+                _run(["git", "branch", "-d", branch], cwd=MAIN_ROOT)
+                print(f"Merged {branch} into v3-dev and removed worktree {wt_root.name}.")
 
     if meta.get("issue"):
         comment = (
@@ -826,11 +874,132 @@ def cmd_finish(args: argparse.Namespace) -> int:
 
     if args.deploy_beta:
         _run(["git", "push", "origin", "v3-dev"], cwd=MAIN_ROOT, check=True)
-        wf = _run(["gh", "workflow", "run", "collect.yml", "--ref", "main"], cwd=MAIN_ROOT)
-        if wf.returncode != 0:
-            print("Warning: failed to trigger collect.yml:", wf.stderr.strip())
+        owned = meta.get("owned_paths", [])
+        needs_site_deploy = bool(getattr(args, "force_deploy", False)) or any(
+            str(p).startswith(DEPLOY_TRIGGER_PREFIXES) for p in owned
+        )
+        if needs_site_deploy:
+            wf = _run(["gh", "workflow", "run", "collect.yml", "--ref", "main"], cwd=MAIN_ROOT)
+            if wf.returncode != 0:
+                print("Warning: failed to trigger collect.yml:", wf.stderr.strip())
+            else:
+                print("Triggered GitHub Actions Beta deploy (`collect.yml` on `main`).")
         else:
-            print("Triggered GitHub Actions Beta deploy (`collect.yml` on `main`).")
+            print("Pushed v3-dev; skipped collect.yml (tooling/docs-only task — pass --force-deploy to override).")
+
+    if getattr(args, "sync_main", False):
+        sync_res = sync_shared_to_main(push=True)
+        print(sync_res.get("message") or sync_res.get("error"))
+        if not sync_res.get("ok"):
+            return 1
+    return 0
+
+
+def shared_main_drift(main_root: Path = MAIN_ROOT) -> dict:
+    """Return shared agent/tooling file drift between `origin/main` and `v3-dev`."""
+    main_ref = ""
+    for cand in ("origin/main", "main"):
+        if _run(["git", "rev-parse", "--verify", cand], cwd=main_root).returncode == 0:
+            main_ref = cand
+            break
+    if not main_ref:
+        return {"ok": False, "in_sync": True, "drifted": [], "main_ref": "", "error": "No main ref found"}
+    res = _run(["git", "diff", "--name-only", main_ref, "v3-dev", "--", *SHARED_MAIN_PATHS], cwd=main_root)
+    if res.returncode != 0:
+        return {"ok": False, "in_sync": False, "drifted": [], "main_ref": main_ref, "error": res.stderr.strip()}
+    drifted = [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
+    return {"ok": True, "in_sync": len(drifted) == 0, "drifted": drifted, "main_ref": main_ref}
+
+
+def sync_shared_to_main(*, push: bool = False, check_only: bool = False, main_root: Path = MAIN_ROOT) -> dict:
+    """Sync `SHARED_MAIN_PATHS` from `v3-dev` onto `origin/main`, run isolated tests, and optionally push."""
+    if not check_only:
+        fetch_res = _run(["git", "fetch", "origin", "main"], cwd=main_root)
+        if fetch_res.returncode != 0:
+            return {"ok": False, "error": f"Failed to fetch origin/main: {(fetch_res.stderr or fetch_res.stdout).strip()}"}
+
+    drift = shared_main_drift(main_root)
+    if not drift.get("ok"):
+        return drift
+    if drift["in_sync"]:
+        return {"ok": True, "in_sync": True, "drifted": [], "message": "Shared agent/tooling files are already in sync between v3-dev and main."}
+    if check_only:
+        return {
+            "ok": True,
+            "in_sync": False,
+            "drifted": drift["drifted"],
+            "message": f"{len(drift['drifted'])} shared file(s) differ between v3-dev and {drift['main_ref']}: {', '.join(drift['drifted'])}",
+        }
+
+    wt_sync = main_root / "_worktrees" / "wt_sync_main"
+    wt_sync.parent.mkdir(parents=True, exist_ok=True)
+    if wt_sync.exists():
+        _run(["git", "worktree", "remove", "--force", str(wt_sync)], cwd=main_root)
+
+    add_res = _run(["git", "worktree", "add", "--detach", str(wt_sync), "origin/main"], cwd=main_root)
+    if add_res.returncode != 0:
+        return {"ok": False, "error": f"Failed to create sync worktree: {(add_res.stderr or add_res.stdout).strip()}"}
+
+    try:
+        co_res = _run(["git", "checkout", "v3-dev", "--", *SHARED_MAIN_PATHS], cwd=wt_sync)
+        if co_res.returncode != 0:
+            return {"ok": False, "error": f"Failed to checkout shared files: {(co_res.stderr or co_res.stdout).strip()}"}
+
+        # Run truly isolated checks inside wt_sync so v3-dev's microclimate/ cannot leak onto sys.path
+        env = os.environ.copy()
+        env.pop("PYTHONPATH", None)
+        py = sys.executable
+        for label, cmd in (
+            ("pytest", [py, "-m", "pytest", "-q", "tests/test_task_workflow.py"]),
+            ("task_list", [py, "tools/task.py", "list"]),
+            ("viewer_state", [py, "tools/task_viewer/server.py", "--state-json"]),
+        ):
+            chk = subprocess.run(cmd, cwd=wt_sync, env=env, text=True, capture_output=True)
+            if chk.returncode != 0:
+                return {
+                    "ok": False,
+                    "error": f"Isolated main check '{label}' failed (rc={chk.returncode}): {(chk.stderr or chk.stdout).strip()[-600:]}",
+                }
+
+        status = _run(["git", "status", "--porcelain"], cwd=wt_sync).stdout.strip()
+        if not status:
+            return {"ok": True, "in_sync": True, "drifted": [], "message": "Nothing to commit; main already matches v3-dev."}
+
+        cm_res = _run(["git", "commit", "-m", "Sync shared agent & task-viewer tooling from v3-dev"], cwd=wt_sync)
+        if cm_res.returncode != 0:
+            return {"ok": False, "error": f"Commit failed: {(cm_res.stderr or cm_res.stdout).strip()}"}
+
+        sha = _run(["git", "rev-parse", "--short", "HEAD"], cwd=wt_sync).stdout.strip()
+        if push:
+            ps_res = _run(["git", "push", "origin", "HEAD:main"], cwd=wt_sync)
+            if ps_res.returncode != 0:
+                return {"ok": False, "error": f"Push to origin/main failed: {(ps_res.stderr or ps_res.stdout).strip()}"}
+            return {
+                "ok": True,
+                "in_sync": True,
+                "drifted": [],
+                "commit": sha,
+                "message": f"Synced {len(drift['drifted'])} shared file(s) to origin/main ({sha}) with isolated tests passing.",
+            }
+        return {
+            "ok": True,
+            "in_sync": False,
+            "drifted": drift["drifted"],
+            "commit": sha,
+            "message": f"Verified isolated commit {sha} on main (dry run; pass --push to push origin/main).",
+        }
+    finally:
+        _run(["git", "worktree", "remove", "--force", str(wt_sync)], cwd=main_root)
+
+
+def cmd_sync_main(args: argparse.Namespace) -> int:
+    """Check or sync shared agent/tooling files from `v3-dev` onto `main` with isolated tests."""
+    res = sync_shared_to_main(push=bool(args.push), check_only=bool(args.check))
+    print(res.get("message") or res.get("error"))
+    if not res.get("ok"):
+        return 1
+    if args.check and not res.get("in_sync"):
+        return 2
     return 0
 
 
@@ -1299,14 +1468,21 @@ def main(argv: list[str]) -> int:
     p_finish = sub.add_parser("finish", help="Verify evidence, merge into v3-dev, remove worktree, and sync GitHub.")
     p_finish.add_argument("id")
     p_finish.add_argument("--merge", action="store_true", help="Merge feature branch into v3-dev and remove worktree.")
-    p_finish.add_argument("--deploy-beta", action="store_true", help="Push v3-dev and trigger collect.yml.")
+    p_finish.add_argument("--deploy-beta", action="store_true", help="Push v3-dev and trigger collect.yml (skipped for tooling-only tasks unless --force-deploy).")
+    p_finish.add_argument("--force-deploy", action="store_true", help="Trigger collect.yml even for tooling/docs-only tasks.")
+    p_finish.add_argument("--sync-main", action="store_true", help="Also sync shared agent/tooling files to origin/main with isolated tests.")
     p_finish.add_argument("--allow-stale", action="store_true", help="Allow verify.json from an earlier commit SHA.")
+
+    p_sync_main = sub.add_parser("sync-main", help="Check or sync shared agent/tooling files from v3-dev to origin/main.")
+    p_sync_main.add_argument("--check", action="store_true", help="Check drift only (exits 2 if drifted).")
+    p_sync_main.add_argument("--push", action="store_true", help="Push synced commit to origin/main after isolated tests pass.")
 
     args = parser.parse_args(argv)
     handlers = {
         "list": cmd_list,
         "dag": cmd_dag,
         "sync": cmd_sync,
+        "sync-main": cmd_sync_main,
         "epic": cmd_epic,
         "new": cmd_new,
         "approve": cmd_approve,

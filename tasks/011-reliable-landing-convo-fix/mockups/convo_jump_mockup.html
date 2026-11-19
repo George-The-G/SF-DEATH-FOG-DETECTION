@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Task 011 Mockup — Antigravity Convo Jump &amp; Main/Beta Parity</title>
+<script src="/sidecar.js" onerror="/* standalone */"></script>
+<style>
+  :root {
+    --bg: #0f131a; --panel: #161b24; --panel2: #1c2330; --border: #273142;
+    --text: #e6edf7; --muted: #8b9bb4; --accent: #4ea1ff; --green: #38c172; --amber: #f5b942; --cyan: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 14px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 13px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .hdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 700; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--panel2); border: 1px solid var(--border); color: var(--muted); }
+  .pill.ok { color: var(--green); border-color: #1f5c3a; }
+  .pill.warn { color: var(--amber); border-color: #6b5218; }
+  .pill.info { color: var(--cyan); border-color: #1f5573; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 11px; font-size: 12px; font-weight: 500; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: #1d4e89; border-color: #2f6db8; }
+  button.primary:hover { background: #255ea3; }
+  button.gate { background: #1b4d3e; border-color: #2e7d5b; }
+  pre { background: #0b0e14; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; white-space: pre-wrap; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="hdr">
+    <span class="lbl">1. Live Antigravity Sidecar Bridge Probe</span>
+    <span class="pill info" id="bridge-pill">Detecting...</span>
+  </div>
+  <div style="color:var(--muted);font-size:12px;">
+    Checks whether <code>window.sidecar</code> (or <code>parent.sidecar</code>) is available here so we can route conversation jumps cleanly without triggering Windows' broken <code>conversation://</code> popup.
+  </div>
+  <pre id="probe-out">Scanning...</pre>
+</div>
+
+<div class="card">
+  <div class="hdr">
+    <span class="lbl">2. Fixed "Open Antigravity Convo" UX (Zero Windows Popup)</span>
+    <span class="pill ok">No raw conversation:// href</span>
+  </div>
+  <div class="row">
+    <button class="primary" onclick="jumpConvo()">Open Antigravity Convo · Task #011</button>
+    <button onclick="copyConvoLink()">Copy Markdown Link</button>
+    <button onclick="simulateStandalone()">Preview Standalone Fallback</button>
+  </div>
+  <pre id="jump-log">Click "Open Antigravity Convo" to test.</pre>
+</div>
+
+<div class="card">
+  <div class="hdr">
+    <span class="lbl">3. Header Parity Badge (v3-dev ↔ main Shared Agent Files)</span>
+    <button onclick="toggleDrift()">Toggle Drift Demo</button>
+  </div>
+  <div class="row" id="parity-demo"></div>
+  <div style="color:var(--muted);font-size:11.5px;margin-top:6px;">
+    Tracks only shared agent/tooling paths (<code>AGENTS.md</code>, <code>.agents/skills/</code>, <code>tools/task.py</code>, <code>tools/task_viewer/</code>). Clicking <b>Sync Shared → main</b> runs <code>tools/task.py sync-main --push</code> with isolated tests.
+  </div>
+</div>
+
+<script>
+const TEST_CONV_ID = 'd1b0d0e1-b926-4092-8ad6-41688572f057';
+const TEST_LABEL = 'Landing & Convo Fix Plan';
+let DRIFTED = true;
+
+function getSidecar() {
+  if (window.sidecar) return { where: 'window.sidecar', ref: window.sidecar };
+  try {
+    if (window.parent && window.parent !== window && window.parent.sidecar) {
+      return { where: 'window.parent.sidecar', ref: window.parent.sidecar };
+    }
+  } catch (_) {}
+  return null;
+}
+
+function runProbe() {
+  const found = getSidecar();
+  const pill = document.getElementById('bridge-pill');
+  const out = document.getElementById('probe-out');
+  if (!found) {
+    pill.textContent = 'Standalone / No sidecar bridge';
+    pill.className = 'pill warn';
+    out.textContent = 'No window.sidecar or window.parent.sidecar detected.\nFallback mode: clicking "Open Antigravity Convo" copies the clickable markdown link to clipboard (no Windows OS dialog).';
+    return;
+  }
+  const keys = Object.keys(found.ref || {});
+  const agentKeys = found.ref.agent ? Object.keys(found.ref.agent) : [];
+  const canSend = Boolean(found.ref.agent && typeof found.ref.agent.sendMessage === 'function');
+  pill.textContent = canSend ? `Bridge active (${found.where})` : `Partial bridge (${found.where})`;
+  pill.className = canSend ? 'pill ok' : 'pill warn';
+  out.textContent = `Detected: ${found.where}\nTop-level keys: ${JSON.stringify(keys)}\nagent keys: ${JSON.stringify(agentKeys)}\nagent.sendMessage available: ${canSend}`;
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch (_) {}
+  document.body.removeChild(ta);
+  return ok;
+}
+
+async function jumpConvo() {
+  const log = document.getElementById('jump-log');
+  const md = `[Open Task #011: ${TEST_LABEL}](conversation://${TEST_CONV_ID})`;
+  const found = getSidecar();
+  if (found && found.ref.agent && typeof found.ref.agent.sendMessage === 'function') {
+    try {
+      await found.ref.agent.sendMessage(`Jump to linked conversation: ${md}`);
+      log.textContent = `OK: Sent clickable link into active Antigravity chat via ${found.where}.agent.sendMessage:\n${md}`;
+      return;
+    } catch (e) {
+      log.textContent = `sendMessage error (${e.message}); falling back to clipboard...`;
+    }
+  }
+  const ok = await copyText(md);
+  log.textContent = (ok ? 'Copied to clipboard (paste in Antigravity chat for clickable sidebar jump):\n' : 'Link ready:\n') + md;
+}
+
+async function copyConvoLink() {
+  const md = `[Open Task #011: ${TEST_LABEL}](conversation://${TEST_CONV_ID})`;
+  await copyText(md);
+  document.getElementById('jump-log').textContent = `Copied markdown link:\n${md}`;
+}
+
+function simulateStandalone() {
+  const md = `[Open Task #011: ${TEST_LABEL}](conversation://${TEST_CONV_ID})`;
+  document.getElementById('jump-log').textContent =
+    `Standalone behavior (zero Windows popup):\nCopies ${md} and shows "Paste in Antigravity chat to jump, or click Copy Resume Prompt / Resume in Claude."`;
+}
+
+function renderParity() {
+  const el = document.getElementById('parity-demo');
+  if (DRIFTED) {
+    el.innerHTML = `
+      <span class="pill warn">main ↔ v3-dev: 2 shared files drifted</span>
+      <button class="gate" onclick="alert('Runs: python tools/task.py sync-main --push (isolated test + push)')">Sync Shared → main</button>
+      <span style="color:var(--muted);font-size:11.5px;">(tools/task.py, tools/task_viewer/index.html)</span>`;
+  } else {
+    el.innerHTML = `<span class="pill ok">main ↔ v3-dev: shared agent files in sync ✓</span>`;
+  }
+}
+
+function toggleDrift() { DRIFTED = !DRIFTED; renderParity(); }
+
+runProbe();
+renderParity();
+</script>
+</body>
+</html>
