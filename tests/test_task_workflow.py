@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -105,7 +106,7 @@ class TestTaskWorkflow(unittest.TestCase):
             self.assertIn(required, task.SHARED_MAIN_PATHS)
         html = (Path(task_viewer_server.VIEWER_DIR) / "index.html").read_text(encoding="utf-8")
         self.assertNotIn('href="conversation://', html)
-        self.assertIn("sendConvoLinkToChat", html)
+        self.assertNotIn("sendConvoLinkToChat", html)
 
     def test_stage_gates_block_start_until_approved(self):
         """Tasks in brainstorm/plan gates cannot be started until approved to ready."""
@@ -147,7 +148,15 @@ class TestTaskWorkflow(unittest.TestCase):
                 r1 = task.approve_task_gate("099")
                 self.assertTrue(r1["ok"])
                 self.assertEqual(r1["status"], "plan")
-                r2 = task.approve_task_gate("099")
+                r_blocked = task.approve_task_gate("099")
+                self.assertFalse(r_blocked["ok"])
+                (tdir / "PLAN.md").write_text(
+                    "# Plan — Task 099\n\n## Brainstorm — Goals, Decisions & Dead Ends\n- **Goals:** Test gating\n\n"
+                    "## Plan — Architecture, Owned Paths & Verification\n- **Affected Symbols:** `tools/task.py:cmd_start`\n"
+                    "- **Implementation Steps:**\n  1. Enforce formal plan gate and verify SHA.\n",
+                    encoding="utf-8",
+                )
+                r2 = task.approve_task_gate("099", approve_plan=True, approved_by="human-cli")
                 self.assertTrue(r2["ok"])
                 self.assertEqual(r2["status"], "ready")
 
@@ -213,6 +222,246 @@ class TestTaskWorkflow(unittest.TestCase):
         self.assertIn("sess-123", " ".join(cmd_sess))
         cmd_prompt = task_viewer_server.build_claude_launch_cmd(cwd, prompt_file=Path("C:/tmp/p.md"), launchers=bins)
         self.assertIn("p.md", " ".join(cmd_prompt))
+
+    def _make_sample_task(self, root: Path, tid: str = "097", *, status: str = "plan", owns: list[str] | None = None, fill_plan: bool = False):
+        """Create a temporary task packet for formal plan approval gate tests."""
+        owns_list = ["tools/task.py"] if owns is None else owns
+        meta = {
+            "id": tid,
+            "slug": "plan-gate-test",
+            "title": "Plan Gate Test",
+            "issue": None,
+            "epic": None,
+            "pr": None,
+            "pr_url": "",
+            "status": status,
+            "plan_approved": False,
+            "plan_approved_at": "",
+            "plan_approved_by": "",
+            "plan_approved_sha": "",
+            "branch": f"feat/{tid}-plan-gate-test",
+            "switch": "plan_gate_test",
+            "depends_on": [],
+            "owned_paths": owns_list,
+            "gpu_required": False,
+            "deliverables": [f"tasks/{tid}-plan-gate-test/PLAN.md"],
+        }
+        tdir = task.scaffold_task_dir(root, meta, problem="Verify formal plan approval gate.")
+        if fill_plan:
+            (tdir / "PLAN.md").write_text(
+                f"# Plan — Task {tid}: Plan Gate Test\n\n"
+                "## Brainstorm — Goals, Decisions & Dead Ends\n- **Goals:** Enforce plan gate\n\n"
+                "## Plan — Architecture, Owned Paths & Verification\n"
+                "- **Affected Symbols:** `tools/task.py:approve_task_gate`\n"
+                "- **Implementation Steps:**\n  1. Require explicit human approval and SHA check.\n",
+                encoding="utf-8",
+            )
+        return meta, tdir
+
+    def test_new_rejects_pre_approved_statuses(self):
+        """cmd_new rejects --status ready or in-progress so tasks cannot bypass plan gates."""
+        for bad_status in ("ready", "in-progress"):
+            ns = argparse.Namespace(
+                title="Bypass Attempt",
+                slug="bypass-attempt",
+                epic=None,
+                depends="",
+                owns="tools/task.py",
+                switch="",
+                gpu=False,
+                problem="Attempt",
+                status=bad_status,
+                tier="",
+                quick=False,
+                local=True,
+            )
+            self.assertEqual(task.cmd_new(ns), 1)
+
+    def test_plan_readiness_rejects_empty_or_template_plan(self):
+        """check_plan_readiness fails on untouched scaffold PLAN.md or empty owned_paths, and passes once populated."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "096", owns=["tools/task.py"], fill_plan=False)
+            rd_template = task.check_plan_readiness(tdir, meta)
+            self.assertFalse(rd_template["ready"])
+
+            meta_no_owns = {**meta, "owned_paths": []}
+            (tdir / "PLAN.md").write_text(
+                "# Plan — Task 096\n\n## Plan — Architecture, Owned Paths & Verification\n"
+                "- **Affected Symbols:** `tools/task.py:cmd_start`\n"
+                "- **Implementation Steps:**\n  1. Add readiness check and drift detection.\n",
+                encoding="utf-8",
+            )
+            rd_no_owns = task.check_plan_readiness(tdir, meta_no_owns)
+            self.assertFalse(rd_no_owns["ready"])
+
+            rd_ready = task.check_plan_readiness(tdir, meta)
+            self.assertTrue(rd_ready["ready"])
+
+    def test_approve_plan_requires_readiness_and_explicit_flag(self):
+        """plan -> ready requires readiness and explicit approve_plan=True, stamping approval metadata."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _, tdir = self._make_sample_task(root, "095", status="plan", fill_plan=False)
+            tfile = tdir / "TASK.md"
+
+            def _find_live(_tid):
+                m, _ = task.parse_task_md(tfile)
+                return m, tfile, root
+
+            with mock.patch.object(task, "find_task", side_effect=_find_live):
+                r_no_flag = task.approve_task_gate("095")
+                self.assertFalse(r_no_flag["ok"])
+
+                r_unready = task.approve_task_gate("095", approve_plan=True)
+                self.assertFalse(r_unready["ok"])
+
+                (tdir / "PLAN.md").write_text(
+                    "# Plan — Task 095\n\n## Plan — Architecture, Owned Paths & Verification\n"
+                    "- **Affected Symbols:** `tools/task.py:cmd_approve`\n"
+                    "- **Implementation Steps:**\n  1. Stamp plan_approved_sha on approval.\n",
+                    encoding="utf-8",
+                )
+                r_ok = task.approve_task_gate("095", approve_plan=True, approved_by="human-cli")
+                self.assertTrue(r_ok["ok"])
+                self.assertEqual(r_ok["status"], "ready")
+                saved_meta, _ = task.parse_task_md(tfile)
+                self.assertTrue(saved_meta["plan_approved"])
+                self.assertEqual(saved_meta["plan_approved_by"], "human-cli")
+                self.assertTrue(saved_meta["plan_approved_sha"])
+                self.assertTrue(saved_meta["plan_approved_at"])
+
+    def test_start_blocks_unapproved_and_drifted_even_with_force(self):
+        """cmd_start(..., force=True) blocks if plan_approved is false or PLAN.md drifted after approval."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _, tdir = self._make_sample_task(root, "094", status="ready", fill_plan=True)
+            tfile = tdir / "TASK.md"
+
+            def _find_live(_tid):
+                m, _ = task.parse_task_md(tfile)
+                return m, tfile, root
+
+            with mock.patch.object(task, "find_task", side_effect=_find_live), \
+                 mock.patch.object(task, "WORKTREES_DIR", root / "_worktrees"):
+                rc_unapproved = task.cmd_start(argparse.Namespace(id="094", base="v3-dev", force=True))
+                self.assertEqual(rc_unapproved, 1)
+
+                r_ok = task.approve_task_gate("094", target_status="ready", approve_plan=True, approved_by="human-cli")
+                self.assertTrue(r_ok["ok"])
+
+                # Simulate PLAN.md drift after approval
+                (tdir / "PLAN.md").write_text(
+                    (tdir / "PLAN.md").read_text(encoding="utf-8") + "\n- Post-approval edit\n",
+                    encoding="utf-8",
+                )
+                rc_drifted = task.cmd_start(argparse.Namespace(id="094", base="v3-dev", force=True))
+                self.assertEqual(rc_drifted, 1)
+
+    def test_verify_fails_when_plan_unapproved(self):
+        """cmd_verify fails if plan_approved is explicitly False while remaining compatible with legacy tasks."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "093", status="in-progress", fill_plan=True)
+            tfile = tdir / "TASK.md"
+            fake_ok = argparse.Namespace(returncode=0, stdout="ok", stderr="")
+            with mock.patch.object(task, "find_task", return_value=(meta, tfile, root)), \
+                 mock.patch.object(task, "_check_scope", return_value=[]), \
+                 mock.patch.object(task, "_run", return_value=fake_ok):
+                rc = task.cmd_verify(argparse.Namespace(id="093", base="v3-dev", skip_preview=True, allow_extra=False))
+                self.assertEqual(rc, 1)
+                report = json.loads((tdir / "evidence" / "verify.json").read_text(encoding="utf-8"))
+                self.assertFalse(report["checks"]["plan_approval"]["ok"])
+
+                # Legacy task without plan_approved key passes plan_approval check
+                legacy_meta = {k: v for k, v in meta.items() if k != "plan_approved"}
+                with mock.patch.object(task, "find_task", return_value=(legacy_meta, tfile, root)):
+                    rc_leg = task.cmd_verify(argparse.Namespace(id="093", base="v3-dev", skip_preview=True, allow_extra=False))
+                    self.assertEqual(rc_leg, 0)
+
+    def test_viewer_state_exposes_plan_readiness_and_drift(self):
+        """build_state() exposes plan_readiness, plan_approved, and plan_drifted on every task."""
+        state = task_viewer_server.build_state()
+        self.assertTrue(state["tasks"])
+        sample = next(iter(state["tasks"].values()))
+        self.assertIn("plan_readiness", sample)
+        self.assertIn("plan_approved", sample)
+        self.assertIn("plan_drifted", sample)
+        self.assertIn("checks", sample["plan_readiness"])
+
+    def test_convo_preview_reads_local_brain_artifacts_safely(self):
+        """_load_convo_preview reads local brain artifacts/turns, rejects traversal, and handles missing IDs."""
+        bad = task_viewer_server._load_convo_preview("../etc/passwd")
+        self.assertFalse(bad["ok"])
+        with tempfile.TemporaryDirectory() as td:
+            brain_root = Path(td)
+            missing = task_viewer_server._load_convo_preview("abcd-1234", brain_root=brain_root)
+            self.assertTrue(missing["ok"])
+            self.assertFalse(missing["exists"])
+
+            cdir = brain_root / "conv-012-test"
+            logs = cdir / ".system_generated" / "logs"
+            logs.mkdir(parents=True)
+            (cdir / "implementation_plan.md").write_text("# Plan\n\nDetails here.", encoding="utf-8")
+            (logs / "transcript.jsonl").write_text(
+                json.dumps({"type": "USER_INPUT", "content": "Review the plan", "created_at": "2026-11-19T10:00:00Z"}) + "\n"
+                + json.dumps({"type": "PLANNER_RESPONSE", "content": "Done!", "created_at": "2026-11-19T10:01:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            res = task_viewer_server._load_convo_preview("conv-012-test", brain_root=brain_root)
+            self.assertTrue(res["ok"])
+            self.assertTrue(res["exists"])
+            self.assertEqual(len(res["artifacts"]), 1)
+            self.assertEqual(res["artifacts"][0]["name"], "implementation_plan.md")
+            self.assertEqual(len(res["recent_turns"]), 2)
+            self.assertEqual(res["recent_turns"][0]["role"], "User")
+
+    def test_viewer_approve_plan_action(self):
+        """run_action({'action': 'approve_plan', ...}) stamps human-ui and rejects unready plans."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "092", status="plan", fill_plan=False)
+            tfile = tdir / "TASK.md"
+
+            def _find_live(_tid):
+                m, _ = task.parse_task_md(tfile)
+                return m, tfile, root
+
+            fake_state = {
+                "tasks": {
+                    "092": {
+                        **meta,
+                        "task_dir": str(tdir),
+                        "worktree_path": "",
+                    }
+                }
+            }
+            with mock.patch.object(task_viewer_server, "build_state", return_value=fake_state), \
+                 mock.patch.object(task, "find_task", side_effect=_find_live):
+                r_fail = task_viewer_server.run_action({"action": "approve_plan", "task_id": "092"})
+                self.assertFalse(r_fail["ok"])
+
+                (tdir / "PLAN.md").write_text(
+                    "# Plan — Task 092\n\n## Plan — Architecture, Owned Paths & Verification\n"
+                    "- **Affected Symbols:** `tools/task_viewer/server.py:run_action`\n"
+                    "- **Implementation Steps:**\n  1. Add approve_plan action.\n",
+                    encoding="utf-8",
+                )
+                r_ok = task_viewer_server.run_action({"action": "approve_plan", "task_id": "092"})
+                self.assertTrue(r_ok["ok"])
+                saved, _ = task.parse_task_md(tfile)
+                self.assertTrue(saved["plan_approved"])
+                self.assertEqual(saved["plan_approved_by"], "human-ui")
+
+    def test_viewer_html_unified_sequence_and_no_broken_convo_jump(self):
+        """Task Viewer HTML uses unified 7-node sequence ending in Main and removes broken convo jump/duplicate bars."""
+        html = (Path(task_viewer_server.VIEWER_DIR) / "index.html").read_text(encoding="utf-8")
+        self.assertIn("Main", html)
+        self.assertNotIn("sendConvoLinkToChat", html)
+        self.assertNotIn('href="conversation://', html)
+        self.assertNotIn("renderMergeBar", html)
+        self.assertIn("LAST_STATE_JSON", html)
+        self.assertIn("preview_conversation", html)
 
 
 if __name__ == "__main__":

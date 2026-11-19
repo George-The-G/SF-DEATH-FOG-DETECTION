@@ -19,7 +19,7 @@ All feature work that needs a plan and branch uses **`tools/task.py`** so plans,
    ```
    *(Add `--local` if working offline, or `--quick` for small changes to start at `plan` with `exec_tier: flash`.)*
 4. **Gate 1 (`brainstorm`):** Flesh out goals, decisions, and dead ends live in `tasks/<id>-<slug>/PLAN.md`. Do **not** edit repo code or spin up a worktree. Link the active conversation (`tools/task.py link <id> --conv <uuid> --tool antigravity|claude`). Advance to `plan` only after user approval (`tools/task.py approve <id>` or Task Viewer).
-5. **Gate 2 (`plan`):** Fill in architecture, exact `codemap.py` line ranges, owned paths, and verification in `PLAN.md`. Stop and wait for explicit user **Build Go-Ahead** (`tools/task.py approve <id>` -> `ready`).
+5. **Gate 2 (`plan`):** Fill in architecture, exact `codemap.py` line ranges, owned paths, and verification in `PLAN.md`. Stop and wait for formal human **Plan Approval & Build Go-Ahead** (`tools/task.py approve <id> --approve-plan` or Task Viewer **Approve Plan & Unlock Build**, which stamps `plan_approved: true` and `plan_approved_sha`). **Agents must never self-approve** (`--approve-plan` / `plan_approved: true`) without direct human approval; `start --force` cannot bypass plan approval or post-approval `PLAN.md` drift.
 6. Inspect the conflict-free parallel execution waves:
    ```powershell
    .\.venv\Scripts\python.exe tools/task.py dag
