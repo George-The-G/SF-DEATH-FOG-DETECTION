@@ -118,11 +118,18 @@ def test_watertight_4way_intersection_and_road1_roundtrip():
     ], dtype=np.float64)
     binder = roadnet.SampleBinder(sample_xy, S1=5)
 
-    mesh, graph = roadnet.build_road_mesh(nodes, edges, dem_fn, dem_fn, binder)
+    # Simulate 60 m terrain cutting 1 m below the steep hill crest so curb skirts are emitted
+    def t60_fn(xs, ys):
+        return dem_fn(xs, ys) - 1.0
+
+    mesh, graph = roadnet.build_road_mesh(nodes, edges, dem_fn, t60_fn, binder)
     assert mesh["nJunctions"] == 1
     assert len(mesh["pos"]) > 16
     assert len(mesh["streetIdx"]) > 0 and len(mesh["streetIdx"]) % 3 == 0
-    assert np.all(mesh["nrm"][:, 1] > 0.5), "all road surface normals must point upward"
+    top_mask = mesh["aInfo"][:, 1] <= 1.5
+    skirt_mask = mesh["aInfo"][:, 1] > 1.5
+    assert np.any(skirt_mask), "grounded curb skirts (across=2.0) must be emitted"
+    assert np.all(mesh["nrm"][top_mask, 1] > 0.5), "all road surface normals must point upward"
     assert np.all((mesh["aInfo"][:, 3] >= 0.0) & (mesh["aInfo"][:, 3] <= 1.0))
 
     # Game graph connectivity: center node 0 has 4 incident edges sorted CCW
@@ -141,3 +148,35 @@ def test_watertight_4way_intersection_and_road1_roundtrip():
     np.testing.assert_array_equal(graph["nodePos"], graph2["nodePos"])
     np.testing.assert_array_equal(graph["edgeMeta"], graph2["edgeMeta"])
     np.testing.assert_array_equal(graph["polyPts"], graph2["polyPts"])
+
+
+def test_midspan_terrain_clearance_and_sharp_corner_rounding():
+    """Mid-span subdivision prevents 60 m terrain bulges from swallowing roads; sharp bends are beveled."""
+    x0, y0 = roadnet.X0, roadnet.Y0
+    nodes = [
+        {"key": (0, 0), "x": x0, "y": y0, "layer": 0},
+        {"key": (1, 0), "x": x0 + 100.0, "y": y0 + 100.0, "layer": 0},
+    ]
+    # 90-degree L-bend in a single edge
+    edges = [{
+        "nodeA": 0, "nodeB": 1,
+        "xy": np.array([[x0, y0], [x0 + 100.0, y0], [x0 + 100.0, y0 + 100.0]], dtype=np.float64),
+        "width": 7.0, "layer": 0, "street": 1, "ways": [1],
+    }]
+
+    def dem_flat(xs, ys):
+        return np.full_like(xs, 10.0, dtype=np.float64)
+
+    # Simulate a 60 m terrain mesh bulging +4 m above DEM at x = x0 + 50
+    def t60_bulge(xs, ys):
+        return 10.0 + 4.0 * np.exp(-((xs - (x0 + 50.0)) / 18.0) ** 2)
+
+    mesh, graph = roadnet.build_road_mesh(nodes, edges, dem_flat, t60_bulge, None)
+    # Every top-surface vertex must stay above t60_bulge (no swallowing!)
+    top = mesh["aInfo"][:, 1] <= 1.5
+    wx = mesh["pos"][top, 0] + x0
+    wy = y0 - mesh["pos"][top, 2]
+    wz = mesh["pos"][top, 1]
+    assert np.all(wz >= t60_bulge(wx, wy) + roadnet.TERRAIN_CLEAR_M - 0.05)
+    # Adaptive subdivision over the bulge + rounded 90-deg corner must emit > 8 centerline points
+    assert len(graph["polyPts"]) > 8

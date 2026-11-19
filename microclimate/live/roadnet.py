@@ -39,18 +39,18 @@ RIDE_HIGHWAYS = {
 }
 
 HIGHWAY_WIDTH_M = {
-    "trunk": 13.0,
-    "primary": 12.5,
-    "secondary": 11.0,
-    "tertiary": 9.0,
-    "residential": 7.5,
-    "unclassified": 7.0,
-    "living_street": 5.0,
-    "service": 4.5,
-    "trunk_link": 8.0,
-    "primary_link": 8.0,
-    "secondary_link": 7.5,
-    "tertiary_link": 7.0,
+    "trunk": 12.0,
+    "primary": 11.5,
+    "secondary": 10.0,
+    "tertiary": 8.5,
+    "residential": 6.8,
+    "unclassified": 6.5,
+    "living_street": 4.8,
+    "service": 4.2,
+    "trunk_link": 7.5,
+    "primary_link": 7.5,
+    "secondary_link": 7.0,
+    "tertiary_link": 6.5,
 }
 
 # San Francisco terrain & vertical profile constants
@@ -63,7 +63,10 @@ LIP_MIN_M = 4.0           # minimum vertical curve length (m)
 LIP_MAX_M = 14.0          # maximum vertical curve length (m)
 LIP_STEP_M = 3.0          # subdivision spacing inside parabolic car lips (m)
 MAX_CROSS_SLOPE = 0.06    # max cross-slope camber/banking across ribbon width (6%)
-TERRAIN_CLEAR_M = 0.35    # min vertical clearance above viewer's 20 m terrain surface (m)
+TERRAIN_CLEAR_M = 0.30    # min vertical clearance above viewer's rendered 60 m terrain mesh (m)
+MAX_SPAN_M = 12.0         # max along-road segment span (m) so 60 m terrain triangles never swallow mid-span
+SKIRT_DROP_M = 1.6        # curb/embankment skirt depth below terrain (m) so roads never float
+MAX_MITER = 1.8           # max miter scale 1/cos(half_angle) at interior corners
 HORIZ_EPS_M = 0.40        # 2D horizontal Douglas-Peucker tolerance (m) to drop collinear OSM nodes
 FILLET_PTS = 2            # interior points on curb fillet arc at intersections
 TILE_M = 2000.0           # spatial tile size (m) for viewer frustum culling
@@ -262,22 +265,16 @@ def make_dem_sampler(dem_path: Path):
     return sample
 
 
-def make_terrain20_sampler(grids_dir: Path):
-    """Build a bilinear sampler for the viewer's 20 m terrain grid (data/grids/terrain_20m.npy)."""
+def make_terrain60_sampler(grids_dir: Path, step: int = 3):
+    """Build an exact triangle-plane sampler matching site/v3/data/terrain.glb (meshes.mesh_height, 60 m)."""
+    from .. import meshes
+
     spec = json.loads((grids_dir / "grid_spec.json").read_text(encoding="utf-8"))
     ter = np.load(grids_dir / "terrain_20m.npy").astype(np.float32)
-    x0, y0, cell = float(spec["x0"]), float(spec["y0"]), float(spec["cell_m"])
-    nx, ny = ter.shape
+    x0, y0 = float(spec["x0"]), float(spec["y0"])
 
     def sample(xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
-        fx = (xs - x0) / cell
-        fy = (ys - y0) / cell
-        i0 = np.clip(np.floor(fx).astype(np.int32), 0, nx - 2)
-        j0 = np.clip(np.floor(fy).astype(np.int32), 0, ny - 2)
-        tx = np.clip(fx - i0, 0.0, 1.0)
-        ty = np.clip(fy - j0, 0.0, 1.0)
-        return ((1.0 - tx) * (1.0 - ty) * ter[i0, j0] + tx * (1.0 - ty) * ter[i0 + 1, j0] +
-                (1.0 - tx) * ty * ter[i0, j0 + 1] + tx * ty * ter[i0 + 1, j0 + 1]).astype(np.float64)
+        return meshes.mesh_height(spec, ter, np.asarray(xs) - x0, np.asarray(ys) - y0, step=step).astype(np.float64)
 
     return sample, ter, spec
 
@@ -611,6 +608,85 @@ def _simplify_xy_2d(xy: np.ndarray, eps: float = HORIZ_EPS_M) -> np.ndarray:
     return xy[keep]
 
 
+def _round_sharp_corners(xy: np.ndarray, min_deg: float = 22.0, corner_r: float = 4.5) -> np.ndarray:
+    """Bevel sharp interior polyline bends (> min_deg) with a 2-segment arc so ribbons never pinch."""
+    n = len(xy)
+    if n < 3:
+        return xy
+    cos_thr = math.cos(math.radians(min_deg))
+    out = [xy[0]]
+    for i in range(1, n - 1):
+        p0, p1, p2 = xy[i - 1], xy[i], xy[i + 1]
+        v1 = p1 - p0
+        v2 = p2 - p1
+        l1 = math.hypot(float(v1[0]), float(v1[1]))
+        l2 = math.hypot(float(v2[0]), float(v2[1]))
+        if l1 < 0.5 or l2 < 0.5:
+            out.append(p1)
+            continue
+        u1 = v1 / l1
+        u2 = v2 / l2
+        dot = max(-1.0, min(1.0, float(u1[0] * u2[0] + u1[1] * u2[1])))
+        if dot < cos_thr:
+            d = min(corner_r, 0.35 * l1, 0.35 * l2)
+            a = p1 - u1 * d
+            b = p1 + u2 * d
+            mid = 0.25 * a + 0.5 * p1 + 0.25 * b
+            out.append(a)
+            out.append(mid)
+            out.append(b)
+        else:
+            out.append(p1)
+    out.append(xy[-1])
+    return np.asarray(out, dtype=np.float64)
+
+
+def _subdivide_for_terrain(
+    xy_trim: np.ndarray,
+    t_arc: np.ndarray,
+    s_vals: np.ndarray,
+    z_prof_s: np.ndarray,
+    z_prof_z: np.ndarray,
+    t60_fn: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    clear_m: float = TERRAIN_CLEAR_M,
+    max_span: float = 36.0,
+    min_span: float = 7.0,
+) -> np.ndarray:
+    """Adaptively subdivide only where the 60 m terrain mesh bulges near/above the road segment."""
+    if len(s_vals) < 2:
+        return s_vals
+    pts = list(map(float, s_vals))
+    for _ in range(4):
+        mids_s = []
+        insert_after = []
+        for i in range(len(pts) - 1):
+            ds = pts[i + 1] - pts[i]
+            if ds > min_span:
+                mids_s.append(0.5 * (pts[i] + pts[i + 1]))
+                insert_after.append(i)
+        if not mids_s:
+            break
+        ms = np.asarray(mids_s, dtype=np.float64)
+        mxy = _interp_polyline(xy_trim, t_arc, ms)
+        mt60 = t60_fn(mxy[:, 0], mxy[:, 1])
+        mz = np.interp(ms, z_prof_s, z_prof_z)
+        new_pts = [pts[0]]
+        added = False
+        mi = 0
+        for i in range(len(pts) - 1):
+            ds = pts[i + 1] - pts[i]
+            if mi < len(insert_after) and insert_after[mi] == i:
+                if ds > max_span or float(mt60[mi]) + clear_m > float(mz[mi]) + 0.08:
+                    new_pts.append(float(ms[mi]))
+                    added = True
+                mi += 1
+            new_pts.append(pts[i + 1])
+        pts = new_pts
+        if not added:
+            break
+    return np.asarray(pts, dtype=np.float64)
+
+
 def _trim_polyline(xy: np.ndarray, s0: float, s1: float) -> np.ndarray:
     """Trim an (N, 2) polyline to arc-length range [s0, s1]."""
     arc = _polyline_arclen(xy)
@@ -893,7 +969,7 @@ def build_road_mesh(
             scale = max(0.0, (el - 0.5) / max(sb0 + sb1, 1e-6))
             sb0 *= scale
             sb1 *= scale
-        trimmed = _simplify_xy_2d(_trim_polyline(e["xy"], sb0, el - sb1), eps=HORIZ_EPS_M)
+        trimmed = _round_sharp_corners(_simplify_xy_2d(_trim_polyline(e["xy"], sb0, el - sb1), eps=HORIZ_EPS_M))
         t_arc = _polyline_arclen(trimmed)
         t_len = float(t_arc[-1])
         if t_len < 0.2:
@@ -918,8 +994,10 @@ def build_road_mesh(
         knot_idx = fit_piecewise_linear(s_dem, z_dem, eps=PL_EPS_M)
         s_prof, z_prof, g_prof = apply_parabolic_lips(s_dem[knot_idx], z_dem[knot_idx])
 
-        # Merge horizontal curve vertices (preserve sharp horizontal turns like Lombard St)
-        s_merged = np.unique(np.concatenate([s_prof, t_arc]))
+        # Merge horizontal curve vertices and adaptively subdivide only where 60 m terrain bulges near road
+        s_merged = _subdivide_for_terrain(
+            trimmed, t_arc, np.unique(np.concatenate([s_prof, t_arc])), s_prof, z_prof, t20_fn,
+        )
         xy_final = _interp_polyline(trimmed, t_arc, s_merged)
         z_final = np.interp(s_merged, s_prof, z_prof)
         g_final = np.interp(s_merged, s_prof, g_prof)
@@ -927,28 +1005,41 @@ def build_road_mesh(
         if m < 2:
             continue
 
-        # Compute unit horizontal tangents & left normals
-        dx = np.zeros(m, dtype=np.float64)
-        dy = np.zeros(m, dtype=np.float64)
-        dx[0] = xy_final[1, 0] - xy_final[0, 0]
-        dy[0] = xy_final[1, 1] - xy_final[0, 1]
-        dx[-1] = xy_final[-1, 0] - xy_final[-2, 0]
-        dy[-1] = xy_final[-1, 1] - xy_final[-2, 1]
-        if m > 2:
-            dx[1:-1] = xy_final[2:, 0] - xy_final[:-2, 0]
-            dy[1:-1] = xy_final[2:, 1] - xy_final[:-2, 1]
-        dl = np.maximum(np.hypot(dx, dy), 1e-6)
-        tx, ty = dx / dl, dy / dl
-        lnx, lny = -ty, tx  # left normal in EPSG:32610 (x east, y north)
+        # Compute per-segment tangents & mitered left normals (no pinching on sharp turns)
+        sdx = np.diff(xy_final[:, 0])
+        sdy = np.diff(xy_final[:, 1])
+        sdl = np.maximum(np.hypot(sdx, sdy), 1e-6)
+        stx, sty = sdx / sdl, sdy / sdl
+        snx, sny = -sty, stx
+
+        tx = np.zeros(m, dtype=np.float64)
+        ty = np.zeros(m, dtype=np.float64)
+        mnx = np.zeros(m, dtype=np.float64)
+        mny = np.zeros(m, dtype=np.float64)
+        tx[0], ty[0], mnx[0], mny[0] = stx[0], sty[0], snx[0], sny[0]
+        tx[-1], ty[-1], mnx[-1], mny[-1] = stx[-1], sty[-1], snx[-1], sny[-1]
+        for q in range(1, m - 1):
+            ux = snx[q - 1] + snx[q]
+            uy = sny[q - 1] + sny[q]
+            ul = math.hypot(float(ux), float(uy))
+            if ul < 1e-3:
+                mnx[q], mny[q] = snx[q], sny[q]
+            else:
+                sc = min(MAX_MITER, 2.0 / ul)
+                mnx[q], mny[q] = (ux / ul) * sc, (uy / ul) * sc
+            txq, tyq = stx[q - 1] + stx[q], sty[q - 1] + sty[q]
+            tlq = math.hypot(float(txq), float(tyq)) or 1.0
+            tx[q], ty[q] = txq / tlq, tyq / tlq
 
         half_w = 0.5 * e["width"]
-        left_xy = xy_final + np.column_stack([lnx * half_w, lny * half_w])
-        right_xy = xy_final - np.column_stack([lnx * half_w, lny * half_w])
+        left_xy = xy_final + np.column_stack([mnx * half_w, mny * half_w])
+        right_xy = xy_final - np.column_stack([mnx * half_w, mny * half_w])
 
         zl_dem = dem_fn(left_xy[:, 0], left_xy[:, 1])
         zr_dem = dem_fn(right_xy[:, 0], right_xy[:, 1])
-        zl_t20 = t20_fn(left_xy[:, 0], left_xy[:, 1])
-        zr_t20 = t20_fn(right_xy[:, 0], right_xy[:, 1])
+        zc_t60 = t20_fn(xy_final[:, 0], xy_final[:, 1])
+        zl_t60 = t20_fn(left_xy[:, 0], left_xy[:, 1])
+        zr_t60 = t20_fn(right_xy[:, 0], right_xy[:, 1])
 
         # Bind simulation samples along the strip for smooth color blending
         if binder is not None:
@@ -963,32 +1054,37 @@ def build_road_mesh(
         max_grade = float(np.max(np.abs(g_final))) if len(g_final) else 0.0
 
         base_v = len(v_pos)
+        yl_arr = np.zeros(m, dtype=np.float64)
+        yr_arr = np.zeros(m, dtype=np.float64)
         for q in range(m):
             yl, yr = banked_edge_heights(
                 float(z_final[q]),
                 float(zl_dem[q]), float(zr_dem[q]),
-                float(zl_t20[q]), float(zr_t20[q]),
+                max(float(zl_t60[q]), float(zc_t60[q])),
+                max(float(zr_t60[q]), float(zc_t60[q])),
                 half_w,
             )
             yc = 0.5 * (yl + yr)
             # Pin junction boundary curb heights to junction pad plane so seam is watertight
             if q == 0 and na in junc_planes:
                 z0, gx, gy = junc_planes[na]
-                yl = max(z0 + gx * (left_xy[q, 0] - nodes[na]["x"]) + gy * (left_xy[q, 1] - nodes[na]["y"]), float(zl_t20[q]) + TERRAIN_CLEAR_M)
-                yr = max(z0 + gx * (right_xy[q, 0] - nodes[na]["x"]) + gy * (right_xy[q, 1] - nodes[na]["y"]), float(zr_t20[q]) + TERRAIN_CLEAR_M)
+                yl = max(z0 + gx * (left_xy[q, 0] - nodes[na]["x"]) + gy * (left_xy[q, 1] - nodes[na]["y"]), float(zl_t60[q]) + TERRAIN_CLEAR_M)
+                yr = max(z0 + gx * (right_xy[q, 0] - nodes[na]["x"]) + gy * (right_xy[q, 1] - nodes[na]["y"]), float(zr_t60[q]) + TERRAIN_CLEAR_M)
                 yc = 0.5 * (yl + yr)
             elif q == m - 1 and nb in junc_planes:
                 z0, gx, gy = junc_planes[nb]
-                yl = max(z0 + gx * (left_xy[q, 0] - nodes[nb]["x"]) + gy * (left_xy[q, 1] - nodes[nb]["y"]), float(zl_t20[q]) + TERRAIN_CLEAR_M)
-                yr = max(z0 + gx * (right_xy[q, 0] - nodes[nb]["x"]) + gy * (right_xy[q, 1] - nodes[nb]["y"]), float(zr_t20[q]) + TERRAIN_CLEAR_M)
+                yl = max(z0 + gx * (left_xy[q, 0] - nodes[nb]["x"]) + gy * (left_xy[q, 1] - nodes[nb]["y"]), float(zl_t60[q]) + TERRAIN_CLEAR_M)
+                yr = max(z0 + gx * (right_xy[q, 0] - nodes[nb]["x"]) + gy * (right_xy[q, 1] - nodes[nb]["y"]), float(zr_t60[q]) + TERRAIN_CLEAR_M)
                 yc = 0.5 * (yl + yr)
+            yl_arr[q], yr_arr[q] = yl, yr
 
             # 3D surface normal from forward tangent + cross-slope
             slope_fwd = float(g_final[q])
             slope_lat = (yl - yr) / max(2.0 * half_w, 1.0)
             # Scene coords: (x, y_up, z = -north)
             t_vec = (float(tx[q]), slope_fwd, -float(ty[q]))
-            r_vec = (-float(lnx[q]), -slope_lat, float(lny[q]))
+            ln_len = math.hypot(float(mnx[q]), float(mny[q])) or 1.0
+            r_vec = (-float(mnx[q]) / ln_len, -slope_lat, float(mny[q]) / ln_len)
             # Normal = r_vec x t_vec (upward)
             nx3 = r_vec[1] * t_vec[2] - r_vec[2] * t_vec[1]
             ny3 = r_vec[2] * t_vec[0] - r_vec[0] * t_vec[2]
@@ -1007,9 +1103,7 @@ def build_road_mesh(
             g_poly_sample.append(ida_q)
 
         # Store exact boundary vertices for watertight junction stitching
-        # Looking outward from nodeA (end_side=0): left vertex is base_v+0, right vertex is base_v+1
         arm_end_verts[(ei, 0)] = (base_v, base_v + 1, left_xy[0], right_xy[0])
-        # Looking outward from nodeB (end_side=1): direction is reversed, so left is right_xy[-1] (v+1), right is left_xy[-1] (v+0)
         end_v = base_v + 2 * (m - 1)
         arm_end_verts[(ei, 1)] = (end_v + 1, end_v, right_xy[-1], left_xy[-1])
 
@@ -1019,6 +1113,31 @@ def build_road_mesh(
         for q in range(m - 1):
             v0 = base_v + 2 * q
             tlist.extend((v0, v0 + 1, v0 + 2, v0 + 1, v0 + 3, v0 + 2))
+
+        # Emit grounded curb/embankment skirts on sides that rise > 0.45 m above terrain.glb (across=2.0)
+        if float(np.max(yl_arr - zl_t60)) > 0.45:
+            sk_l = len(v_pos)
+            for q in range(m):
+                yb = min(float(yl_arr[q]) - 0.6, float(zl_t60[q]) - SKIRT_DROP_M)
+                ln_len = math.hypot(float(mnx[q]), float(mny[q])) or 1.0
+                sxn, szn = float(mnx[q]) / ln_len, -float(mny[q]) / ln_len
+                add_vert(float(left_xy[q, 0]), float(left_xy[q, 1]), float(yl_arr[q]), sxn, 0.25, szn, 0, 2.0, 1.0, 0.0, 0, 0.0)
+                add_vert(float(left_xy[q, 0]), float(left_xy[q, 1]), yb, sxn, 0.25, szn, 0, 2.0, 1.0, 0.0, 0, 0.0)
+            for q in range(m - 1):
+                v0 = sk_l + 2 * q
+                tlist.extend((v0, v0 + 2, v0 + 1, v0 + 1, v0 + 2, v0 + 3))
+
+        if float(np.max(yr_arr - zr_t60)) > 0.45:
+            sk_r = len(v_pos)
+            for q in range(m):
+                yb = min(float(yr_arr[q]) - 0.6, float(zr_t60[q]) - SKIRT_DROP_M)
+                ln_len = math.hypot(float(mnx[q]), float(mny[q])) or 1.0
+                sxn, szn = -float(mnx[q]) / ln_len, float(mny[q]) / ln_len
+                add_vert(float(right_xy[q, 0]), float(right_xy[q, 1]), float(yr_arr[q]), sxn, 0.25, szn, 0, 2.0, 1.0, 0.0, 0, 0.0)
+                add_vert(float(right_xy[q, 0]), float(right_xy[q, 1]), yb, sxn, 0.25, szn, 0, 2.0, 1.0, 0.0, 0, 0.0)
+            for q in range(m - 1):
+                v0 = sk_r + 2 * q
+                tlist.extend((v0, v0 + 1, v0 + 2, v0 + 1, v0 + 3, v0 + 2))
 
         g_edge_meta.append((na, nb, poly_start, len(g_poly_pts) - poly_start))
         g_edge_props.append((float(e["width"]), t_len, max_grade, float(e["street"])))
@@ -1259,10 +1378,10 @@ def build_city_roadnet(
     out = Path(out_dir) if out_dir is not None else live
     out.mkdir(parents=True, exist_ok=True)
 
-    # Terrain samplers
+    # Terrain samplers (exact 60 m terrain.glb triangle plane + high-res 3DEP DEM)
     dem_path = raw / "dem_n38w123.tif"
     dem_fn = make_dem_sampler(dem_path)
-    t20_fn, ter, spec = make_terrain20_sampler(grids)
+    t20_fn, ter, spec = make_terrain60_sampler(grids, step=3)
 
     def land_mask(xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
         ci = np.floor((xs - float(spec["x0"])) / float(spec["cell_m"])).astype(np.int32)

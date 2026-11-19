@@ -288,6 +288,10 @@ const frag = (glslRamp) => `
   uniform float uDistFade, uDistVis;
   ${glslRamp}
   void main(){
+    if (vAcross > 1.5) {
+      gl_FragColor = vec4(vec3(.11, .14, .20) * vSlopeShade, 1.);
+      return;
+    }
     vec3 c = vMiss > .5 ? vec3(.25, .28, .34) : ramp(vWet);
     c *= 0.95 * vSlopeShade;
     float ea = abs(vAcross);
