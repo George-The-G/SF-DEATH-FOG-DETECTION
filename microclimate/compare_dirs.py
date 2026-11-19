@@ -10,8 +10,9 @@ import numpy as np
 
 from . import replay, wetness
 from .config import load
+from .paths import data_dir
 
-DATA = Path.home() / "deathfog-data"
+DATA = data_dir()
 
 
 def main():

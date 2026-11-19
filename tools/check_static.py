@@ -13,11 +13,12 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from microclimate import city, replay, wetness  # noqa: E402
 from microclimate.config import load  # noqa: E402
+from microclimate.paths import data_dir  # noqa: E402
 
 root = Path(__file__).resolve().parents[1]
+D = data_dir()
 args = [a for a in sys.argv[1:] if not a.endswith(".npz")]
-npz = next((a for a in sys.argv[1:] if a.endswith(".npz")), str(Path.home().parent / "deathfog-data" / "live" / "live_static.npz"))
-D = Path.home() / "deathfog-data"
+npz = next((a for a in sys.argv[1:] if a.endswith(".npz")), str(D / "live" / "live_static.npz"))
 wetness.DATA_DIR = D
 P = city.load_static(npz)
 nd = int(P["n_district"])

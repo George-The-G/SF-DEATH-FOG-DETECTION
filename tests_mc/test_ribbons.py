@@ -8,10 +8,15 @@ from pathlib import Path
 
 import numpy as np
 
+from microclimate.paths import data_dir
+
 ROOT = Path(__file__).resolve().parent.parent
 V3 = ROOT / "site" / "v3"
-POINTS = Path.home() / "deathfog-data" / "grids" / "zone" / "points.csv"
-HAVE = (V3 / "data" / "ribbons.bin").exists() and POINTS.exists()
+POINTS = data_dir() / "grids" / "zone" / "points.csv"
+try:
+    HAVE = (V3 / "data" / "ribbons.bin").exists() and POINTS.exists()
+except OSError:
+    HAVE = False
 
 
 def _load(name):

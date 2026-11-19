@@ -15,8 +15,11 @@ from matplotlib.patches import Rectangle, Polygon
 from PIL import Image
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE / "mc"))
-D = Path.home() / "deathfog-data"
+ROOT = HERE.parents[1]
+sys.path.insert(0, str(ROOT))
+from microclimate.paths import data_dir  # noqa: E402
+
+D = data_dir()
 OUT = HERE / "out"
 OUT.mkdir(exist_ok=True)
 DL = HERE / "beta"

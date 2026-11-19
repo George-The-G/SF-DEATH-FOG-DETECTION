@@ -122,10 +122,12 @@ def publish(data, root, runner=subprocess.run, py=sys.executable, env=os.environ
 
 
 def run(argv, now=None, urlopen=urllib.request.urlopen, runner=subprocess.run, env=os.environ, log=print):
+    from ..paths import data_dir
     now = now or dt.datetime.now(dt.timezone.utc)
     root = Path(opt(argv, "--root", Path(__file__).resolve().parents[2]))
-    data = Path(opt(argv, "--data", Path.home() / "deathfog-data" / "backup"))
-    static = Path(opt(argv, "--static", Path.home() / "deathfog-data" / "live" / "live_static.npz"))
+    dd = data_dir()
+    data = Path(opt(argv, "--data", dd / "backup"))
+    static = Path(opt(argv, "--static", dd / "live" / "live_static.npz"))
     pages = opt(argv, "--pages", PAGES).rstrip("/")
     stale_min, live_stale_min = float(opt(argv, "--stale-min", 30)), float(opt(argv, "--live-stale-min", 50))
     v2 = age_minutes(f"{pages}/status.json", now, urlopen)

@@ -70,4 +70,5 @@ def main(root):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else Path.home() / "deathfog-data" / "sky_inputs")
+    from microclimate.paths import data_dir
+    main(sys.argv[1] if len(sys.argv) > 1 else data_dir() / "sky_inputs")

@@ -2,7 +2,7 @@
 import os, sys, json, time, shutil, numpy as np
 from pathlib import Path
 from microclimate import windrot
-D=Path("C:/Users/George/deathfog-data"); OUT=D/"library_walls"; LK=D/"library/runs/gpu.lock"
+D=Path("C:/Users/George/source/repos/SF-DEATH-FOG-DETECTION/data"); OUT=D/"library_walls"; LK=D/"library/runs/gpu.lock"
 dirs=[270.0,247.5,292.5,225.0,315.0,202.5,337.5,180.0,360.0,22.5,45.0,67.5,90.0,112.5,135.0,
       ]
 solid=np.load(D/"grids/solid_20m.npz")["solid"]

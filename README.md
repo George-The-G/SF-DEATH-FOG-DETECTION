@@ -8,8 +8,10 @@ moisture that fog and dew leave on streets, which matters to skateboarders. Expe
 |---|---|
 | [Status page](https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/) (v2) | Scores a few zones every ~10 minutes, can push phone alerts, checks itself against field reports. |
 | [3-D street view](https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/) (v3) | Every street in the city coloured by a modelled wetness index, for the last hours, tonight and the next two days. Skate routes with flyover. |
+| [Pipeline atlas](https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/pipeline.html) | Stage-by-stage technical explainer of the wind, fog tracer, satellite, and street-wetness pipeline. |
 
 Everything runs on GitHub Actions and GitHub Pages. No server, no paid hosting, no weather accounts.
+Full documentation index: **[`docs/INDEX.md`](docs/INDEX.md)** | Current status & backlog: **[`docs/STATUS.md`](docs/STATUS.md)** | Agent guidelines: **[`AGENTS.md`](AGENTS.md)**.
 
 ## The 3-D street view (v3)
 
@@ -39,7 +41,7 @@ How the wetness index is made, every 10 minutes for every street point:
 ### Limits
 * The index is a physical-style proxy with hand-set constants. It has never been compared with measured wet roads. It is not a probability.
 * Fog only arrives with onshore wind (south through west to north); fog from the bay side or fog forming in place is not modelled.
-* Cloud base, drizzle, trees, parked cars, pavement heat storage and road slope are not modelled. See `MODEL_REVIEW_PLAN.md` on `v3-dev`.
+* Cloud base, drizzle, trees, parked cars, pavement heat storage and road slope are not modelled on public yet. See [`docs/STATUS.md`](docs/STATUS.md) and [`docs/history/MODEL_REVIEW_PLAN.md`](docs/history/MODEL_REVIEW_PLAN.md).
 * Forecast hours are only as good as the weather model's fog timing, which is often off by hours.
 * GitHub can delay or skip scheduled runs, so the live data can be late.
 
@@ -87,8 +89,8 @@ v2 layers: `sources/` (provider adapters) -> `store` (SQLite) -> `states.py` (me
   `python -m microclimate.live build --out site/v3/live --static <path to live_static.npz>`.
   Source health check: `python -m microclimate.live check --since 30d`. Tests: `python -m pytest`.
 * Adding a route (on `v3-dev`): add a `[[route]]` to `routes.toml` (id, name, zone, colour, waypoints from the top of the hill down),
-  run `python -m microclimate routes`, check the overlay images in `grids/zone/routes/`, then commit
-  (`site/v3` is gitignored: `git add -f site/v3/data site/v3/replay`). Append new routes at the end.
+  run `python -m microclimate routes`, check the overlay images in `data/grids/zone/routes/`, then commit
+  (`git add site/v3/data site/v3/replay`). Append new routes at the end.
 
 ## Sources and what each is used for
 

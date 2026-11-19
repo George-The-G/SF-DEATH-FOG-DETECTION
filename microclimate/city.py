@@ -497,7 +497,7 @@ def load_static(path):
 
 def run(data, argv):
     steps = [a for a in argv if a in ("points", "features", "sun", "static")] or ["points", "features", "sun", "static"]
-    out = Path(argv[argv.index("--out") + 1]) if "--out" in argv else Path(data).parent.parent / "deathfog-data" / "live"
+    out = Path(argv[argv.index("--out") + 1]) if "--out" in argv else Path(data) / "live"
     mt = int(argv[argv.index("--max-tiles") + 1]) if "--max-tiles" in argv else None
     if "extra" in argv:   # extra [--city-data DIR] [--out DIR]: live_extra.npz from the csv tables that built the static table (guide 06)
         cd = Path(argv[argv.index("--city-data") + 1]) if "--city-data" in argv else Path(data)

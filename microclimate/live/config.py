@@ -239,7 +239,8 @@ T_HORIZ_L_M = 6000.0
 T_HORIZ_W0 = 0.25                    # weight of "zero correction" in the horizontal fallback (pulls to zero away from stations)
 
 # ---- paths ----
-STATIC_DEFAULT = os.path.join(os.path.expanduser("~"), "deathfog-data", "live", "live_static.npz")
+from ..paths import data_dir as _data_dir
+STATIC_DEFAULT = str(_data_dir() / "live" / "live_static.npz")
 
 
 def blocked(name):

@@ -12,7 +12,9 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-DATA = Path.home() / "deathfog-data"
+from microclimate.paths import data_dir  # noqa: E402
+
+DATA = data_dir()
 OUT = DATA / "spikes" / "street5m"
 OUT.mkdir(parents=True, exist_ok=True)
 N, NZ, DX = 560, 60, 5.0

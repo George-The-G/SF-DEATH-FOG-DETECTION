@@ -470,7 +470,8 @@ def simulate(pts, ser, step_min=10, tracer=None, svf=None, use_sun=True, W0=0.0,
             tr = np.asarray(tracer_dirs)[int(np.argmin(np.abs(dd - 270.0)))]
     elif prof and tracer is None and (DIR_LIBRARY if use_dirs is None else use_dirs):  # validated non-270 fields, blended per time step
         from . import dirlib
-        dd = dirlib.available(Path(DATA_DIR or Path.home() / "deathfog-data") / "library")
+        from .paths import data_dir
+        dd = dirlib.available(Path(DATA_DIR or data_dir()) / "library")
         if len(dd) > 1:
             dirs = np.array(dd)
             E = np.stack([fog_exposure(fogtop.points_tracer(pts, DATA_DIR, d)) for d in dd]).astype(np.float32)

@@ -11,11 +11,14 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from microclimate.paths import data_dir  # noqa: E402
+
 PAGES_BETA = "https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/live_beta/"
 LEVELS = (1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300)
 POINT = (37.76, -122.45)
 now = dt.datetime.now(dt.timezone.utc)
-root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.home() / "deathfog-data" / "sky_inputs" / now.strftime("%Y%m%d")
+root = Path(sys.argv[1]) if len(sys.argv) > 1 else data_dir() / "sky_inputs" / now.strftime("%Y%m%d")
 root.mkdir(parents=True, exist_ok=True)
 man = dict(collected_utc=now.isoformat(), parts={})
 

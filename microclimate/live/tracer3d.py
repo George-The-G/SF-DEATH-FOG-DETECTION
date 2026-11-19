@@ -189,7 +189,8 @@ def slices(z, D, report_dir, direction=270.0, top=300.0, y_section=4177700.0):
 
 def run(argv):
     from .__main__ import opt
-    D = Path(opt(argv, "--data", Path.home() / "deathfog-data"))
+    from ..paths import data_dir
+    D = Path(opt(argv, "--data", data_dir()))
     out = Path(opt(argv, "--out", D / "live" / "live_tracer3d.npz"))
     if "--check" in argv:
         rep = check(D, out, opt(argv, "--report", "reports/fog3d"), static=opt(argv, "--static"))

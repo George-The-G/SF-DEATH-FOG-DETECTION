@@ -3,7 +3,7 @@ from pathlib import Path
 from pyproj import Transformer
 from microclimate import street
 from microclimate.live import config as C, stationwind as sw
-D=Path("C:/Users/George/deathfog-data"); spec=json.load(open(D/"grids/grid_spec.json")); solid=np.load(D/"grids/solid_20m.npz")["solid"]
+D=Path("C:/Users/George/source/repos/SF-DEATH-FOG-DETECTION/data"); spec=json.load(open(D/"grids/grid_spec.json")); solid=np.load(D/"grids/solid_20m.npz")["solid"]
 nx,ny,nz=solid.shape; s2=solid.copy(); s2[:,:,0]=True; kw=np.minimum(street.first_fluid_k(s2)+1,nz-1)
 tr=Transformer.from_crs(4326,32610,always_xy=True)
 old=np.load(D/"library/wind_2700.npz")["u"]; new=np.load(D/"scratch/windcube_city2700_v2.npz")["u"]

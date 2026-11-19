@@ -1,12 +1,16 @@
 """Guide 12 step 6: derived viewer maps on a 10 m grid, 6 levels above ground (2.5, 7.5, 15, 25, 40, 60 m): flow vector (2 x int8, ratio of inflow speed, scale 1/64) and shelter factor
 (local speed / open-terrain speed at the same height, uint8 0..255; open-terrain speed = the inflow speed, 1.0). Over the 2 x 2 km core (400 m margin dropped): 200 x 200 x 6 x 3 bytes."""
 import json
+import sys
 import zlib
 from pathlib import Path
 
 import numpy as np
 
-DATA = Path.home() / "deathfog-data"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from microclimate.paths import data_dir  # noqa: E402
+
+DATA = data_dir()
 OUT = DATA / "spikes" / "street5m"
 z = np.load(OUT / "solid5m.npz")
 solid, ter = z["solid"], z["terrain"]

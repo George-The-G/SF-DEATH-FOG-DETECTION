@@ -1,6 +1,6 @@
 import numpy as np, os, shutil
 from pathlib import Path
-L=Path("C:/Users/George/deathfog-data/library_walls")
+L=Path("C:/Users/George/source/repos/SF-DEATH-FOG-DETECTION/data/library_walls")
 for d in ("1125","1350"):
     f=L/f"wind_{d}.npz"; raw=L/f"wind_{d}.raw.npz"
     if not raw.exists(): shutil.copy(f,raw)

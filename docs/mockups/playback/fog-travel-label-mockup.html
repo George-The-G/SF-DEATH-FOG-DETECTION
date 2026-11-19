@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fog Travel Label Mockup</title>
+<style>
+:root{--bg:#070b14;--panel:#0c1324;--line:rgba(140,170,210,.22);--text:#e6ecf5;--soft:#9db0c9;
+--obs:#5ef2ff;--est:#f2c230;--fc:#b79cff;--glass:rgba(9,15,28,.88);
+--sans:Inter,system-ui,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 var(--sans);padding:28px max(16px,env(safe-area-inset-left)) 48px}
+.wrap{max-width:1300px;margin:0 auto}
+h1{font-size:24px;margin:0 0 6px}p{margin:0;color:var(--soft);max-width:72ch}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0 26px;font-size:13px;color:var(--soft)}
+.legend b{color:var(--text)}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:6px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,390px));gap:28px;justify-content:center}
+.cap h2{font-size:15px;margin:0 0 2px}.cap p{font-size:13px;margin-bottom:10px}
+.screen{position:relative;width:390px;height:560px;border-radius:24px;overflow:hidden;border:1px solid var(--line);background:#141a33;max-width:100%}
+/* fake map: terrain gradient + drifting fog blobs */
+.map{position:absolute;inset:0;background:radial-gradient(120% 80% at 70% 10%,#26305a,#141a33 60%),#141a33}
+.hills{position:absolute;inset:0;background:repeating-linear-gradient(115deg,transparent 0 38px,rgba(255,255,255,.025) 38px 40px)}
+.fog{position:absolute;border-radius:50%;filter:blur(26px);background:rgba(225,238,255,.55);will-change:transform}
+.fog.a{width:230px;height:120px;left:-60px;top:150px}
+.fog.b{width:190px;height:100px;left:60px;top:300px;opacity:.8}
+.fog.c{width:150px;height:80px;left:10px;top:60px;opacity:.6}
+.map.est .fog{opacity:.5}
+.map.fc .fog{opacity:.42;filter:blur(34px)}
+.arrow{position:absolute;right:14px;top:14px;font:12px var(--mono);color:var(--soft);background:var(--glass);border:1px solid var(--line);border-radius:8px;padding:4px 8px}
+.dock{position:absolute;left:0;right:0;bottom:0;background:var(--glass);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:12px 16px 16px}
+.readout{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.time{font:700 22px var(--mono)}.rel{font:12px var(--mono);color:var(--soft)}
+.sp{flex:1}
+input[type=range]{width:100%;margin:0;accent-color:var(--obs);height:28px}
+.ticks{display:flex;justify-content:space-between;font:11px var(--mono);color:var(--soft)}
+/* variant A: chip */
+.chip{font:600 12px var(--sans);letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1.5px solid;display:inline-flex;align-items:center;gap:6px}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.k-observed{color:var(--obs)}.k-estimated{color:var(--est)}.k-forecast{color:var(--fc)}
+.k-estimated.chip{border-style:dashed}.k-forecast.chip{background:rgba(183,156,255,.14)}
+.conf{display:inline-flex;gap:3px}.conf i{width:5px;height:11px;border-radius:1px;background:rgba(255,255,255,.18)}.conf i.on{background:currentColor}
+/* variant B: rail */
+.rail{position:relative;height:30px;margin:2px 0 4px}
+.rail .seg{position:absolute;top:11px;height:8px;border-radius:2px}
+.rail .thumb{position:absolute;top:2px;width:4px;height:26px;border-radius:2px;background:#fff;transform:translateX(-2px)}
+.rail .now{position:absolute;top:0;bottom:0;width:1px;background:var(--soft)}
+.rail .nowl{position:absolute;top:-14px;font:10px var(--mono);color:var(--soft);transform:translateX(-50%)}
+.rail input{position:absolute;inset:0;opacity:0;height:30px}
+.under{display:flex;justify-content:center;font:12px var(--mono);margin-top:4px;gap:8px;align-items:center}
+/* variant C: map frame + banner */
+.screen.fcframe{border:2px dashed var(--fc)}
+.screen.estframe{border:2px dashed var(--est)}
+.banner{position:absolute;left:50%;top:14px;transform:translateX(-50%);font:600 12px var(--sans);letter-spacing:.08em;text-transform:uppercase;background:var(--glass);border:1px solid;border-radius:8px;padding:5px 12px;white-space:nowrap}
+.banner small{font-weight:400;text-transform:none;letter-spacing:0;color:var(--soft);margin-left:6px}
+.wm{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;font:800 54px var(--sans);letter-spacing:.1em;color:rgba(183,156,255,.16);transform:rotate(-14deg)}
+.hint{margin-top:22px;font-size:12px;color:var(--soft)}
+</style></head><body><div class="wrap">
+<h1>Fog travel: observed / estimated / forecast label</h1>
+<p>Mockup for guide 08 Part B step 5. The label comes from each <code>fog5</code> frame's <code>kind</code>. Drag any scrubber; all three stay in sync. The map is a stand-in (blobs drift east with the wind), not real data. Window shown: 6 h back to 2 h ahead. This is a draft for George to react to; the viewer is untouched.</p>
+<div class="legend">
+<span><span class="sw" style="background:var(--obs)"></span><b>Observed</b>: a satellite scan within 150 s of this frame</span>
+<span><span class="sw" style="background:var(--est)"></span><b>Estimated</b>: between scans or cloud-obscured; carried by wind and blended (<code>interpolated</code>)</span>
+<span><span class="sw" style="background:var(--fc)"></span><b>Forecast</b>: after the newest scan, wind carry only</span>
+</div>
+<div class="row">
+<section><div class="cap"><h2>A. Chip next to the clock</h2><p>Smallest change. Colour, border style and a confidence meter (mean <code>c</code>) sit beside the time readout.</p></div>
+<div class="screen" id="sA"><div class="map"><div class="hills"></div><div class="fog a"></div><div class="fog b"></div><div class="fog c"></div></div><div class="arrow">wind W 5 m/s</div>
+<div class="dock"><div class="readout"><span class="time"></span><span class="chip"><span class="dot"></span><span class="lbl"></span></span><span class="sp"></span><span class="conf" title="satellite confidence"><i></i><i></i><i></i><i></i></span></div>
+<input type="range" min="-360" max="120" step="5" value="-30"><div class="ticks"><span>-6h</span><span>-3h</span><span>now</span><span>+1h</span><span>+2h</span></div></div></div></section>
+
+<section><div class="cap"><h2>B. The scrubber itself carries the kind</h2><p>Rail is solid cyan where observed, hatched amber across gaps, dotted violet for forecast. You see where the data is thin before you scrub there.</p></div>
+<div class="screen" id="sB"><div class="map"><div class="hills"></div><div class="fog a"></div><div class="fog b"></div><div class="fog c"></div></div><div class="arrow">wind W 5 m/s</div>
+<div class="dock"><div class="readout"><span class="time"></span><span class="rel"></span></div>
+<div class="rail"><span class="nowl">now</span><div class="now"></div><div class="thumb"></div><input type="range" min="-360" max="120" step="5" value="-30"></div>
+<div class="under"><span class="lbl k"></span></div></div></div></section>
+
+<section><div class="cap"><h2>C. Banner on the map + frame</h2><p>Most prominent. Observed is plain; estimated and forecast get a dashed frame and a top banner (forecast adds a faint watermark) so a screenshot is never mistaken for an observation.</p></div>
+<div class="screen" id="sC"><div class="map"><div class="hills"></div><div class="fog a"></div><div class="fog b"></div><div class="fog c"></div></div><div class="banner"></div><div class="wm"></div>
+<div class="dock"><div class="readout"><span class="time"></span><span class="rel"></span></div>
+<input type="range" min="-360" max="120" step="5" value="-30"><div class="ticks"><span>-6h</span><span>-3h</span><span>now</span><span>+1h</span><span>+2h</span></div></div></div></section>
+</div>
+<p class="hint">Fake gaps for the demo: -200 to -165 min and -95 to -75 min (cloud above the fog). Frames older than 6 h would show the hourly model with the label "model" (not drawn here).</p>
+</div>
+<script>
+const gaps=[[-200,-165],[-95,-75]];
+const NOW=new Date(Date.UTC(2026,10,15,18,0));
+function kind(t){if(t>0)return'forecast';return gaps.some(g=>t>=g[0]&&t<=g[1])?'estimated':'observed'}
+function conf(t){if(t>0)return Math.max(0,3-Math.ceil(t/30));const k=kind(t);return k==='estimated'?1:4}
+function clock(t){const d=new Date(NOW.getTime()+t*60000);return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'America/Los_Angeles'})}
+function rel(t){if(t===0)return'now';const a=Math.abs(t);const s=(a>=60?Math.floor(a/60)+'h ':'')+(a%60?a%60+'m':'');return (t<0?'-':'+')+s.trim()}
+const col={observed:'var(--obs)',estimated:'var(--est)',forecast:'var(--fc)'};
+const text={observed:'observed',estimated:'estimated',forecast:'forecast'};
+function setFog(s,t){const m=s.querySelector('.map'),dx=(t+360)*0.45;
+ s.querySelectorAll('.fog').forEach((f,i)=>f.style.transform=`translate(${dx*(1+i*.15)}px,${Math.sin(t/90+i)*10}px)`);
+ const k=kind(t);m.classList.toggle('est',k==='estimated');m.classList.toggle('fc',k==='forecast')}
+function render(t){
+ const k=kind(t);
+ document.querySelectorAll('input[type=range]').forEach(i=>i.value=t);
+ // A
+ let s=document.getElementById('sA');setFog(s,t);
+ s.querySelector('.time').textContent=clock(t);
+ const ch=s.querySelector('.chip');ch.className='chip k-'+k;s.querySelector('.lbl').textContent=text[k];
+ s.querySelectorAll('.conf i').forEach((e,i)=>e.classList.toggle('on',i<conf(t)));s.querySelector('.conf').className='conf k-'+k;
+ // B
+ s=document.getElementById('sB');setFog(s,t);
+ s.querySelector('.time').textContent=clock(t);s.querySelector('.rel').textContent=rel(t);
+ const l=s.querySelector('.lbl');l.textContent=text[k]+(k==='forecast'?' (wind carry only)':k==='estimated'?' (between scans)':' (satellite scan)');l.style.color=col[k];
+ // C
+ s=document.getElementById('sC');setFog(s,t);
+ s.querySelector('.time').textContent=clock(t);s.querySelector('.rel').textContent=rel(t);
+ s.className='screen'+(k==='forecast'?' fcframe':k==='estimated'?' estframe':'');
+ const b=s.querySelector('.banner');b.style.display=k==='observed'?'none':'';b.style.color=col[k];b.style.borderColor=col[k];
+ b.innerHTML=text[k]+'<small>'+(k==='forecast'?'no satellite after '+clock(0):'between scans')+'</small>';
+ s.querySelector('.wm').textContent=k==='forecast'?'FORECAST':'';
+}
+// rail segments (B)
+(function(){const r=document.querySelector('#sB .rail');const P=t=>((t+360)/480*100)+'%';
+ const segs=[];let cur=null;for(let t=-360;t<=120;t+=5){const k=kind(t);if(!cur||cur.k!==k){cur={k,a:t,b:t};segs.push(cur)}cur.b=t+5}
+ segs.forEach(g=>{const e=document.createElement('div');e.className='seg';e.style.left=P(g.a);e.style.width=(g.b-g.a)/480*100+'%';
+  if(g.k==='observed')e.style.background='var(--obs)';
+  else if(g.k==='estimated')e.style.background='repeating-linear-gradient(135deg,var(--est) 0 3px,transparent 3px 6px)';
+  else e.style.background='repeating-linear-gradient(90deg,var(--fc) 0 3px,transparent 3px 7px)';
+  r.prepend(e)});
+ r.querySelector('.now').style.left=P(0);r.querySelector('.nowl').style.left=P(0);
+ const th=r.querySelector('.thumb');window._th=t=>th.style.left=P(t)})();
+const old=render;render=function(t){old(t);window._th(t)};
+document.querySelectorAll('input[type=range]').forEach(i=>i.addEventListener('input',e=>render(+e.target.value)));
+render(-30);
+</script></body></html>

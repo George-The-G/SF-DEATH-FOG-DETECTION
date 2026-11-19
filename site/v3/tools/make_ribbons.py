@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[3]
-DATA = Path.home() / "deathfog-data"
+DATA = Path(os.environ.get("DEATHFOG_DATA", ROOT / "data"))
 OUT = ROOT / "site" / "v3" / "data"
 
 SPLIT_M = 25.0         # a lane is split when consecutive samples are further apart than this (points are 10-20 m apart)

@@ -7,13 +7,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-LOCK = Path.home() / "deathfog-data" / "library" / "runs" / "gpu.lock"
+from microclimate.paths import library_dir
+
+LOCK = library_dir() / "runs" / "gpu.lock"
 
 
 def _gpu_ok():
     try:
         import warp as wp
-        return wp.is_cuda_available() and not LOCK.exists()
+        return wp.is_cuda_available() and LOCK.parent.exists() and not LOCK.exists()
     except Exception:
         return False
 

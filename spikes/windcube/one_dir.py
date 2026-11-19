@@ -3,7 +3,7 @@ import os, sys, json, time, numpy as np
 from pathlib import Path
 from microclimate import windrot, wind
 d=float(sys.argv[1]); om=float(sys.argv[2])
-D=Path("C:/Users/George/deathfog-data"); OUT=D/"library_walls"; LK=D/"library/runs/gpu.lock"
+D=Path("C:/Users/George/source/repos/SF-DEATH-FOG-DETECTION/data"); OUT=D/"library_walls"; LK=D/"library/runs/gpu.lock"
 assert not LK.exists(); LK.write_text(str(os.getpid()))
 try:
     solid=np.load(D/"grids/solid_20m.npz")["solid"]

@@ -14,6 +14,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from microclimate import city, weather, wetness  # noqa: E402
+from microclimate.paths import data_dir  # noqa: E402
 
 
 def peak_mb():
@@ -31,11 +32,11 @@ def peak_mb():
     return p.PeakWorkingSetSize / 1e6
 
 
-npz = sys.argv[1] if len(sys.argv) > 1 else str(Path.home().parent / "deathfog-data" / "live" / "live_static.npz")
+D = data_dir()
+npz = sys.argv[1] if len(sys.argv) > 1 else str(D / "live" / "live_static.npz")
 t0 = time.time()
 P = city.load_static(npz)
 t_load = time.time() - t0
-D = Path.home() / "deathfog-data"
 data = weather.fetch(37.76, -122.4, D / "raw" / "weather_37.76_-122.4.json")
 start = datetime(2026, 11, 10, 18, 0, tzinfo=timezone.utc)
 ser = weather.series(data, start, start + timedelta(hours=72), 10)

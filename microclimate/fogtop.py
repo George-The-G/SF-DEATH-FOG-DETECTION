@@ -98,8 +98,9 @@ def sample_bands(x, y, z_target, data_dir=None, x0=540100.0, y0=4171500.0, cell=
     """Tracer of each of the 4 source bands at (x, y, z_target), z_target metres above sea level. Returns [N,4] float32.
     Bilinear over the 4 surrounding 20 m columns; in each column the height is raised to the first fluid cell if the
     target is inside the solid, then interpolated linearly between cell centres (k + 0.5) * cell."""
+    from .paths import data_dir as _default_data_dir
     data_dir = _w().DATA_DIR if data_dir is None else data_dir
-    data_dir = Path.home() / "deathfog-data" if data_dir is None else data_dir
+    data_dir = _default_data_dir() if data_dir is None else data_dir
     kf, fields = _library(data_dir, direction)
     nx, ny, nz = fields[0].shape
     x, y = np.asarray(x, float), np.asarray(y, float)

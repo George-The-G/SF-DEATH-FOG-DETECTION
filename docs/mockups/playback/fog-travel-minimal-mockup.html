@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fog Travel Minimal Label</title>
+<style>
+:root{--bg:#070b14;--panel:#0c1324;--line:rgba(140,170,210,.22);--text:#e6ecf5;--soft:#9db0c9;--cy:#5ef2ff;--cy-ink:#7fe3f0;--warn:#f2c230;
+--est:#ff9f43;--fc:#b79cff;--r-s:4px;--r-c:10px;--sans:Inter,system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 var(--sans);padding:28px max(16px,env(safe-area-inset-left)) 40px}
+.wrap{max-width:900px;margin:0 auto}h1{font-size:22px;margin:0 0 6px}p{margin:0;color:var(--soft);max-width:70ch;font-size:13px}
+.g{display:grid;gap:22px;margin-top:22px}
+.opt h2{font-size:14px;margin:0 0 2px}.opt p{margin-bottom:8px}
+.dockwrap{display:grid;gap:8px}
+.state{font-size:11px;color:var(--soft);margin:6px 0 2px}
+/* replica of the deployed dock: [play] [track] [clock] */
+.dock{width:390px;max-width:100%;background:rgba(9,15,28,.88);border:1px solid var(--line);border-radius:12px;padding:6px 8px;display:flex;align-items:center;gap:6px}
+.pb{width:60px;height:34px;border-radius:var(--r-c);border:1px solid rgba(94,242,255,.6);background:rgba(94,242,255,.1);color:var(--cy-ink);display:grid;place-items:center;flex:none}
+.trk{flex:1;min-width:0;position:relative;height:44px}
+.days{position:absolute;left:0;right:0;top:4px;height:12px;font-size:10px;color:var(--soft)}
+.days span{position:absolute;top:0;padding-left:4px;border-left:1px solid rgba(157,176,201,.45);line-height:11px}
+.rail,.obs,.played,.seg{position:absolute;top:24px;height:6px}
+.rail{left:8px;right:8px;border-radius:var(--r-s);background:repeating-linear-gradient(90deg,rgba(157,176,201,.42) 0 3px,transparent 3px 6px)}
+.obs{left:8px;border-radius:var(--r-s) 0 0 var(--r-s);background:rgba(157,176,201,.55)}
+.played{left:8px;border-radius:var(--r-s);background:var(--cy)}
+.now{position:absolute;top:19px;width:2px;height:16px;margin-left:-1px;background:var(--warn);border-radius:1px}
+.thumb{position:absolute;top:19px;width:16px;height:16px;margin-left:-8px;border-radius:5px;background:#fff;box-shadow:0 0 0 3px rgba(94,242,255,.35)}
+.clock{width:82px;line-height:1.1;flex:none}.clock b{display:block;font:650 19px var(--sans);letter-spacing:-.01em}.clock span{font-size:10.5px;color:var(--soft)}
+/* per-kind tint, used by options */
+.k-observed{--k:var(--cy)}.k-estimated{--k:var(--est)}.k-forecast{--k:var(--fc)}
+/* option 1: thumb only */
+.o1 .thumb{background:#fff;box-shadow:0 0 0 3px color-mix(in srgb,var(--k) 55%,transparent)}
+.o1.k-estimated .thumb{border-radius:50%}.o1.k-forecast .thumb{background:transparent;border:2px solid var(--fc);box-shadow:0 0 0 3px rgba(183,156,255,.3)}
+.o1 .clock span{color:var(--k)}
+/* option 2: rail only (thumb unchanged) */
+.o2 .played{background:var(--cy)}
+.o2.k-estimated .played{background:repeating-linear-gradient(135deg,var(--est) 0 3px,rgba(255,159,67,.25) 3px 6px)}
+.o2.k-forecast .played{background:var(--cy)}
+.o2 .fcseg{position:absolute;top:24px;height:6px;border-radius:0 var(--r-s) var(--r-s) 0;background:repeating-linear-gradient(90deg,var(--fc) 0 4px,transparent 4px 7px)}
+/* option 3: both, thumb ring + rail tail only */
+.o3 .thumb{box-shadow:0 0 0 3px color-mix(in srgb,var(--k) 55%,transparent)}
+.o3 .played{background:var(--k)}
+.o3 .clock span{color:var(--k)}
+</style></head><body><div class="wrap">
+<h1>Minimal fog-travel label: scrub bar only</h1>
+<p>Rebuilt from the deployed beta dock (<code>style.css</code> <code>body.ui2 #trk</code>: dashed rail, grey observed fill, cyan played fill, yellow now tick, square white thumb). Each option changes only the track and thumb, and reuses the existing small line under the clock (<code>#clock-sub</code>, already styled for forecast). Colours: cyan observed, orange estimated, violet forecast. Each option is shown in the three states. I could not load the live site from here, so this is built from the source on v3-dev.</p>
+<div class="g" id="g"></div>
+</div>
+<script>
+const opts=[
+ ['1. Thumb recolours (smallest)','The thumb halo takes the kind colour; estimated turns the thumb round, forecast makes it a hollow ring. Rail untouched. The word under the clock gets the same colour.','o1'],
+ ['2. Rail carries it, thumb unchanged','Played fill is solid cyan when observed, orange hatched when estimated; the future past the yellow now tick becomes a dotted violet rail. Shows where data is thin without reading anything.','o2'],
+ ['3. Thumb and played fill share one colour','The simplest rule: everything the user is touching (halo, played bar, word) is cyan / orange / violet together.','o3']];
+const states=[['observed',0.45,'observed','-1h 20m'],['estimated',0.30,'estimated','-2h 05m'],['forecast',0.72,'forecast','+45m']];
+const NOW=.55;
+document.getElementById('g').innerHTML=opts.map(([t,d,c])=>`<section class="opt"><h2>${t}</h2><p>${d}</p><div class="dockwrap">`+states.map(([k,pos,w,rel])=>{
+ const L=p=>`calc(8px + (100% - 16px)*${p})`;
+ const fc=c==='o2'&&k==='forecast';
+ return `<div><div class="state">${k} state</div><div class="dock"><div class="pb">▶</div>
+ <div class="trk k-${k} ${c}" style="--x:0"><div class="days"><span style="left:0">Sat</span><span style="left:50%">Sun</span></div>
+  <div class="rail"></div><div class="obs" style="width:calc((100% - 16px)*${NOW})"></div>
+  <div class="played" style="width:calc((100% - 16px)*${pos})"></div>
+  ${c==='o2'?`<div class="fcseg" style="left:${L(NOW)};right:8px"></div>`:''}
+  <div class="now" style="left:${L(NOW)}"></div><div class="thumb" style="left:${L(pos)}"></div></div>
+ <div class="clock k-${k} ${c}"><b>${k==='forecast'?'7:15 PM':k==='estimated'?'6:10 AM':'7:00 AM'}</b><span>${w} · ${rel}</span></div></div></div>`}).join('')+`</div></section>`).join('');
+// .trk classes carry --k; clock uses same
+document.querySelectorAll('.dock').forEach(d=>{const k=d.querySelector('.trk');d.className+=' '+k.className.replace('trk','')});
+</script></body></html>

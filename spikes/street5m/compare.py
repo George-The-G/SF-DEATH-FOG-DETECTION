@@ -2,11 +2,15 @@
 Speeds are ratios to the inflow speed (both runs use the same uniform inflow). Heights above the local ground: 7.5 m and 12.5 m (the first fluid layer above ground carries no information in XLB, so the guide's 2 m and 10 m become the second and third layers; the 20 m grid is coarser still: it
 it cannot represent 2.5 m at all; it is sampled at the same absolute position, nearest cell)."""
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 
-DATA = Path.home() / "deathfog-data"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from microclimate.paths import data_dir  # noqa: E402
+
+DATA = data_dir()
 OUT = DATA / "spikes" / "street5m"
 z5 = np.load(OUT / "solid5m.npz")
 solid5, ter, bh = z5["solid"], z5["terrain"], z5["bldg_h"]

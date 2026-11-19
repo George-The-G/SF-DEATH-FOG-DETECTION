@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 import swe  # noqa: E402
 from microclimate import wide  # noqa: E402
 
-OUT = Path(r"C:\Users\George\deathfog-data\scratch")
+OUT = Path(r"C:/Users/George/source/repos/SF-DEATH-FOG-DETECTION/data\scratch")
 data = Path("site/v3/data/terrain_wide.bin").read_bytes()
 spec, H = wide.decode(data)
 # domain 40 x 35 km around the Golden Gate (UTM 10N): x 530000..570000, y 4165000..4200000 (west edge in the ocean)

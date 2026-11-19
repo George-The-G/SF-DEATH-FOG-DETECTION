@@ -5,8 +5,9 @@ from pathlib import Path
 import numpy as np
 
 from microclimate import wide
+from microclimate.paths import raw_dir
 
-RAW = Path.home() / "deathfog-data" / "raw"
+RAW = raw_dir()
 
 
 class TestWide(unittest.TestCase):

@@ -46,13 +46,14 @@ from xlb.operator.stepper import IncompressibleNavierStokesStepper
 from xlb.precision_policy import PrecisionPolicy
 
 from . import geometry as G
+from .paths import data_dir
 
 U_LAT = 0.05
 CORE_CELLS = 30     # 600 m core
 PAD_CELLS = 5       # 100 m padding
 STREET_H = np.arange(1.5, 5.01, 0.5)
 SHELTER_H = np.arange(1.0, 10.0, 2.0)
-DATA = Path.home() / "deathfog-data"
+DATA = data_dir()
 
 
 # ---------------------------------------------------------------- planning

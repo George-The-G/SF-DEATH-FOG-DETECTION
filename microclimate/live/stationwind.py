@@ -51,7 +51,8 @@ def run(argv):
     def opt(name, default=None):
         return argv[argv.index(name) + 1] if name in argv else default
     from pyproj import Transformer
-    data = Path(opt("--data", Path.home() / "deathfog-data"))
+    from ..paths import data_dir
+    data = Path(opt("--data", data_dir()))
     east = "--east" in argv
     out = Path(opt("--out", data / "live" / (C.EAST_FILE if east else C.STATION_WIND_FILE)))
     grids, lib = data / "grids", data / "library"

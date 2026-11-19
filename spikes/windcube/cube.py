@@ -9,7 +9,7 @@ s=np.zeros((nx,ny,nz),bool)
 x0=3*H; yc=ny//2
 s[x0:x0+H, yc-H//2:yc+H//2, 1:1+H]=True   # cube sits on floor k=0
 import os
-LK='C:/Users/George/deathfog-data/library/runs/gpu.lock'
+LK='C:/Users/George/source/repos/SF-DEATH-FOG-DETECTION/data/library/runs/gpu.lock'
 assert not os.path.exists(LK),'gpu busy'
 open(LK,'w').write(str(os.getpid()))
 try:
@@ -18,4 +18,4 @@ try:
   print(d, time.time()-t)
 finally:
   os.remove(LK)
-np.savez_compressed(f"C:/Users/George/deathfog-data/scratch/windcube_{tag}.npz",u=u,solid=s)
+np.savez_compressed(f"C:/Users/George/source/repos/SF-DEATH-FOG-DETECTION/data/scratch/windcube_{tag}.npz",u=u,solid=s)

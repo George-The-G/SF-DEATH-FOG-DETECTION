@@ -3,8 +3,9 @@ import sys
 from pathlib import Path
 
 from .config import load
+from .paths import data_dir
 
-DATA = Path.home() / "deathfog-data"
+DATA = data_dir()
 
 
 def main(argv):

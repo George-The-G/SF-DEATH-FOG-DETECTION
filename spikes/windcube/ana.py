@@ -1,6 +1,6 @@
 import sys,numpy as np
 tag=sys.argv[1]; H=int(sys.argv[2]) if len(sys.argv)>2 else 20
-d=np.load(f"C:/Users/George/deathfog-data/scratch/windcube_{tag}.npz"); u=d["u"].astype(float); s=d["solid"]
+d=np.load(f"C:/Users/George/source/repos/SF-DEATH-FOG-DETECTION/data/scratch/windcube_{tag}.npz"); u=d["u"].astype(float); s=d["solid"]
 nx,ny,nz=s.shape; yc=ny//2; x1=3*H+H
 # wind from 270 => flow toward +x; ux = -sin(270)*U = +1
 ux=u[0]
