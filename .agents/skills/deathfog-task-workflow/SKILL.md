@@ -32,8 +32,12 @@ For each approved (`ready`) task in **Wave 1** (one agent per task when running 
    .\.venv\Scripts\python.exe tools/task.py start <id>
    ```
    This enforces the pre-build gate (`brainstorm`/`plan` tasks are blocked), checks dependencies and path/GPU collisions, creates branch `feat/<id>-<slug>` + worktree `_worktrees/wt_<id>-<slug>`, and prints live `codemap.py` outlines for `owned_paths`.
-2. **Delegate implementation to a cheaper/faster model when well-planned:**
-   - Generate a lean execution prompt with `.\.venv\Scripts\python.exe tools/task.py resume <id> --worker` (or click **Copy Worker Brief** in the Task Viewer): use `flash` for mechanical/UI/test edits and `hydrogen` for multi-file/logic work.
+2. **Delegate implementation to the right worker model (do NOT code directly on Neon/Opus when `PLAN.md` is approved):**
+   - Generate a lean execution brief with `.\.venv\Scripts\python.exe tools/task.py resume <id> --worker` (or click **Copy Worker Brief** in the Task Viewer).
+   - **Exact tool call by `exec_tier` (in Antigravity):**
+     - `exec_tier: flash` -> `invoke_subagent(TypeName="self", Model="flash", ...)` (best for mechanical/UI/test/doc edits).
+     - `exec_tier: hydrogen` -> `swarm(action="add", name="worker-<id>", model="Gemini 4 Hydrogen (Medium)", brief=<worker brief>)` (`invoke_subagent` only exposes `flash_lite|flash|pro`, so always use `swarm` to pin Hydrogen or Claude Sonnet by name).
+     - `exec_tier: standard` / `pro` -> `swarm(action="add", model="Claude Sonnet 5.5 (Medium)" | "Gemini 4 Neon (Medium)", ...)` or direct execution when architecture/subtle debugging requires it.
    - Iterate with targeted tests first (`pytest tests/test_<area>.py`), then run full `tools/task.py verify <id>` once before reporting.
    - `HANDOFF.md` is **optional & overwrite-only** — do not keep a running log; only write a short sticky note if pausing mid-task with non-obvious dead ends.
    - Put any HTML/CSS/shader mockups in `tasks/<id>-<slug>/mockups/` (preview locally with `.\.venv\Scripts\python.exe tools/preview.py --serve --root tasks/<id>-<slug>/mockups`).
@@ -55,6 +59,6 @@ Once `verify.json` has `"ok": true` matching `HEAD`:
   ```
 - **Or merge directly to Beta & clean up the worktree:**
   ```powershell
-  .\.venv\Scripts\python.exe tools/task.py finish <id> --merge
+  .\.venv\Scripts\python.exe tools/task.py finish <id> --merge --deploy-beta
   ```
-  Add `--deploy-beta` to push `v3-dev` and trigger `gh workflow run collect.yml --ref main`. Never promote to public (`/v3/` or `PROMOTED`) without explicit user approval in chat.
+  Add `--sync-main` if the task touched any shared agent/tooling files (`AGENTS.md`, `.agents/skills/*`, `tools/task.py`, `tools/task_viewer/`). Tooling-only tasks automatically skip `collect.yml`. Never promote runtime viewer/physics changes to public (`/v3/` or `PROMOTED`) without explicit user approval in chat.

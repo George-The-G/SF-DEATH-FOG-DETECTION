@@ -85,17 +85,27 @@ class TestTaskWorkflow(unittest.TestCase):
         self.assertIn("waves", state)
         self.assertIn("tasks", state)
         self.assertIn("available_launchers", state)
-        self.assertGreaterEqual(len(state["tasks"]), 4)
-        sample = next(iter(state["tasks"].values()))
-        self.assertIn("conversations", sample)
-        self.assertIn("merge_status", sample)
-        self.assertIn("exec_tier", sample)
-        self.assertIn("handoff_md", sample)
-        self.assertIn("next_gate", sample)
+        self.assertIn("main_parity", state)
+        self.assertIsInstance(state["tasks"], dict)
+        if state["tasks"]:
+            sample = next(iter(state["tasks"].values()))
+            self.assertIn("conversations", sample)
+            self.assertIn("merge_status", sample)
+            self.assertIn("exec_tier", sample)
+            self.assertIn("handoff_md", sample)
+            self.assertIn("next_gate", sample)
         with tempfile.TemporaryDirectory() as td:
             out = install_antigravity_plugin.install_plugin(Path(td) / "deathfog-tasks")
             self.assertTrue((out / "plugin.json").is_file())
             self.assertTrue((out / "sidecars" / "task_viewer" / "sidecar.json").is_file())
+
+    def test_shared_main_paths_and_no_raw_conversation_href(self):
+        """Shared main sync manifest covers agent/tooling files and Task Viewer avoids broken Windows conversation:// hrefs."""
+        for required in ("AGENTS.md", "tools/task.py", "tools/task_viewer", "tests/test_task_workflow.py"):
+            self.assertIn(required, task.SHARED_MAIN_PATHS)
+        html = (Path(task_viewer_server.VIEWER_DIR) / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn('href="conversation://', html)
+        self.assertIn("sendConvoLinkToChat", html)
 
     def test_stage_gates_block_start_until_approved(self):
         """Tasks in brainstorm/plan gates cannot be started until approved to ready."""

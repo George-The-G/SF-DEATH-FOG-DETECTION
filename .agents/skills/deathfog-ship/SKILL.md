@@ -20,15 +20,13 @@ Sites: `https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/` (public) and 
    - Viewer headless check: `.\.venv\Scripts\python.exe tools/preview.py --check "?beta=1&night=2026-10-01"` (and `--phone`). Confirm `"ok": true` and `errors: []`.
    - Interactive preview: `.\.venv\Scripts\python.exe tools/preview.py --serve` (`http://127.0.0.1:8130/?beta=1`) or `--root tasks/<id>-<slug>/mockups`.
 
-## 2. Deploy to Beta (`v3-dev`)
-1. Merge the verified feature branch into `v3-dev` (`.\.venv\Scripts\python.exe tools/task.py finish <id> --merge --deploy-beta`) or manually:
-   - Merge into `v3-dev` and re-run `python -m pytest` and `node --test tests_js/*.mjs`.
-   - Push to `origin`: `git push origin v3-dev` (never force-push).
-   - Trigger the GitHub Actions deploy:
-     - `gh workflow run collect.yml --ref main`
-     - `gh run list --workflow collect.yml --limit 1`
-     - `gh run watch <id> --exit-status`
-2. Verify published status (append `?t=<timestamp>` to bust cache):
+## 2. Deploy to Beta (`v3-dev`) & Sync Shared Agent/Tooling Files to `main`
+1. Merge the verified feature branch into `v3-dev` with one command:
+   - Runtime/viewer feature: `.\.venv\Scripts\python.exe tools/task.py finish <id> --merge --deploy-beta`
+   - Agent/tooling changes (`AGENTS.md`, `.agents/skills/*`, `tools/task.py`, `tools/task_viewer/`): `.\.venv\Scripts\python.exe tools/task.py finish <id> --merge --deploy-beta --sync-main`
+   - Standalone parity check/sync anytime: `.\.venv\Scripts\python.exe tools/task.py sync-main --check` (or `--push` to sync `SHARED_MAIN_PATHS` from `v3-dev` to `origin/main` in an isolated worktree after running isolated tests — never hand-copy or cherry-pick onto `main`).
+   - Note: `finish --deploy-beta` automatically skips `collect.yml` for tooling/docs-only tasks (pass `--force-deploy` to override).
+2. If `collect.yml` was triggered, verify published status (append `?t=<timestamp>` to bust cache):
    - `v3/live_beta/status.json`: `ok: true`, `generated_iso` updated, beta switches listed.
    - `v3/live/status.json`: `ok: true`, no unapproved beta-only switches leaked to public.
 

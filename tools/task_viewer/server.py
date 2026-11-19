@@ -162,6 +162,7 @@ def build_state() -> dict:
         "repo_root": str(main_root),
         "active_task_id": active_task_id,
         "available_launchers": detect_launchers(),
+        "main_parity": task_cli.shared_main_drift(main_root),
         "waves": waves,
         "tasks": tasks_out,
     }
@@ -177,6 +178,9 @@ def run_action(action_or_payload: str | dict, task_id: str = "") -> dict:
     else:
         payload = {"action": action_or_payload, "task_id": task_id}
         action = str(action_or_payload)
+
+    if action == "sync_main":
+        return task_cli.sync_shared_to_main(push=bool(payload.get("push", True)))
 
     state = build_state()
     info = state["tasks"].get(task_id)

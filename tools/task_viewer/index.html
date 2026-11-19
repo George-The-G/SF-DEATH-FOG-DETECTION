@@ -193,7 +193,8 @@
 <body>
 <header>
   <h1>Death Fog — Task Viewer</h1>
-  <div style="display:flex;gap:8px;align-items:center;">
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <span id="parity-badge"></span>
     <span class="pill" id="sync-status">Loading...</span>
     <button onclick="refresh(true)">Refresh</button>
   </div>
@@ -226,8 +227,44 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+function getSidecarBridge() {
+  if (window.sidecar) return window.sidecar;
+  try {
+    if (window.parent && window.parent !== window && window.parent.sidecar) return window.parent.sidecar;
+  } catch (_) {}
+  return null;
+}
+
 function hasSidecarChat() {
-  return Boolean(window.sidecar && window.sidecar.agent && typeof window.sidecar.agent.sendMessage === 'function');
+  const sc = getSidecarBridge();
+  return Boolean(sc && sc.agent && typeof sc.agent.sendMessage === 'function');
+}
+
+function renderParityBadge() {
+  const el = document.getElementById('parity-badge');
+  if (!el || !STATE || !STATE.main_parity) return;
+  const mp = STATE.main_parity;
+  if (!mp.ok) {
+    el.innerHTML = '';
+    return;
+  }
+  if (mp.in_sync) {
+    el.innerHTML = '<span class="pill beta" title="Shared agent/tooling files match origin/main">main ↔ beta ✓</span>';
+  } else {
+    const list = (mp.drifted || []).join(', ');
+    el.innerHTML = `<span class="pill in-progress" title="Drifted shared files: ${esc(list)}">main drift (${mp.drifted.length})</span> <button class="gate" style="padding:3px 8px;font-size:11px;" onclick="runSyncMain()" title="Sync shared agent/tooling files to origin/main with isolated tests">Sync → main</button>`;
+  }
+}
+
+async function runSyncMain() {
+  showLog('Syncing shared agent/tooling files from v3-dev to origin/main (with isolated tests)...');
+  try {
+    const res = await postAction({ action: 'sync_main', push: true });
+    showLog((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.error || JSON.stringify(res)));
+    await refresh(true);
+  } catch (e) {
+    showLog('Error: ' + e.message);
+  }
 }
 
 function showLog(msg) {
@@ -282,6 +319,7 @@ async function refresh(manual = false) {
     if (SELECTED && !STATE.tasks[SELECTED]) SELECTED = STATE.active_task_id;
     const modeTag = hasSidecarChat() ? 'antigravity' : 'live';
     document.getElementById('sync-status').textContent = `${Object.keys(STATE.tasks).length} tasks · ${modeTag}`;
+    renderParityBadge();
     renderSidebar();
     renderDetail();
   } catch (e) {
@@ -409,7 +447,7 @@ async function sendResumeToChat() {
       return;
     }
     if (hasSidecarChat()) {
-      await window.sidecar.agent.sendMessage(res.prompt);
+      await getSidecarBridge().agent.sendMessage(res.prompt);
       showLog(`Sent resume prompt (${res.prompt.length} chars) to active Antigravity chat.`);
     } else {
       await copyText(res.prompt);
@@ -424,15 +462,15 @@ async function sendConvoLinkToChat(convId, label) {
   const md = `[Open Task #${SELECTED} Convo: ${label || convId}](conversation://${convId})`;
   if (hasSidecarChat()) {
     try {
-      await window.sidecar.agent.sendMessage(`Jump to linked conversation: ${md}`);
-      showLog(`Sent clickable conversation link to active chat: ${convId}`);
+      await getSidecarBridge().agent.sendMessage(`Jump to linked conversation: ${md}`);
+      showLog(`Sent clickable Antigravity conversation link to active chat (click the link in chat to jump): ${convId}`);
       return;
     } catch (e) {
       showLog('Sidecar send failed: ' + e.message);
     }
   }
-  await copyText(`conversation://${convId}`);
-  showLog(`Copied conversation://${convId} to clipboard.`);
+  await copyText(md);
+  showLog(`Copied clickable Antigravity link to clipboard (paste in chat to jump — avoids Windows protocol dialog): ${md}`);
 }
 
 async function submitLinkConvo(e) {
@@ -488,11 +526,8 @@ function renderConversations(t) {
   if (p) {
     if (p.tool === 'antigravity') {
       primaryHtml = `
-        <a class="btn primary" href="conversation://${esc(p.id)}" title="Open linked Antigravity conversation in left sidebar">
-          Open Antigravity Convo · ${esc(p.label || p.id.slice(0, 8))}
-        </a>
-        <button onclick="sendConvoLinkToChat('${esc(p.id)}', '${esc(p.label || '')}')" title="Send clickable conversation:// link to active chat">
-          ${hasSidecarChat() ? 'Jump via Chat' : 'Copy Convo Link'}
+        <button class="primary" onclick="sendConvoLinkToChat('${esc(p.id)}', '${esc(p.label || '')}')" title="Send clickable Antigravity conversation link to active chat (or copy markdown link)">
+          ${hasSidecarChat() ? 'Jump to Antigravity Convo' : 'Copy Antigravity Convo Link'} · ${esc(p.label || p.id.slice(0, 8))}
         </button>`;
     } else if (p.tool === 'claude') {
       primaryHtml = `
@@ -506,7 +541,7 @@ function renderConversations(t) {
 
   const histHtml = hist.map(it => {
     const openBtn = it.tool === 'antigravity'
-      ? `<a class="btn" href="conversation://${esc(it.id)}">Open</a>`
+      ? `<button onclick="sendConvoLinkToChat('${esc(it.id)}', '${esc(it.label || '')}')">${hasSidecarChat() ? 'Jump' : 'Copy Link'}</button>`
       : (it.tool === 'claude'
         ? `<button ${hasClaude ? '' : 'disabled'} onclick="runAction('launch_claude', { session_id: '${esc(it.id)}' })">Resume</button>`
         : '');
