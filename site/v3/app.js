@@ -449,7 +449,7 @@ let ZONES = [];
 /* no route selected: whole-city state (chip says "Whole city", route outline and beacons off, flyover button disabled) */
 function clearRoute(goCity = true) {
   stopFly(); selRoute = -1;
-  ROUTES.forEach((r) => { r.hi.visible = false; r.dim.visible = true; });
+  ROUTES.forEach((r) => { r.hi.visible = false; r.dim.visible = !useRib; });
   if (rib) rib.setRoute(-1);
   if (routeBuf) { routeBuf.fill(0); routeAttr.needsUpdate = true; }
   beacons.forEach((b) => { b.visible = false; }); labelEls.forEach((l) => { l.on = false; l.el.style.display = 'none'; });
@@ -470,7 +470,7 @@ function setRouteHighlight(i) {
 function selectRoute(i, flyCam = true) {
   const R = ROUTES[i]; if (!R) return;
   stopFly(); selRoute = i;
-  ROUTES.forEach((r, k) => { r.hi.visible = k === i; r.dim.visible = k !== i; });
+  ROUTES.forEach((r, k) => { r.hi.visible = !useRib && k === i; r.dim.visible = !useRib && k !== i; });
   setRouteHighlight(i);
   [R.def.start, R.def.end].forEach((e, j) => {
     const p = lift(e.p); beacons[j].position.set(p.x, p.y + 350, p.z); beacons[j].visible = true;
@@ -719,7 +719,13 @@ if (NEWPB) {
     spdSync();
     // settings button: above the dock, left of the fog (cloud) button when there is one (right edge otherwise)
     const placeGear = () => { const g = $('gear'), d = $('dock'); if (!g || !d) return; g.style.bottom = Math.max(12, innerHeight - d.getBoundingClientRect().top + 10) + 'px'; g.style.right = document.getElementById('fogbtn') ? '56px' : '12px'; };
-    setInterval(placeGear, 300); addEventListener('resize', placeGear);
+    const dockEl = $('dock');
+    if (dockEl && typeof ResizeObserver === 'function') new ResizeObserver(placeGear).observe(dockEl);
+    if (typeof MutationObserver === 'function') {
+      const mo = new MutationObserver(() => { placeGear(); if (document.getElementById('fogbtn')) mo.disconnect(); });
+      mo.observe(document.body, { childList: true });
+    }
+    addEventListener('resize', placeGear); placeGear();
   }
 }
 
@@ -765,7 +771,7 @@ function setMode(r) {
     G = { n: N, x, y: elevY, z, mask: pts.mask, cls: new Uint8Array(N), st: pts.st, side: pts.side, names: pts.streets };
     wetNow = wetAttr.array;
   }
-  ROUTES.forEach((R, k) => { R.bins = null; R.grp = null; if (!r) { R.hi.visible = k === selRoute; R.dim.visible = k !== selRoute; } });
+  ROUTES.forEach((R, k) => { R.bins = null; R.grp = null; R.hi.visible = !r && k === selRoute; R.dim.visible = !r && k !== selRoute; });
   if (selRoute >= 0) setRouteHighlight(selRoute);
   wetDirty = true; document.body.classList.toggle('ribbons', r);
 }
@@ -976,7 +982,7 @@ function keepCameraAboveGround() {
 
 /* ------------------------------------------------------------------ beta performance (Settings > Performance), see docs/perf/README.md */
 let lastMoveT = 0, camSig = '';
-const keepDrawing = () => playing || flight || fly || BUSES || (FOGV ? (fog.busy ? fog.busy() : false) : false) || (!FOGV && $('fogtoggle').checked);
+const keepDrawing = () => playing || flight || fly || (BUSES && (BUSES.isMoving ? BUSES.isMoving() : true)) || (FOGV ? (fog.busy ? fog.busy() : false) : false) || (!FOGV && $('fogtoggle').checked);
 const moving = (ts) => { // the camera moved this frame (orbit, damping, flights, fly-along): compared by value, so it does not depend on events
   const p = camera.position, t = controls.target, sig = p.x.toFixed(1) + p.y.toFixed(1) + p.z.toFixed(1) + t.x.toFixed(1) + t.z.toFixed(1);
   const m = sig !== camSig || !!flight || (fly && !fly.paused); camSig = sig; if (m) invalidate(2); return m;
@@ -1016,8 +1022,9 @@ function dynResTick(ts) {
 }
 /* Smooth edges: the scene goes into a 4x multisampled target and is blitted to the canvas with the sRGB conversion (the same path the fog pass uses). */
 let aaRT = null, aaScene = null, aaCam = null;
+const _aaSz = new THREE.Vector2();
 function aaRender() {
-  const gl = renderer.getContext(), sz = renderer.getDrawingBufferSize(new THREE.Vector2());
+  const gl = renderer.getContext(), sz = renderer.getDrawingBufferSize(_aaSz);
   if (!aaRT || aaRT.width !== sz.x || aaRT.height !== sz.y) {
     if (aaRT) aaRT.dispose();
     aaRT = new THREE.WebGLRenderTarget(sz.x, sz.y, { samples: Math.min(4, gl.getParameter(gl.MAX_SAMPLES) || 0), type: THREE.UnsignedByteType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: true });
@@ -1098,8 +1105,6 @@ function frame(ts) {
   if (useRib) {
     rib.setLod(dist);
     if (rib2) { rib2.setLod(dist); rib2.uniforms.uDistFade.value = 1; } // live: city streets stay drawn in the whole-city view
-    // the ribbon shader draws every route (dashed unless selected), so the old solid route tubes stay hidden
-    ROUTES.forEach((r) => { r.hi.visible = false; r.dim.visible = false; });
   }
   const bs = clamp(dist / 450, 1, 80); beacons.forEach((b) => b.scale.set(bs * 1.5, 1, bs * 1.5));
   const showLbl = dist < 3500;
