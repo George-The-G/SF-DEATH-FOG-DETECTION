@@ -78,6 +78,7 @@ VALID_EXEC_TIERS = ("flash", "hydrogen", "standard", "pro")
 PRE_BUILD_GATES = {"backlog", "brainstorm", "plan"}
 GATE_NEXT = {"backlog": "brainstorm", "brainstorm": "plan", "plan": "ready"}
 DONE_STATUSES = {"beta", "done"}
+_CONV_ID_RE = re.compile(r"^[A-Za-z0-9_-]{4,128}$")
 
 
 # @sec: frontmatter — Zero-dependency YAML frontmatter parser and serializer for TASK.md
@@ -155,6 +156,7 @@ def dump_task_md(meta: dict, body: str) -> str:
         "plan_approved_at",
         "plan_approved_by",
         "plan_approved_sha",
+        "token_usage",
         "branch",
         "switch",
         "depends_on",
@@ -887,6 +889,15 @@ def cmd_finish(args: argparse.Namespace) -> int:
         print(f"Cannot finish task {tid}: verify.json SHA ({report.get('git_sha')}) != HEAD ({head_sha}). Re-run verify after committing.")
         return 1
 
+    # Collect zero-token local Antigravity transcript usage before staging TASK.md & evidence
+    tdir = wt_root / "tasks" / f"{tid}-{slug}"
+    usage = collect_token_usage(tdir)
+    if usage["totals"]["turns"] > 0:
+        ev_dir = tdir / "evidence"
+        ev_dir.mkdir(parents=True, exist_ok=True)
+        (ev_dir / "usage.json").write_text(json.dumps(usage, indent=2) + "\n", encoding="utf-8")
+        meta["token_usage"] = usage["summary"]
+
     # Update TASK.md status (and record merge metadata when merging to v3-dev)
     new_status = "beta" if args.merge else "review"
     meta["status"] = new_status
@@ -1274,6 +1285,116 @@ def set_primary_conversation(task_dir: Path, conv_id: str) -> dict:
     if not any(it.get("id") == cid for it in cur["items"]):
         raise ValueError(f"Conversation '{cid}' is not linked to this task.")
     return _save_conversations(task_dir, cid, cur["items"])
+
+
+def _format_tok_count(count: int) -> str:
+    """Format an integer token count into a compact k/M string."""
+    if count >= 1_000_000:
+        return f"{count / 1_000_000:.2f}M"
+    if count >= 1_000:
+        return f"{count / 1_000:.1f}k"
+    return str(count)
+
+
+def _safe_int(val) -> int:
+    """Convert a JSON token count field to a non-negative int safely."""
+    try:
+        return max(0, int(val or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def collect_token_usage(task_dir: Path, *, brain_root: Path | None = None) -> dict:
+    """Aggregate per-model token usage from local Antigravity `transcript.jsonl` logs at zero LLM cost."""
+    conv_data = load_conversations(task_dir)
+    root_dir = (brain_root if brain_root is not None else (Path.home() / ".gemini" / "antigravity" / "brain")).resolve()
+
+    totals = {"input_tokens": 0, "cache_read_tokens": 0, "output_tokens": 0, "turns": 0}
+    by_model: dict[str, dict[str, int]] = {}
+    conversations: dict[str, dict] = {}
+    seen_ids: set[str] = set()
+
+    for item in conv_data.get("items") or []:
+        tool = str(item.get("tool") or "antigravity").strip().lower()
+        if tool != "antigravity":
+            continue
+        cid = str(item.get("id") or "").strip()
+        if not cid or cid in seen_ids or not _CONV_ID_RE.match(cid):
+            continue
+        seen_ids.add(cid)
+
+        brain_dir = (root_dir / cid).resolve()
+        if root_dir not in brain_dir.parents:
+            continue
+        transcript = brain_dir / ".system_generated" / "logs" / "transcript.jsonl"
+        if not transcript.is_file():
+            continue
+
+        conv_stats = {
+            "label": str(item.get("label") or ""),
+            "input_tokens": 0,
+            "cache_read_tokens": 0,
+            "output_tokens": 0,
+            "turns": 0,
+        }
+        try:
+            with transcript.open("r", encoding="utf-8", errors="replace") as fh:
+                for raw_line in fh:
+                    ln = raw_line.strip()
+                    if not ln:
+                        continue
+                    try:
+                        obj = json.loads(ln)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(obj, dict) or obj.get("type") != "PLANNER_RESPONSE":
+                        continue
+                    model = str(obj.get("model") or "unknown").strip() or "unknown"
+                    inp = _safe_int(obj.get("input_tokens"))
+                    cache = _safe_int(obj.get("cache_read_tokens"))
+                    out = _safe_int(obj.get("output_tokens"))
+
+                    totals["input_tokens"] += inp
+                    totals["cache_read_tokens"] += cache
+                    totals["output_tokens"] += out
+                    totals["turns"] += 1
+
+                    m_stats = by_model.setdefault(
+                        model,
+                        {"input_tokens": 0, "cache_read_tokens": 0, "output_tokens": 0, "turns": 0},
+                    )
+                    m_stats["input_tokens"] += inp
+                    m_stats["cache_read_tokens"] += cache
+                    m_stats["output_tokens"] += out
+                    m_stats["turns"] += 1
+
+                    conv_stats["input_tokens"] += inp
+                    conv_stats["cache_read_tokens"] += cache
+                    conv_stats["output_tokens"] += out
+                    conv_stats["turns"] += 1
+        except OSError:
+            continue
+
+        if conv_stats["turns"] > 0:
+            conversations[cid] = conv_stats
+
+    n_convos = len(conversations)
+    convo_label = "1 convo" if n_convos == 1 else f"{n_convos} convos"
+    summary = (
+        f"in:{_format_tok_count(totals['input_tokens'])} "
+        f"cache:{_format_tok_count(totals['cache_read_tokens'])} "
+        f"out:{_format_tok_count(totals['output_tokens'])} "
+        f"({convo_label})"
+    ) if totals["turns"] > 0 else ""
+
+    return {
+        "collected_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "convo_count": n_convos,
+        "summary": summary,
+        "totals": totals,
+        "by_model": by_model,
+        "conversations": conversations,
+    }
 
 
 def git_summary(checkout_root: Path) -> dict:

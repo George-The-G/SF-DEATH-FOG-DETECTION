@@ -462,6 +462,145 @@ class TestTaskWorkflow(unittest.TestCase):
         self.assertNotIn("renderMergeBar", html)
         self.assertIn("LAST_STATE_JSON", html)
         self.assertIn("preview_conversation", html)
+        self.assertIn("Token Usage Breakdown", html)
+
+    def test_collect_token_usage_aggregates_local_transcripts(self):
+        """collect_token_usage sums PLANNER_RESPONSE tokens per model/convo, rejects traversal, and skips missing logs."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _, tdir = self._make_sample_task(root, "091", status="in-progress", fill_plan=True)
+            brain_root = root / "brain"
+
+            task.link_conversation(tdir, "conv-neon-091", tool="antigravity", label="Neon planner")
+            task.link_conversation(tdir, "conv-hydro-091", tool="antigravity", label="Hydrogen worker")
+            task.link_conversation(tdir, "conv-missing-091", tool="antigravity", label="Missing log")
+            task.link_conversation(tdir, "claude-sess-091", tool="claude", label="Claude session")
+            # Inject an unsafe path-traversal ID directly into conversations.json
+            cpath = tdir / "conversations.json"
+            raw_conv = json.loads(cpath.read_text(encoding="utf-8"))
+            raw_conv["items"].append({"id": "../evil-escape", "tool": "antigravity", "label": "Bad"})
+            cpath.write_text(json.dumps(raw_conv), encoding="utf-8")
+
+            neon_logs = brain_root / "conv-neon-091" / ".system_generated" / "logs"
+            neon_logs.mkdir(parents=True)
+            (neon_logs / "transcript.jsonl").write_text(
+                "\n".join([
+                    json.dumps({"type": "USER_INPUT", "content": "Scope it", "input_tokens": 99999}),
+                    "{malformed json line",
+                    json.dumps({
+                        "type": "PLANNER_RESPONSE",
+                        "model": "gemini-4-neon-medium",
+                        "input_tokens": 1200,
+                        "cache_read_tokens": 800,
+                        "output_tokens": 150,
+                    }),
+                    json.dumps({
+                        "type": "PLANNER_RESPONSE",
+                        "model": "gemini-4-neon-medium",
+                        "input_tokens": 1800,
+                        "cache_read_tokens": 1200,
+                        "output_tokens": 250,
+                    }),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            hydro_logs = brain_root / "conv-hydro-091" / ".system_generated" / "logs"
+            hydro_logs.mkdir(parents=True)
+            (hydro_logs / "transcript.jsonl").write_text(
+                json.dumps({
+                    "type": "PLANNER_RESPONSE",
+                    "model": "gemini-4-hydrogen-medium",
+                    "input_tokens": 5000,
+                    "cache_read_tokens": 3000,
+                    "output_tokens": 600,
+                }) + "\n",
+                encoding="utf-8",
+            )
+
+            usage = task.collect_token_usage(tdir, brain_root=brain_root)
+            self.assertEqual(usage["convo_count"], 2)
+            self.assertEqual(usage["totals"], {
+                "input_tokens": 8000,
+                "cache_read_tokens": 5000,
+                "output_tokens": 1000,
+                "turns": 3,
+            })
+            self.assertEqual(usage["by_model"]["gemini-4-neon-medium"], {
+                "input_tokens": 3000,
+                "cache_read_tokens": 2000,
+                "output_tokens": 400,
+                "turns": 2,
+            })
+            self.assertEqual(usage["by_model"]["gemini-4-hydrogen-medium"], {
+                "input_tokens": 5000,
+                "cache_read_tokens": 3000,
+                "output_tokens": 600,
+                "turns": 1,
+            })
+            self.assertEqual(set(usage["conversations"].keys()), {"conv-neon-091", "conv-hydro-091"})
+            self.assertIn("in:8.0k", usage["summary"])
+            self.assertIn("(2 convos)", usage["summary"])
+
+            # Verify dump_task_md / parse_task_md round-trips token_usage cleanly
+            tfile = tdir / "TASK.md"
+            meta, body = task.parse_task_md(tfile)
+            meta["token_usage"] = usage["summary"]
+            tfile.write_text(task.dump_task_md(meta, body), encoding="utf-8")
+            reloaded, _ = task.parse_task_md(tfile)
+            self.assertEqual(reloaded["token_usage"], usage["summary"])
+
+            # Verify cmd_finish writes evidence/usage.json and populates meta["token_usage"]
+            (tdir / "evidence" / "verify.json").write_text(
+                json.dumps({"ok": True, "git_sha": "abc123def456"}),
+                encoding="utf-8",
+            )
+            fake_head = argparse.Namespace(returncode=0, stdout="abc123def456\n", stderr="")
+            with mock.patch.object(task, "find_task", return_value=(meta, tfile, root)), \
+                 mock.patch.object(task, "_run", return_value=fake_head), \
+                 mock.patch.object(task, "collect_token_usage", return_value=usage):
+                rc = task.cmd_finish(argparse.Namespace(
+                    id="091", merge=False, allow_stale=False, deploy_beta=False, sync_main=False
+                ))
+            self.assertEqual(rc, 0)
+            self.assertTrue((tdir / "evidence" / "usage.json").is_file())
+            finished_meta, _ = task.parse_task_md(tfile)
+            self.assertEqual(finished_meta["token_usage"], usage["summary"])
+
+    def test_viewer_state_exposes_usage_json(self):
+        """build_state() exposes evidence/usage.json as `usage` and populates `token_usage`."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "090", status="beta", fill_plan=True)
+            tfile = tdir / "TASK.md"
+            usage_payload = {
+                "convo_count": 1,
+                "summary": "in:12.0k cache:8.0k out:1.5k (1 convo)",
+                "totals": {"input_tokens": 12000, "cache_read_tokens": 8000, "output_tokens": 1500, "turns": 4},
+                "by_model": {
+                    "gemini-4-hydrogen-medium": {
+                        "input_tokens": 12000,
+                        "cache_read_tokens": 8000,
+                        "output_tokens": 1500,
+                        "turns": 4,
+                    }
+                },
+                "conversations": {},
+            }
+            (tdir / "evidence" / "usage.json").write_text(json.dumps(usage_payload), encoding="utf-8")
+
+            with mock.patch.object(task, "MAIN_ROOT", root), \
+                 mock.patch.object(task, "load_all_tasks", return_value={"090": (meta, tfile)}), \
+                 mock.patch.object(task, "active_worktree_tasks", return_value={}), \
+                 mock.patch.object(task, "shared_main_drift", return_value={"ok": True, "drifted": []}), \
+                 mock.patch.object(task, "merge_status", return_value={}), \
+                 mock.patch.object(task_viewer_server, "detect_launchers", return_value={}):
+                state = task_viewer_server.build_state()
+
+            self.assertIn("090", state["tasks"])
+            task_state = state["tasks"]["090"]
+            self.assertEqual(task_state["usage"], usage_payload)
+            self.assertEqual(task_state["token_usage"], usage_payload["summary"])
 
 
 if __name__ == "__main__":

@@ -255,6 +255,18 @@
   .modal-hdr { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
   .turn { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; margin-bottom: 6px; font-size: 12px; }
   .artifact-box { background: #0b0e14; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+
+  /* Token Usage Breakdown Card */
+  .usage-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 10px;
+  }
+  .usage-card-hdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .usage-tbl { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11.5px; }
+  .usage-tbl th, .usage-tbl td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+  .usage-tbl th { font-size: 10.5px; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .usage-tbl td.num, .usage-tbl th.num { text-align: right; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  .usage-tbl tbody tr.usage-total td { border-bottom: none; font-weight: 600; color: var(--cyan); }
 </style>
 </head>
 <body>
@@ -837,6 +849,77 @@ function getPersistentMockupIframe(src) {
   return MOCKUP_IFRAME_NODE;
 }
 
+function formatTok(n) {
+  const num = Number(n) || 0;
+  if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+  return String(num);
+}
+
+function buildUsageTooltip(usage) {
+  const byModel = usage && usage.by_model;
+  if (!byModel || typeof byModel !== 'object') return '';
+  return Object.entries(byModel)
+    .map(([m, s]) => `${m}: ${formatTok(s.input_tokens)} in / ${formatTok(s.cache_read_tokens)} cache / ${formatTok(s.output_tokens)} out`)
+    .join(' · ');
+}
+
+function renderUsageCard(t) {
+  const u = t.usage;
+  if (u && u.by_model && Object.keys(u.by_model).length) {
+    const totals = u.totals || {};
+    const convos = Number(u.convo_count || 0);
+    const convoTxt = convos === 1 ? '1 convo' : `${convos} convos`;
+    const rows = Object.entries(u.by_model).map(([model, s]) => `
+      <tr>
+        <td class="mono">${esc(model)}</td>
+        <td class="num">${esc(s.turns ?? 0)}</td>
+        <td class="num">${esc(formatTok(s.input_tokens))}</td>
+        <td class="num">${esc(formatTok(s.cache_read_tokens))}</td>
+        <td class="num">${esc(formatTok(s.output_tokens))}</td>
+      </tr>`).join('');
+    return `
+      <div class="usage-card">
+        <div class="usage-card-hdr">
+          <strong>Token Usage Breakdown</strong>
+          <span class="pill ok">0-Token Local Log</span>
+        </div>
+        <table class="usage-tbl">
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th class="num">Turns</th>
+              <th class="num">Input</th>
+              <th class="num">Cache Read</th>
+              <th class="num">Output</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+            <tr class="usage-total">
+              <td>Total (${esc(convoTxt)})</td>
+              <td class="num">${esc(totals.turns ?? 0)}</td>
+              <td class="num">${esc(formatTok(totals.input_tokens))}</td>
+              <td class="num">${esc(formatTok(totals.cache_read_tokens))}</td>
+              <td class="num">${esc(formatTok(totals.output_tokens))}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>`;
+  }
+  if (t.token_usage) {
+    return `
+      <div class="usage-card">
+        <div class="usage-card-hdr">
+          <strong>Token Usage</strong>
+          <span class="pill ok">0-Token Local Log</span>
+        </div>
+        <div class="mono" style="margin-top:6px;">${esc(t.token_usage)}</div>
+      </div>`;
+  }
+  return '';
+}
+
 function renderDetail() {
   const el = document.getElementById('detail');
   const t = STATE && SELECTED ? STATE.tasks[SELECTED] : null;
@@ -896,11 +979,12 @@ function renderDetail() {
   } else if (TAB === 'evidence') {
     const fileUrl = (kind, f) => `/api/file?id=${encodeURIComponent(t.id)}&kind=${kind}&name=${encodeURIComponent(f)}`;
     const imgs = t.evidence.filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f));
+    const usageHtml = renderUsageCard(t);
     const vJson = t.verify
       ? `<pre class="doc">${esc(JSON.stringify(t.verify, null, 2))}</pre>`
       : '<div class="empty">No <code>evidence/verify.json</code> yet. Run Verify to generate.</div>';
     const shots = imgs.length ? `<div class="shots">${imgs.map(f => `<div><div class="mono" style="margin-bottom:4px;">${esc(f)}</div><img src="${fileUrl('evidence', f)}" /></div>`).join('')}</div>` : '';
-    bodyHtml = vJson + shots;
+    bodyHtml = usageHtml + vJson + shots;
   } else if (TAB === 'handoff') {
     if (EDITING === 'handoff') {
       bodyHtml = `
@@ -924,6 +1008,8 @@ function renderDetail() {
     : 'pending';
   const verifyText = t.verify ? (t.verify.ok ? 'Verified OK' : 'Verify Failed') : 'Unverified';
   const lastAgentText = t.handoff_meta?.last_agent || '—';
+  const usageSummary = t.token_usage || t.usage?.summary || '';
+  const usageTip = buildUsageTooltip(t.usage);
 
   el.innerHTML = `
     <div class="title-bar">
@@ -959,6 +1045,7 @@ function renderDetail() {
     <div class="details-panel ${DETAILS_OPEN ? 'open' : ''}">
       <div><div class="k">Branch</div><div class="v">${esc(t.branch)}</div></div>
       <div><div class="k">Exec Tier</div><div class="v">${esc(t.exec_tier || 'hydrogen')}</div></div>
+      ${usageSummary ? `<div><div class="k">Token Usage</div><div class="v" title="${esc(usageTip)}">${esc(usageSummary)}</div></div>` : ''}
       <div><div class="k">Plan Approval</div><div class="v">${esc(approvalText)}</div></div>
       <div><div class="k">Beta Switch</div><div class="v">?beta=1&amp;feat=${esc(t.switch)}</div></div>
       <div><div class="k">Verify</div><div class="v">${esc(verifyText)}</div></div>
