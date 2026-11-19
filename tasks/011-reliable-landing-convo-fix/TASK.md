@@ -6,7 +6,7 @@ issue: null
 epic: null
 pr: null
 pr_url: ""
-status: "in-progress"
+status: "beta"
 branch: "feat/011-reliable-landing-convo-fix"
 switch: "reliable_landing_convo_fix"
 depends_on: []
@@ -28,6 +28,9 @@ deliverables:
   - ".agents/skills/deathfog-ship/SKILL.md"
   - ".agents/skills/deathfog-task-workflow/SKILL.md"
 exec_tier: "hydrogen"
+merged_sha: "09789233ed58"
+merged_into:
+  - "v3-dev"
 ---
 
 # Task 011: Reliable Landing, Main/Beta Parity & Antigravity Convo Button Fix

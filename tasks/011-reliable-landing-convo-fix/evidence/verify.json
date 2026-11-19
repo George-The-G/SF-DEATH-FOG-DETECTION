@@ -1,0 +1,49 @@
+{
+  "task_id": "011",
+  "slug": "reliable-landing-convo-fix",
+  "git_sha": "09789233ed58ac0431b970b6e449613f3627cff1",
+  "timestamp_utc": "2026-11-19T10:12:46+00:00",
+  "ok": true,
+  "checks": {
+    "schema": {
+      "ok": true,
+      "errors": []
+    },
+    "deliverables": {
+      "ok": true,
+      "missing": []
+    },
+    "scope": {
+      "ok": true,
+      "out_of_scope": []
+    },
+    "pytest": {
+      "ok": true,
+      "returncode": 0,
+      "tail": [
+        "tests_mc/test_pavement.py: 14 warnings",
+        "tests_mc/test_physics.py: 1 warning",
+        "tests_mc/test_sun_clear.py: 13 warnings",
+        "  C:\\Users\\George\\source\\repos\\SF-DEATH-FOG-DETECTION\\.venv\\Lib\\site-packages\\pvlib\\clearsky.py:248: Pandas4Warning: DatetimeIndex.dayofyear is deprecated and will be removed in a future version. Use DatetimeIndex.day_of_year instead.",
+        "    dayofyear = time_utc.dayofyear",
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "488 passed, 94 warnings in 27.03s"
+      ]
+    },
+    "node_test": {
+      "ok": true,
+      "returncode": 0,
+      "tail": [
+        "\u2139 tests 10",
+        "\u2139 suites 0",
+        "\u2139 pass 10",
+        "\u2139 fail 0",
+        "\u2139 cancelled 0",
+        "\u2139 skipped 0",
+        "\u2139 todo 0",
+        "\u2139 duration_ms 160.7076"
+      ]
+    }
+  }
+}
