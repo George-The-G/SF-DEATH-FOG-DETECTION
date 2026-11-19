@@ -18,7 +18,8 @@ check_speed_ms = 10
 fog_bands_m = [[0, 150], [150, 300], [300, 500], [500, 800]]
 # guide 01: 11 finer inflow bands; they add up exactly to the 4 above (effective 0-140, 140-300, 300-500, 500-800)
 fog_bands3d_m = [[0, 40], [40, 100], [100, 140], [140, 200], [200, 260], [260, 300], [300, 360], [360, 420], [420, 500], [500, 640], [640, 800]]
-eddy_diffusivity_m2s = 2.0
+eddy_diffusivity_m2s = 20.0
+eddy_diffusivity_v_m2s = 8.0
 fog_loss_per_km = 0.0
 deposition_velocity_ms = 0.02
 

@@ -174,3 +174,14 @@ class TestSmoothBlend(unittest.TestCase):
         np.testing.assert_array_equal(a, b)
         self.assertEqual(a.shape, F.shape)
         self.assertEqual(a.dtype, np.float32)
+
+    def test_hourly_ref_taper_matches_boundaries_exactly(self):
+        """With hourly_ref provided, smooth_blend must taper to 100% agreement with hourly_ref at the window start (0) and end (-1)."""
+        F = self.series(n=48)
+        href = np.full_like(F, 0.15)
+        G = T.smooth_blend(F, 36, hourly_ref=href, taper_frames=6)
+        np.testing.assert_allclose(G[0], href[0], atol=1e-6)
+        np.testing.assert_allclose(G[-1], href[-1], atol=1e-6)
+        # Interior frames still reflect the 5-minute signal F blended with href
+        self.assertGreater(float(G[24].mean()), 0.25)
+

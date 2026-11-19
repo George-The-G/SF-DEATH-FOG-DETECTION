@@ -5,9 +5,27 @@
    The wide terrain loads as soon as the switch is on and is always drawn; the cloud frames are fetched once the camera is pulled back (> 6 km from its target). Pure parts: macrocalc.js. */
 import { parseWide, wideHeight, inHole, resampleMacro, macroBracket } from './macrocalc.js';
 
-const BASE_THICK_M = 250;      // the base is a guess: top - 250 m (said so in the guide)
-const FADE_M = 2000;           // the macro layer fades out over the outer 2 km of the city grid
+const BASE_THICK_M = 250;              // default vertical slab thickness (m): base = top - BASE_THICK_M
+const FADE_M = 2000;                   // macro layer fades out over the outer 2 km of the city grid so voxel fog takes over
 const FAR_LIMIT = 150000, FAR_PLANE = 300000;
+const GOES_TOP_STEP_M = 8.0;           // metres per uint8 step in the macro Blue channel (matches goes5.py::macro_rgba)
+const GOES_TOP_MAX_M = 255.0 * GOES_TOP_STEP_M; // 2040 m full-scale Blue channel value (1.0 in normalized WebGL sampler)
+const REF_PLANE_TOP_FRAC = 0.85;       // fraction of uTopDef used as the initial ray-plane height to look up c0.b
+const MIN_MACRO_TOP_M = 120.0;         // minimum valid decoded cloud-top height (m ASL)
+const MAX_MACRO_TOP_M = 4000.0;        // upper clamp for macro cloud-top height (m ASL)
+const NOISE_FADE_NEAR_M = 10000.0;     // distance (m) where close-up billow noise begins fading out
+const NOISE_FADE_FAR_M = 15000.0;      // distance (m) beyond which the smooth satellite field stands alone
+const SKY_GAP_MIN_M = 100.0;           // minimum altitude gap (m) above uTopDef for an upper sky deck over the city (sky=1)
+const SKY_GAP_RAMP_M = 150.0;          // vertical ramp (m) over which an upper sky deck reaches full opacity
+const SKY_CIRRUS_FADE_START_M = 3000.0;// altitude (m) where high cirrus decks start fading out
+const SKY_CIRRUS_MAX_M = 4000.0;       // altitude (m) above which cirrus decks are fully transparent
+const CITY_HOLE_DROP_M = 30;           // metres the wide terrain drops beneath the detailed city footprint to avoid z-fighting
+const SLAB_BOX_HEIGHT_M = 1500;        // bounding box height (m) for the BackSide analytic slab mesh
+const MACRO_CITY_EDGE_FADE_M = 500;    // fog2.js edgeFade (m) when the macro cloud deck is actively visible around the city
+const MACRO_FETCH_DIST_M = 6000;       // camera distance (m) that triggers fetching macro satellite frames
+const MACRO_FETCH_ALT_M = 4000;        // camera altitude (m) that triggers fetching macro satellite frames
+const INDEX_POLL_MS = 300000;          // 5-minute poll interval for macro/index.json
+const CULL_ALT_M = 1200;               // below this camera altitude (m) and looking steeply down, skip the macro slab pass
 
 const VERT = `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const FRAG = `
@@ -23,14 +41,24 @@ const FRAG = `
     vec2 uv = (xz - uBox.xy) / uBox.zw; if (uv.x < 0. || uv.y < 0. || uv.x > 1. || uv.y > 1.) return vec4(0.);
     vec4 a = texture2D(uA, uv); return uHasB > .5 ? mix(a, texture2D(uB, uv), uMix) : a;
   }
-  float seam(vec2 xz){ float d = min(min(xz.x - uCity.x, uCity.z - xz.x), min(xz.y - uCity.y, uCity.w - xz.y)); if (d <= 0.) return 1.; float t = clamp(d / ${FADE_M}., 0., 1.); return 1. - t * t * (3. - 2. * t); }
+  float seam(vec2 xz){ float d = min(min(xz.x - uCity.x, uCity.z - xz.x), min(xz.y - uCity.y, uCity.w - xz.y)); if (d <= 0.) return 1.; float t = clamp(d / ${FADE_M.toFixed(1)}, 0., 1.); return 1. - t * t * (3. - 2. * t); }
   void main(){
     vec3 ro = cameraPosition, rd = normalize(vW - cameraPosition);
-    // top of the layer where the ray crosses the middle of the default layer (the satellite top where it has one, else the fused fog top)
-    float tm = uTopDef * .85 * uEX, t = rd.y > 1e-4 ? (tm - ro.y) / rd.y : -1.;
-    float top = uTopDef * uEX;
-    if (t > 0. && t < 3.0e5) { vec4 c0 = cov(ro.xz + rd.xz * t); if (c0.b > 0.) top = c0.b * 8. * uEX; }
-    float base = max(top - ${BASE_THICK_M}. * uEX, 0.);
+    // top of the layer where the ray crosses the reference plane (works both from above looking down and from below looking up)
+    float tm = uTopDef * ${REF_PLANE_TOP_FRAC} * uEX, t = abs(rd.y) > 1e-4 ? (tm - ro.y) / rd.y : -1.;
+    float topM = uTopDef;
+    if (t > 0. && t < 3.0e5) {
+      vec4 c0 = cov(ro.xz + rd.xz * t);
+      if (c0.b > 0.) topM = clamp(c0.b * ${GOES_TOP_MAX_M.toFixed(1)}, ${MIN_MACRO_TOP_M.toFixed(1)}, ${MAX_MACRO_TOP_M.toFixed(1)});
+    }
+    float baseM = max(topM - ${BASE_THICK_M.toFixed(1)}, 0.);
+    // When sky layers (uSky > 0.5) draw an upper deck over the city, keep its base above the city fog top so the two layers never overlap vertically
+    if (uSky > .5 && topM > uTopDef + ${SKY_GAP_MIN_M.toFixed(1)}) {
+      vec2 refXZ = t > 0. && t < 3.0e5 ? ro.xz + rd.xz * t : ro.xz;
+      float cityInside = 1. - seam(refXZ);
+      baseM = mix(baseM, max(baseM, uTopDef + ${SKY_GAP_MIN_M.toFixed(1)} * .5), cityInside);
+    }
+    float top = topM * uEX, base = baseM * uEX;
     // analytic slab
     float a, b;
     if (abs(rd.y) < 1e-5) { if (ro.y < base || ro.y > top) discard; a = 0.; b = 3.0e5; }
@@ -39,7 +67,7 @@ const FRAG = `
     const int N = 8; float seg = (b - a) / float(N), od = 0., sumd = 0., sumh = 0.;
     for (int i = 0; i < N; i++) {
       float ts = a + (float(i) + .5) * seg; vec3 p = ro + rd * ts; vec4 c = cov(p.xz);
-      float near = uNoiseR * (1. - smoothstep(10000., 15000., ts));  // detail only close to the camera: far away the smooth satellite field stands alone
+      float near = uNoiseR * (1. - smoothstep(${NOISE_FADE_NEAR_M.toFixed(1)}, ${NOISE_FADE_FAR_M.toFixed(1)}, ts));  // detail only close to the camera: far away the smooth satellite field stands alone
       // fine noise at three scales, so the bank has billows and ragged edges instead of 1 km blocks
       float nz = vn(p.xz / 1200.) * .5 + vn(p.xz / 400.) * .3 + vn(p.xz / 130. + p.y / 90.) * .2;
       float dens = c.r * mix(.35, 1., c.g);                       // low confidence: less opaque, never invented
@@ -47,7 +75,7 @@ const FRAG = `
       float hh = clamp((p.y - base) / max(top - base, 1.), 0., 1.);
       // sky layers (guide 13, lab switch sky): inside the city grid keep cloud the satellite puts well above the fog top (a deck above the fog, not the fog itself, which the voxels draw); cirrus-high tops fade out
       float sm = seam(p.xz);
-      if (uSky > .5) { float tm8 = c.b * 2040.; float up = smoothstep(0., 1., (tm8 - uTopDef - 100.) / 150.) * (1. - smoothstep(3000., 4000., tm8)); sm = max(sm, up); }
+      if (uSky > .5) { float tm8 = c.b * ${GOES_TOP_MAX_M.toFixed(1)}; float up = smoothstep(0., 1., (tm8 - uTopDef - ${SKY_GAP_MIN_M.toFixed(1)}) / ${SKY_GAP_RAMP_M.toFixed(1)}) * (1. - smoothstep(${SKY_CIRRUS_FADE_START_M.toFixed(1)}, ${SKY_CIRRUS_MAX_M.toFixed(1)}, tm8)); sm = max(sm, up); }
       float w = dens * sm; od += w * seg; sumd += w; sumh += w * hh;
     }
     od *= uK; float hmean = sumd > 0. ? sumh / sumd : .5;
@@ -82,7 +110,7 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
     const rect = [0, -meta.ny * meta.cell_m, meta.nx * meta.cell_m, 0]; // the detailed terrain's footprint in scene metres
     for (let r = 0; r < W.ny; r++) for (let q = 0; q < W.nx; q++) {
       const i = r * W.nx + q, h = wideHeight(W, r, q), x = W.x0 + (q + .5) * W.cell - meta.x0, z = -(W.y0 - (r + .5) * W.cell - meta.y0);
-      pos[i * 3] = x; pos[i * 3 + 1] = h * EX - (inHole(x, z, rect, W.cell) ? 30 * EX : 0); pos[i * 3 + 2] = z;
+      pos[i * 3] = x; pos[i * 3 + 1] = h * EX - (inHole(x, z, rect, W.cell) ? CITY_HOLE_DROP_M * EX : 0); pos[i * 3 + 2] = z;
       if (h < 0.6) c.copy(sea); else c.copy(lo).lerp(hi, Math.min(1, h / 260));
       col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
     }
@@ -94,7 +122,7 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
     m.renderOrder = -1; m.visible = false; scene.add(m); st.wideMesh = m;
   }
   function buildSlab() {
-    const W = st.wide, meta = getMeta(), w = W.nx * W.cell, h = W.ny * W.cell, x0 = W.x0 - meta.x0, zN = -(W.y0 - meta.y0), yTop = 1500 * EX;
+    const W = st.wide, meta = getMeta(), w = W.nx * W.cell, h = W.ny * W.cell, x0 = W.x0 - meta.x0, zN = -(W.y0 - meta.y0), yTop = SLAB_BOX_HEIGHT_M * EX;
     U.uBox.value.set(x0, zN, w, h);
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, yTop, h), new THREE.ShaderMaterial({ uniforms: U, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, depthTest: true, side: THREE.BackSide }));
     m.position.set(x0 + w / 2, yTop / 2, zN + h / 2); m.renderOrder = 6; m.frustumCulled = false; m.visible = false; scene.add(m); st.slab = m;
@@ -137,8 +165,8 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
     if (on) { controls.maxDistance = FAR_LIMIT; if (camera.far !== FAR_PLANE) { camera.far = FAR_PLANE; camera.updateProjectionMatrix(); } }
     else if (st.lim) { controls.maxDistance = st.lim.max; camera.far = st.lim.far; camera.near = st.lim.near; camera.updateProjectionMatrix(); st.lim = null; }
   }
-  function edgeFade(on) { // the macro layer replaces the mirrored copy of the voxel fog beyond the data edge
-    if (on && st.edgeBackup === null) { st.edgeBackup = fog.params.edgeFade; fog.setParams({ edgeFade: 500 }); }
+  function edgeFade(on) { // the macro layer replaces the mirrored copy of the voxel fog beyond the data edge ONLY when the macro cloud deck is actively visible
+    if (on && st.edgeBackup === null) { st.edgeBackup = fog.params.edgeFade; fog.setParams({ edgeFade: MACRO_CITY_EDGE_FADE_M }); }
     else if (!on && st.edgeBackup !== null) { fog.setParams({ edgeFade: st.edgeBackup }); st.edgeBackup = null; }
   }
 
@@ -146,13 +174,13 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
   function update(dist) {
     const want = !!(fog.params && fog.params.macro) && !!st.src;
     if (!want) { if (st.on) { st.on = false; limits(false); edgeFade(false); if (st.wideMesh) st.wideMesh.visible = false; if (st.slab) st.slab.visible = false; } return; }
-    if (!st.on) { st.on = true; limits(true); edgeFade(true); if (st.light) setLight(st.light); }
+    if (!st.on) { st.on = true; limits(true); if (st.light) setLight(st.light); }
     const camH = camera.position.y / EX;
     // near plane rises with the camera height so the buildings keep their depth precision with the far plane at 300 km
     const nearWant = Math.max(8, Math.min(250, camH / 100)); if (Math.abs(nearWant - camera.near) > camera.near * .15) { camera.near = nearWant; camera.updateProjectionMatrix(); }
     // the wide terrain is always there (it loads as soon as the view is on, 0.2 MB, and stays drawn even when the camera is down in the city); the satellite frames are fetched once the camera is pulled back
     if (!st.wide) loadWide();
-    if ((dist > 6000 || camH > 4000) && (!st.idx || performance.now() - st.idxAt > 300000)) fetchIndex();
+    if ((dist > MACRO_FETCH_DIST_M || camH > MACRO_FETCH_ALT_M) && (!st.idx || performance.now() - st.idxAt > INDEX_POLL_MS)) fetchIndex();
     if (!st.wideMesh) return;
     st.wideMesh.visible = true;
     const br = st.idx ? macroBracket(st.idx, st.tMs) : null;
@@ -161,8 +189,10 @@ export function createMacro({ THREE, scene, camera, controls, EX, getMeta, getFo
       const ta = frameTex(br.a.file), tb = br.b !== br.a ? frameTex(br.b.file) : null;
       if (!ta) show = false; else { U.uA.value = ta; U.uB.value = tb || ta; U.uHasB.value = tb ? 1 : 0; U.uMix.value = tb ? br.mix : 0; }
     }
+    // Only shrink the city fog's edgeFade when the macro satellite deck actually has a frame at this time (br != null); during forecast hours keep the full city edgeFade
+    edgeFade(!!br && show);
     // no macro pixel on screen: camera low and looking down
-    camera.getWorldDirection(sample); if (camH < 1200 && sample.y < -0.45) show = false;
+    camera.getWorldDirection(sample); if (camH < CULL_ALT_M && sample.y < -0.45) show = false;
     const g = getFogGrid(), m = getMeta();
     if (g && m) { const ox = g.x0 - m.x0, oz = -(g.y0 - m.y0), hm = g.h * g.cell_m; U.uCity.value.set(ox, oz - hm, ox + g.w * g.cell_m, oz); }
     U.uTopDef.value = Math.max(150, fog.topM || 200); U.uSky.value = fog.params && fog.params.sky ? 1 : 0; U.uOn.value = show ? 1 : 0; U.uTime.value = performance.now() / 1000;

@@ -64,6 +64,7 @@ Last verified: 2026-11-18
 - [`reports/REPORT-20261116T075144-8343.md`](reports/REPORT-20261116T075144-8343.md) — Guide 12 5m street-wind rerun report with working walls.
 
 ## Fog Rendering, Performance & Replay (`fog/`, `render/`, `perf/`, `replay/`)
+- [`fog/CLOUD_PIPELINE_FIX_PLAN.md`](fog/CLOUD_PIPELINE_FIX_PLAN.md) — Unification plan for the 3 cloud sources (1h `fog3d`, 5m `fog5`, 5m `macro`), discrepancy fixes (H4, H5, M3, macro top decode), and magic-number cleanup.
 - [`fog/guide-14-plan-v2.md`](fog/guide-14-plan-v2.md) — Guide 14 plan: fixing fog jumps and extending the 5-minute forecast ([scope](fog/guide-14-fog-advection-scope.md)).
 - [`fog/grid-artifact-diagnosis.md`](fog/grid-artifact-diagnosis.md) — Diagnosis and shader fix (Option F2) for the 320m column-skip grid pattern in `fog2.js`.
 - [`fog/cloud_tech_survey.md`](fog/cloud_tech_survey.md) — Survey of real-time volumetric cloud and sky rendering techniques.

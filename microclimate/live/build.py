@@ -299,7 +299,7 @@ def _run_fog5(out, F, S, fog3d_pack, t0, now, log, lid=False):
             sp, sc, _ = goes5.sample_macro(crop, j, p, c, top, lon, lat)
             cache[j] = (np.nan_to_num(sp).astype(np.float32), np.nan_to_num(sc).astype(np.float32))
         return cache[j]
-    return fog5.write(out, F, S, fog3d_pack[0], outputs.last_fogbase, t0, now, scan_at, xs, ys, log=log, lid=lid)
+    return fog5.write(out, F, S, fog3d_pack[0], outputs.last_fogbase, t0, now, scan_at, xs, ys, log=log, lid=lid, hourly_amps=outputs.last_amps)
 
 
 def run(out_dir, static=None, ribbons=None, cache=None, now=None, log=print, physics=None, carry_state=None, archive_dir=None, beta=False, inputs=None, inputs_out=None, promoted=False):

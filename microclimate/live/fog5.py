@@ -66,7 +66,7 @@ def prior_factory(F, xs, ys, t0_unix):
     return prior
 
 
-def write(out, F, S, T3, base, t0, now, scan_at, xs, ys, log=print, lid=False):
+def write(out, F, S, T3, base, t0, now, scan_at, xs, ys, log=print, lid=False, hourly_amps=None):
     """Build the cycle and write fog5/. scan_at(t_unix) -> (p, c) on the tile grid or None. T3 = the guide 03 asset dict; base = fogbase.FogBase or None.
     Returns the status dict (frames, bytes, kinds)."""
     out = Path(out) / "fog5"
@@ -94,13 +94,41 @@ def write(out, F, S, T3, base, t0, now, scan_at, xs, ys, log=print, lid=False):
     def wind(t):
         return _interp_series(ser["wind_speed_10m"], iof(t)), _interp_dir(ser["wind_dir"], iof(t))
 
+    hourly_ref_fn = None
+    if hourly_amps is not None and len(hourly_amps) >= 2:
+        spf = C.OUT_STEP_MIN / C.STEP_MIN
+        nh = len(hourly_amps)
+
+        def hourly_ref_fn(t):
+            hf = float(np.clip(iof(t) / spf, 0.0, nh - 1.0))
+            h0 = int(np.floor(hf))
+            h1 = min(h0 + 1, nh - 1)
+            u = hf - h0
+            return ((1.0 - u) * np.asarray(hourly_amps[h0], np.float32) + u * np.asarray(hourly_amps[h1], np.float32)).astype(np.float32)
+
     A0 = prior(times[0])
-    A, kinds = T.run(times, prior, trb, wind, scan_at, A0)
+    A, kinds = T.run(times, prior, trb, wind, scan_at, A0, hourly_ref_fn=hourly_ref_fn)
     conf = []
     for t in times:
         sc = scan_at(t)
         conf.append(None if sc is None else round(float(np.mean(sc[1])), 3))
-    # 2D tiles: one sheet per UTC hour, up to 12 tiles
+    top_arr = np.asarray(F["fog_top"], float)
+    spf_frames = 60.0 / C.STEP_MIN
+
+    def top_at(t):
+        return _interp_series(top_arr, iof(t))
+
+    def weight3d_at(k, t):
+        tm = top_at(t)
+        w3 = None
+        if base is not None:
+            w3, _ = base.frame(int(round(iof(t) / spf_frames)), A[k], tm)
+        if lid and T3 is not None and "z_m" in T3:
+            lw = f3.lid_weight(T3["z_m"], tm, C.LID_MARGIN_M, C.LID_FADE_M)
+            w3 = lw if w3 is None else w3 * lw
+        return w3
+
+    # 2D tiles: one sheet per UTC hour, up to 12 tiles (applying w3[0] floor/lid weight so 5-min tiles agree with hourly tiles)
     frames = [dict(t=dt.datetime.fromtimestamp(int(t), tz=dt.timezone.utc).isoformat(), kind=str(kinds[k]), conf=conf[k], tile=None, vol=None) for k, t in enumerate(times)]
     hours = {}
     for k, t in enumerate(times):
@@ -109,7 +137,9 @@ def write(out, F, S, T3, base, t0, now, scan_at, xs, ys, log=print, lid=False):
     for h, ks in sorted(hours.items()):
         sheet = np.zeros((2 * replay.FOG_H, 8 * replay.FOG_W), np.uint8)
         for j, k in enumerate(ks):
-            tile = np.clip(np.rint(255.0 * A[k] * trb(times[k])), 0, 255).astype(np.uint8)
+            w3 = weight3d_at(k, times[k])
+            w0 = 1.0 if w3 is None else w3[0]
+            tile = np.clip(np.rint(255.0 * A[k] * trb(times[k]) * w0), 0, 255).astype(np.uint8)
             r, c = divmod(j, 8)
             sheet[r * replay.FOG_H:(r + 1) * replay.FOG_H, c * replay.FOG_W:(c + 1) * replay.FOG_W] = tile
         data = _png_bytes(sheet)
@@ -120,21 +150,16 @@ def write(out, F, S, T3, base, t0, now, scan_at, xs, ys, log=print, lid=False):
             frames[k]["tile"] = name
             frames[k]["slot"] = j
     # 3D files for the last VOL_PAST_H hours and the next VOL_FWD_H hours
-    top = np.asarray(F["fog_top"], float)
     nvol = 0
     for k, t in enumerate(times):
         if not (now_u - VOL_PAST_H * 3600 <= t <= now_u + VOL_FWD_H * 3600):
             continue
-        a = f3.band_weights(top[int(round(iof(t)))], 0.0)
+        tm = top_at(t)
+        a = f3.band_weights(tm, 0.0)
         rows = f3.dir_rows(dirs, weights(t), T3["dirs"])
         if not rows or not np.any(a > 0):
             continue
-        w3 = None
-        if base is not None:
-            w3, _ = base.frame(int(round(iof(t) / (60.0 / C.STEP_MIN))), A[k], top[int(round(iof(t)))])
-        if lid:   # the same lid at the fused top as the hourly 3D files (fog_lid), so the 5-minute and hourly frames agree
-            lw = f3.lid_weight(T3["z_m"], top[int(round(iof(t)))], C.LID_MARGIN_M, C.LID_FADE_M)
-            w3 = lw if w3 is None else w3 * lw
+        w3 = weight3d_at(k, t)
         u8 = f3.encode(f3.volume(T3, rows, a, A[k], weight3d=w3))
         if f3.top_layer(u8) < 0:
             continue

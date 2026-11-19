@@ -20,6 +20,15 @@ import { parseIndex, buildLine, bracket, strideFor, kindAt, swapIsInvisible, isN
 
 const PX_REF = 16; // sprite value that maps to full density after the sqrt stretch (same as fog.js)
 const OCC_CELLS = 4; // occupancy cell = 4 x 4 fog cells (320 m)
+const MAX_RAY_DIST_M = 40000.0;          // maximum ray-march distance (40 km) and 16-bit fog depth normalization scale
+const BASE_EXTINCTION_PER_M = 0.0105 * 2.2 * 1.5; // volumetric extinction coefficient sigma_t (0.03465 m^-1 before vertical exaggeration uEX)
+const SHADOW_EXTINCTION_RATIO = 0.55;    // shadow uses lower extinction because forward scattering lets more sun through
+const FLOW_CYCLE_SEC = 120.0;            // two-phase Vlachos flow-map reset period (s)
+const DETAIL_NOISE_TILE_M = 230.0;       // 3D detail noise spatial period (m)
+const GROUND_BILLOW_BIAS = 0.12;         // near-ground density boost in 2D tile mode only (0 in 3D mode so it never fights the 3D cloud floor)
+const MAX_VOLUME_SHIFT_FRAC = 0.35;      // maximum UV advection shift (fraction of city grid) during hourly blends to avoid pulling mirrored copies across the city
+const MOTION_LINGER_MS = 150;            // ms after camera motion stops before still-frame accumulation starts
+const STILL_REFRESH_MS = 3000;           // ms interval for periodic refresh when still-frame accumulation is complete
 const TIERS = [null, // 0 = old sheets
   { scale: 0.5, steps: 5, vsteps: 10, oct: 1, ms: 0 },
   { scale: 0.5, steps: 10, vsteps: 18, oct: 2, ms: 0 },
@@ -59,7 +68,7 @@ export const DEFAULTS = {
   taa: 1,          // voxel: while the camera moves, trace 1 pixel in 16 per frame and reproject the rest
   edgeFade: 3000,  // voxel: how far (m) past the edge of the data the fog carries on before it has faded out. It was 8000 with a mirrored copy of the volume, which drew straight seams and repeated panels far out at sea; shorter and with a noisy edge it reads as a cloud bank ending (the macro view of guide 09 is the real answer beyond the data)
   macro: 1,        // beta: the wide-area view (macro.js, guide 09): wide terrain, the satellite cloud bank out to 60 km, longer camera range; the voxel fog stays the truth inside the city grid. Live data only; the camera range and the wide data load only when the camera is pulled back
-  sky: 0,          // beta (guide 13): sky layers above the fog. Off by default; wired only, nothing is drawn yet
+  sky: 0,          // beta (guide 13): sky layers above the fog (macro.js keeps upper satellite cloud decks when top > fogTop + 100..250 m). Off by default
   travel: 1,       // voxel: 1 = inside the 5-minute window of fog5/index.json (guide 08) the fog is blended between 5-minute frames; outside it the hourly data as before. On in beta (George 2026-11-16); when the build has no fog5/ folder it changes nothing. Live data only
   data3d: 1,       // voxel: 1 = the fog takes its shape from the live 3D fog files (index.json fog3d: a cloud floor, a data top, holes behind hills; an hour without a file has NO fog); 0 = the 2D tile with a guessed top. Live data only; replay nights have no 3D files and keep the 2D tile (George 2026-11-16: realism, no fog columns from sky to ground)
 };
@@ -85,7 +94,7 @@ const RAY = `
     float t0, t1;
     if (abs(rd.y) < 1e-4) { if (ro.y < 0. || ro.y > uYmax) { gl_FragColor = vec4(0.); return; } t0 = 0.; t1 = 1e9; }
     else { float a = (0. - ro.y) / rd.y, b = (uYmax - ro.y) / rd.y; t0 = max(min(a, b), 0.); t1 = max(a, b); }
-    t1 = min(min(t1, tScene), t0 + 40000.);
+    t1 = min(min(t1, tScene), t0 + ${MAX_RAY_DIST_M.toFixed(1)});
     if (t1 <= t0) { gl_FragColor = vec4(0.); return; }
     float N = float(uSteps);
     float jit = mix(.5, fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(.06711056, .00583715))) + uJit), uDither);
@@ -136,7 +145,7 @@ const FOG_FS = COMMON_U + TILE + `
       if (uOct > 2) { float wF = 1. - smoothstep(40., 160., dt); n = mix(n, n * .7 + .3 * texture(uNoise, wq / 150. + 8.2).g, wF * .6 * uDetail); }
       float shape = smoothstep(.5 - uSoft, .5 + uSoft, n + .3 * d);
       float dens = d * prof * (.5 + .8 * shape);
-      float sig = dens * .0105 / uEX * 2.2 * 1.5;
+      float sig = dens * ${BASE_EXTINCTION_PER_M.toFixed(5)} / uEX;
       float lt = exp(-d * .0105 * 2.2 / uEX * .5 * (uH * (1. - hh)) / max(uSun.y, .18) * .6 * 1.5);
       vec3 L = uAmb * (.55 + .45 * (1. - hh)) + uSunCol * lt * ph * uSunI;
       L += uMoonCol * phm * max(uMoon.y, 0.);
@@ -187,9 +196,9 @@ const BAKE_A = `
     float topL = uUse3 > .5 ? uVH : uTop * (1. + uBump * (tn - .5) * 1.6); // 3D data: hh runs 0..1 over the volume height, the data decides where the top is
     float hh = (y - base) / topL;
     float prof = uUse3 > .5 ? 1. : (1. - smoothstep(1. - .5 * uSoft - .05, 1., hh)) * (1. - .3 * clamp(hh, 0., 1.));
-    // coverage remap: thick fog fills the slab; thin fog breaks into separate billows instead of a uniform haze
-    float thr = 1. - cov, e = .08 + .3 * uSoft;
-    float s = smoothstep(thr - e, thr + e, n + (1. - hh) * .12);
+    // coverage remap: thick fog fills the slab; thin fog breaks into separate billows instead of a uniform haze (no ground bias in 3D mode so the 3D cloud floor is preserved)
+    float thr = 1. - cov, e = .08 + .3 * uSoft, gBias = uUse3 > .5 ? 0. : (1. - hh) * ${GROUND_BILLOW_BIAS.toFixed(2)};
+    float s = smoothstep(thr - e, thr + e, n + gBias);
     float dens = s * prof * (.35 + .65 * cov) * (.8 + .5 * (n - .5));
     gl_FragColor = vec4(clamp(dens, 0., 1.), 0., 0., 1.);
   }`;
@@ -215,12 +224,12 @@ const VOX_FS = COMMON_U + `
   layout(location = 1) out highp vec4 pc_depth;
 #endif
   float detailNoise(vec3 q, vec2 qg){ // fine noise; with the wind field it drifts along the flow (two-phase flow noise, Neyret 2003 / Vlachos 2010)
-    if (uFlowOn < .5) return texture(uNoise, (q + uOff) / 230.).g;
+    if (uFlowOn < .5) return texture(uNoise, (q + uOff) / ${DETAIL_NOISE_TILE_M.toFixed(1)}).g;
     vec2 wv = (texture(uWind, qg).rg * 255. - 128.) * uWindScale; vec3 vel = vec3(wv.x, 0., -wv.y);
-    const float PER = 120.;
+    const float PER = ${FLOW_CYCLE_SEC.toFixed(1)};
     float c0 = floor(uFlowT / PER), c1 = floor(uFlowT / PER + .5), f0 = fract(uFlowT / PER), f1 = fract(uFlowT / PER + .5), w0 = 1. - abs(2. * f0 - 1.), w1 = 1. - w0;
-    float n0 = texture(uNoise, (q - vel * f0 * PER) / 230. + fract(vec3(.7548776, .5698403, .4142136) * c0)).g;
-    float n1 = texture(uNoise, (q - vel * f1 * PER) / 230. + fract(vec3(.7548776, .5698403, .4142136) * (c1 + 37.))).g;
+    float n0 = texture(uNoise, (q - vel * f0 * PER) / ${DETAIL_NOISE_TILE_M.toFixed(1)} + fract(vec3(.7548776, .5698403, .4142136) * c0)).g;
+    float n1 = texture(uNoise, (q - vel * f1 * PER) / ${DETAIL_NOISE_TILE_M.toFixed(1)} + fract(vec3(.7548776, .5698403, .4142136) * (c1 + 37.))).g;
     return .5 + (w0 * (n0 - .5) + w1 * (n1 - .5)) * inversesqrt(w0 * w0 + w1 * w1);
   }
   void main(){
@@ -259,8 +268,8 @@ const VOX_FS = COMMON_U + `
       float inside = 1. - smoothstep(0., uEdge, og * (.55 + .9 * texture(uNoise, vec3(p.x / 2300., .37, p.z / 2300.)).r)); // noisy edge: no straight line where the data ends
       vec2 gm = g; // past the edge the volume wraps mirrored (fog over the ocean keeps its texture); wobble the mirror line so it shows no seam
       if (og > 0.) gm += (texture(uNoise, vec3(p.x / 1900., .5, p.z / 1900.)).rb - .5) * min(og, 1500.) / uGs * 1.4;
-      vec2 dA = dA0, dB = dB0;
-      if (uFlowOn > .5 && uDriftS > 0.) { vec2 wv = (texture(uWind, qg).rg * 255. - 128.) * uWindScale * uDriftS / uGs; wv.y = -wv.y; dA = -wv * uMixT; dB = wv * (1. - uMixT); } // larger shapes follow the terrain-aware wind
+      vec2 dA = clamp(dA0, -${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}, ${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}), dB = clamp(dB0, -${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}, ${MAX_VOLUME_SHIFT_FRAC.toFixed(2)});
+      if (uFlowOn > .5 && uDriftS > 0.) { vec2 wv = clamp((texture(uWind, qg).rg * 255. - 128.) * uWindScale * uDriftS / uGs, -${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}, ${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}); wv.y = -wv.y; dA = -wv * uMixT; dB = wv * (1. - uMixT); } // larger shapes follow the terrain-aware wind without wrapping mirrored copies across the domain
       vec2 s = va <= 1. ? texture(uVolA, vec3(gm + dA, va)).rg : vec2(0., 1.);
       if (uMixT > .001) s = mix(s, vb <= 1. ? texture(uVolB, vec3(gm + dB, vb)).rg : vec2(0., 1.), uMixT);
       float d = s.r * inside;
@@ -279,7 +288,7 @@ const VOX_FS = COMMON_U + `
     }
     gl_FragColor = vec4(C, 1. - T);
 #ifdef MRT
-    { float fa = 1. - T, td = fa > .02 ? clamp(WD / fa / 40000., 0., .9) : 1., sc = td * 255.; pc_depth = vec4(floor(sc) / 255., fract(sc), 0., 1.); } // opacity-weighted fog depth, packed in 16 bits
+    { float fa = 1. - T, td = fa > .02 ? clamp(WD / fa / ${MAX_RAY_DIST_M.toFixed(1)}, 0., .9) : 1., sc = td * 255.; pc_depth = vec4(floor(sc) / 255., fract(sc), 0., 1.); } // opacity-weighted fog depth, packed in 16 bits
 #endif
   }`;
 
@@ -313,11 +322,11 @@ const TAA_FS = `precision highp float; varying vec2 vUv;
     float dpx = texture2D(uDepthR, vUv).r;
     vec4 v = uInvProjR * vec4(vUv * 2. - 1., 1., 1.); vec3 dv = normalize(v.xyz / v.w), rd = normalize(uCamRotR * dv);
     float t = 1e9, tf = -1.;
-    if (uHasD > .5) { float dd = unpackD(texture2D(uHistD, vUv)); if (dd < .98) tf = dd * 40000.; } // last frame's fog depth at this pixel
+    if (uHasD > .5) { float dd = unpackD(texture2D(uHistD, vUv)); if (dd < .98) tf = dd * ${MAX_RAY_DIST_M.toFixed(1)}; } // last frame's fog depth at this pixel
     if (dpx < .99999) { float vz = (uNearR * uFarR) / ((uFarR - uNearR) * dpx - uFarR); t = -vz / -dv.z; }
     if (tf > 0.) t = min(t, tf);
-    else if (abs(rd.y) > 1e-4) { float a = -uCamR.y / rd.y, b = (uYmaxR - uCamR.y) / rd.y, t0 = max(min(a, b), 0.), t1 = min(max(a, b), t0 + 40000.); if (t1 > t0) t = min(t, t0 + .35 * (t1 - t0)); }
-    t = min(t, 40000.);
+    else if (abs(rd.y) > 1e-4) { float a = -uCamR.y / rd.y, b = (uYmaxR - uCamR.y) / rd.y, t0 = max(min(a, b), 0.), t1 = min(max(a, b), t0 + ${MAX_RAY_DIST_M.toFixed(1)}); if (t1 > t0) t = min(t, t0 + .35 * (t1 - t0)); }
+    t = min(t, ${MAX_RAY_DIST_M.toFixed(1)});
     vec4 c = uPrevVP * vec4(uCamR + rd * t, 1.);
     vec2 puv = c.xy / c.w * .5 + .5;
     if (c.w <= 0. || any(lessThan(puv, vec2(0.))) || any(greaterThan(puv, vec2(1.)))) { gl_FragColor = texture2D(uSmall, vUv); pc_depth = texture2D(uSmallD, vUv); return; }
@@ -687,7 +696,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
   function applyParams() {
     U.uFollow.value = P.follow; U.uSoft.value = P.soft; U.uDetail.value = P.detail; U.uWarp.value = P.warp; U.uDither.value = P.dither;
     U.uEdge.value = P.edgeFade; BA.uBump.value = P.bump; U.uShadow.value = P.shadow; U.uSkip.value = P.skip ? 1 : 0;
-    const K = .0105 / EX * 2.2 * 1.5; U.uK.value = K; BB.uK.value = K * .55; // shadow uses a lower extinction: forward scattering lets more sun through
+    const K = BASE_EXTINCTION_PER_M / EX; U.uK.value = K; BB.uK.value = K * SHADOW_EXTINCTION_RATIO; // shadow uses a lower extinction: forward scattering lets more sun through
     if (P.mode === 'sheets') { if (tier !== 0) setTier(0, 'lab'); }
     else if (tier === 0) setTier(baseTier, 'lab');
     bakeVer++; occKey = ''; applyTop(); if (lastL) setLight(lastL); tvSync();
@@ -829,10 +838,10 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
       if (camMoved(camera)) { lastMoveT = now; accN = 0; }
       const key = [vsig, U.uDens.value, lightSig, U.uDbg.value, rtW, rtH, rtScale, U.uOff.value.x, U.uOff.value.z, bakeVer].join('|');
       if (key !== lastKey) { lastKey = key; accN = 0; }
-      if (now - lastFullT > 3000 && accN >= P.accum) accN = 0; // refresh now and then (catches scene changes the fog cannot see)
+      if (now - lastFullT > STILL_REFRESH_MS && accN >= P.accum) accN = 0; // refresh now and then (catches scene changes the fog cannot see)
       const blur0 = qs.get('blur') === '0' ? 0 : P.blur;
       curVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-      if (P.motion && now - lastMoveT < 150 && P.taa && lastFogTex && !fastFlow()) { // camera moving: trace 1 pixel in 16 at full quality, reproject the rest
+      if (P.motion && now - lastMoveT < MOTION_LINGER_MS && P.taa && lastFogTex && !fastFlow()) { // camera moving: trace 1 pixel in 16 at full quality, reproject the rest
         const [ox, oy] = BAYER[taaN++ & 15];
         U.uSubOn.value = 1; U.uSub.value.set(ox, oy); U.uFull.value.set(fogRT.width, fogRT.height);
         fogPass(renderer, smallRT, stepsFor(true), 0); U.uSubOn.value = 0;
@@ -841,7 +850,7 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
         TU.uSubR.value.set(ox, oy); TU.uFullR.value.set(fogRT.width, fogRT.height); TU.uSmallN.value.set(smallRT.width, smallRT.height);
         renderer.setRenderTarget(dst); renderer.render(taaScene, ortho); histCur ^= 1;
         CU.uFog.value = dst.texture[0]; nextFogDepth = dst.texture[1]; CU.uFogTexel.value.set(1 / fogRT.width, 1 / fogRT.height); CU.uBlur.value = blur0 * .5; accN = 0; phase = 'moving (1 in 16)';
-      } else if (P.motion && now - lastMoveT < 150) { // camera moving: half resolution, fewer steps, no refinement
+      } else if (P.motion && now - lastMoveT < MOTION_LINGER_MS) { // camera moving: half resolution, fewer steps, no refinement
         fogPass(renderer, motionRT, Math.max(6, Math.round(stepsFor(true) * P.motionSteps)), 0);
         CU.uFog.value = motionRT.texture; CU.uFogTexel.value.set(1 / motionRT.width, 1 / motionRT.height); CU.uBlur.value = blur0; accN = 0; phase = 'moving';
       } else if (P.accum > 0) {

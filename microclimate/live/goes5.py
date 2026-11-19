@@ -285,6 +285,8 @@ class Crop5:
 
 # ------------------------------------------------------------------ macro frames
 M_PER_DEG = 111320.0
+GOES_TOP_STEP_M = 8.0        # metres per uint8 step in the macro PNG Blue channel (0..255 -> 0..2040 m)
+GOES_TOP_MAX_M = 255.0 * GOES_TOP_STEP_M
 
 
 def macro_axes(box, res):
@@ -325,11 +327,11 @@ def sample_macro(crop, i, p, c, top, lon, lat, default_top_m=None, iterations=2)
 
 
 def macro_rgba(p, c, top):
-    """R = 255 p, G = 255 c, B = min(top_m / 8, 255), A = 255, uint8 [h, w, 4]."""
+    """R = 255 p, G = 255 c, B = min(top_m / GOES_TOP_STEP_M, 255), A = 255, uint8 [h, w, 4]."""
     out = np.empty(p.shape + (4,), np.uint8)
     out[..., 0] = np.clip(np.rint(255.0 * p), 0, 255)
     out[..., 1] = np.clip(np.rint(255.0 * c), 0, 255)
-    out[..., 2] = np.clip(np.rint(top / 8.0), 0, 255)
+    out[..., 2] = np.clip(np.rint(top / GOES_TOP_STEP_M), 0, 255)
     out[..., 3] = 255
     return out
 

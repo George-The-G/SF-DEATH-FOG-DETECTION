@@ -99,6 +99,7 @@ FOG3D_PAST_H, FOG3D_FUTURE_H = 6, 30
 
 
 last_fogbase = None   # the FogBase of the latest write() (guide 08 reuses it for the 5-minute 3D files); None when fog_base is off
+last_amps = None      # the hourly amps [nF, H, W] of the latest write() so fog5 tapers smoothly into the 1-hour volumes
 
 
 def write_fog3d(out, fog3d, S, F, amps, Wts, spf, t_hours, now, log=print, base=None, dbg_frame=None, lid=False, tile_levels=None):
@@ -240,8 +241,10 @@ def write(out, W, diag, F, S, Rb, t0, start, now, goes_hours, static_dir, log=pr
     t_hours = [t0 + dt.timedelta(hours=k) for k in range(nF)]
     if fog3d is not None:
         tiles, amps, Wts = fog_frames(S, diag, F, goes_hours, t_hours, spf, return_amp=True)
+        globals()["last_amps"] = amps
     else:
         tiles = fog_frames(S, diag, F, goes_hours, t_hours, spf)
+        globals()["last_amps"] = None
     fbo, fb_info = None, None
     if fog3d is not None and fogbase is not None:   # guide 05: never fatal, any problem means no cloud floor
         try:

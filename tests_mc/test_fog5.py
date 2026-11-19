@@ -87,6 +87,30 @@ class TestFog5(unittest.TestCase):
             C.BETA.clear()
             C.BETA.update(saved)
 
+    def test_2d_tiles_apply_cloud_floor_weight(self):
+        """Discrepancy H5 regression: when fogbase zeroes surface layer 0 (elevated cloud base), fog5 2D tiles must also be 0."""
+        from PIL import Image
+        F, S, T3, t0, now, xs, ys = fixture()
+
+        class ElevatedBase:
+            def frame(self, f, amp, top_m):
+                w = np.ones((24, H, W), np.float32)
+                w[0] = 0.0  # cloud base is above street level (layer 0 has no fog)
+                return w, {"base_m": 250.0, "lift_m": 0.0, "base": np.full((H, W), 250.0, np.float32)}
+
+        with tempfile.TemporaryDirectory() as d:
+            fog5.write(d, F, S, T3, ElevatedBase(), t0, now, lambda t: None, xs, ys, log=lambda *_: None, lid=True)
+            idx = json.loads((Path(d) / "fog5" / "index.json").read_text())
+            first_sheet = Path(d) / "fog5" / idx["frames"][0]["tile"]
+            arr = np.asarray(Image.open(first_sheet))
+            self.assertEqual(int(arr.max()), 0)
+            # Meanwhile upper layers in the 3D volumes still have fog
+            vols = [f["vol"] for f in idx["frames"] if f["vol"]]
+            self.assertGreater(len(vols), 0)
+            vol_arr = np.asarray(Image.open(Path(d) / "fog5" / vols[0]))
+            self.assertGreater(int(vol_arr.max()), 0)
+
+
 
 if __name__ == "__main__":
     unittest.main()
