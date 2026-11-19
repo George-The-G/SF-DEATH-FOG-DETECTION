@@ -237,9 +237,11 @@ const VOX_FS = COMMON_U + `
     pc_depth = vec4(1., 0., 0., 1.);
 #endif
 ` + RAY + `
-    float sy = max(uSun.y, .15);
+    float invSy = 1. / max(uSun.y, .15);
     vec2 rxz = vec2(abs(rd.x) < 1e-6 ? 1e-6 : rd.x, abs(rd.z) < 1e-6 ? 1e-6 : rd.z);
-    vec2 dA0 = -uDrift * uMixT, dB0 = uDrift * (1. - uMixT);
+    vec2 occMax = ceil(uOccN) - 1., cellSz = uGs / uOccN;
+    vec2 dA0 = clamp(-uDrift * uMixT, -${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}, ${MAX_VOLUME_SHIFT_FRAC.toFixed(2)});
+    vec2 dB0 = clamp(uDrift * (1. - uMixT), -${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}, ${MAX_VOLUME_SHIFT_FRAC.toFixed(2)});
     float fi = 0., WD = 0.;
     for (int it = 0; it < 96; it++) {
       if (fi >= N) break;
@@ -250,11 +252,11 @@ const VOX_FS = COMMON_U + `
       vec2 g = (p.xz - uGo) / uGs, qg = clamp(g, 0., 1.);
       float og = length((g - qg) * uGs);
       if (og > uEdge * 1.45) continue; // well past the noisy edge fade: zero density, never sample mirrored edge texels
-      vec2 cell = min(floor(g * uOccN), ceil(uOccN) - 1.);
+      vec2 cell = min(floor(g * uOccN), occMax);
       vec2 oc = uSkip > 0. && og == 0. ? texelFetch(uOcc, ivec2(cell), 0).rg : vec2(1.);
       float colTop = oc.y * uHtMax * uFollow + max(uVHa, uVHb); bool emp = oc.x < .5; // a column with no fog, or a ray above its fog layer
       if (emp || p.y > colTop) { // empty coarse column, or above its fog layer: jump to where the ray leaves the column
-        vec2 bmin = uGo + cell / uOccN * uGs, bmax = bmin + uGs / uOccN;
+        vec2 bmin = uGo + cell * cellSz, bmax = bmin + cellSz;
         vec2 tt = (mix(bmin, bmax, step(0., rxz)) - p.xz) / rxz;
         float tE = t + max(min(tt.x, tt.y), 0.) + .5;
         if (!emp && rd.y < -1e-5) tE = min(tE, t + (p.y - colTop) / -rd.y); // above the layer only: never jump past where the ray reaches the fog top (a descending ray would skip fog in the column, giving a 320 m grid)
@@ -266,9 +268,9 @@ const VOX_FS = COMMON_U + `
       if (p.y < gh) continue;
       float base = gh * uFollow, va = (p.y - base) / uVHa, vb = (p.y - base) / uVHb;
       if (va < 0. || min(va, vb) > 1.) continue;
-      float inside = 1. - smoothstep(0., uEdge, og * (.55 + .9 * texture(uNoise, vec3(p.x / 2300., .37, p.z / 2300.)).r)); // noisy edge: no straight line where the data ends
+      float inside = og > 0. ? 1. - smoothstep(0., uEdge, og * (.55 + .9 * texture(uNoise, vec3(p.x / 2300., .37, p.z / 2300.)).r)) : 1.; // noisy edge only outside the city box (saves a 3D noise fetch on every interior sample)
       if (inside < .002) continue;
-      vec2 dA = clamp(dA0, -${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}, ${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}), dB = clamp(dB0, -${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}, ${MAX_VOLUME_SHIFT_FRAC.toFixed(2)});
+      vec2 dA = dA0, dB = dB0;
       if (uFlowOn > .5 && uDriftS > 0.) { vec2 wv = clamp((texture(uWind, qg).rg * 255. - 128.) * uWindScale * uDriftS / uGs, -${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}, ${MAX_VOLUME_SHIFT_FRAC.toFixed(2)}); wv.y = -wv.y; dA = -wv * uMixT; dB = wv * (1. - uMixT); } // larger shapes follow the terrain-aware wind without wrapping mirrored copies across the domain
       vec2 uvA = clamp(qg + dA, vec2(.003), vec2(.997)), uvB = clamp(qg + dB, vec2(.003), vec2(.997));
       if (og > 0.) {
@@ -276,15 +278,16 @@ const VOX_FS = COMMON_U + `
         uvA = clamp(uvA + wob, vec2(.005), vec2(.995));
         uvB = clamp(uvB + wob, vec2(.005), vec2(.995));
       }
-      vec2 s = va <= 1. ? texture(uVolA, vec3(uvA, va)).rg : vec2(0., 1.);
-      if (uMixT > .001) s = mix(s, vb <= 1. ? texture(uVolB, vec3(uvB, vb)).rg : vec2(0., 1.), uMixT);
+      vec2 s = uMixT >= .999 ? (vb <= 1. ? texture(uVolB, vec3(uvB, vb)).rg : vec2(0., 1.))
+             : (va <= 1. ? texture(uVolA, vec3(uvA, va)).rg : vec2(0., 1.));
+      if (uMixT > .001 && uMixT < .999) s = mix(s, vb <= 1. ? texture(uVolB, vec3(uvB, vb)).rg : vec2(0., 1.), uMixT);
       float d = s.r * inside;
       if (d < .002) continue;
       // fine erosion close to the camera only (fades out where steps get long, so it cannot alias into streaks)
       float wD = (1. - smoothstep(50., 300., dt)) * uDetail;
       if (wD > .01) { float e = detailNoise(vec3(p.x, p.y / uEX * 2.5, p.z), qg); d *= mix(1., .35 + 1.3 * e, wD * .7); }
       float tr = mix(1., s.g, uShadow);
-      float sh = pow(tr, 1. / sy);
+      float sh = pow(tr, invSy);
       vec3 L = uAmb * (.4 + .6 * sqrt(tr)) + uSunCol * (sh + .2 * sqrt(sh)) * ph * uSunI;
       L += uMoonCol * phm * max(uMoon.y, 0.) * sqrt(tr);
       L += vec3(1., .55, .22) * uCity * .02 * (1. - va) * (.4 + .6 * d);
@@ -526,13 +529,42 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     return out;
   }
   /* ---- 3D fog data (guide 04): index.json fog3d atlases, decoded on demand, 8 frames kept */
-  let d3Canvas = null, d3Ctx = null;
+  let d3Canvas = null, d3Ctx = null, tvCanvas = null, tvCtx = null;
   const d3 = { info: null, base: '', sfx: '', keep: [], pending: new Set(), missing: new Set(),
-    zero: null, cache: createLru(8, (e) => { e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); }) };
+    zero: null, cache: createLru(8, (e) => { e.dead = true; if (e.tex && !e.empty) e.tex.dispose(); if (e.bmp) e.bmp.close(); }) };
   const d3On = () => !!(P.data3d && d3.info && grid && usable(d3.info, grid));
   function d3Fail(id) { d3.pending.delete(id); d3.missing.add(id); }
   const d3Url = (kf) => (kf.src === 'f' ? tv.dir : d3.base) + kf.vol + (kf.src === 'f' ? '' : d3.sfx); // fog5 file names carry a content hash, no suffix needed
-  function d3Load(kf) { // starts decoding key frame kf; uses one reusable scratch canvas and a 4x4 subsampled colMax scan so onload takes <1 ms on the CPU
+  function d3Commit(id, info, top, src, bmp) { // uploads the decoded atlas directly to WebGL (zero 1M-pixel JS copy) and builds coarse colMax at half-res
+    if (d3.info !== info) { d3.pending.delete(id); if (bmp) bmp.close(); return; }
+    try {
+      const W = info.cols * info.w, H = info.rows * info.h;
+      if (src.width !== W || src.height !== H) throw new Error('atlas size');
+      const tex = new THREE.Texture(src);
+      tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.generateMipmaps = false; tex.flipY = false; tex.needsUpdate = true;
+      // Coarse 320 m occupancy only needs 2x2 subsampled cells: draw into a half-size scratch canvas (4x fewer pixels to read back)
+      const sw = Math.max(1, W >> 1), sh = Math.max(1, H >> 1);
+      if (!d3Canvas || d3Canvas.width !== sw || d3Canvas.height !== sh) {
+        d3Canvas = document.createElement('canvas'); d3Canvas.width = sw; d3Canvas.height = sh;
+        d3Ctx = d3Canvas.getContext('2d', { willReadFrequently: true });
+      }
+      d3Ctx.drawImage(src, 0, 0, sw, sh);
+      const rgba = d3Ctx.getImageData(0, 0, sw, sh).data;
+      const w = info.w, h = info.h, nz = info.nz, cols = info.cols, cm = new Uint8Array(w * h);
+      const hw = w >> 1, hh = h >> 1;
+      for (let k = 0; k <= top && k < nz; k++) {
+        const ox = (k % cols) * hw, oy = ((k / cols) | 0) * hh;
+        for (let y = 0; y < hh; y++) {
+          const rowSrc = ((oy + y) * sw + ox) << 2, rowDst = (y << 1) * w;
+          for (let x = 0; x < hw; x++) { if (rgba[rowSrc + (x << 2)] >= 1) cm[rowDst + (x << 1)] = 255; }
+        }
+      }
+      d3.cache.set(id, { k: id, tex, bmp: bmp || null, colMax: cm, topLayer: top }, d3.keep);
+      d3.pending.delete(id);
+    } catch (e) { if (bmp) bmp.close(); d3Fail(id); }
+  }
+  function d3Load(kf) { // starts decoding key frame kf off the main thread via createImageBitmap when available (falls back to Image)
     const I = d3.info; if (!kf || !I || d3.cache.has(kf.id) || d3.pending.has(kf.id) || d3.missing.has(kf.id)) return;
     if (kf.src === 'f' && kf.vol && !tvInfoOk()) { d3.missing.add(kf.id); return; }
     if (!kf.vol) {
@@ -541,36 +573,19 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
       if (!d3.zero) { d3.zero = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType); d3.zero.needsUpdate = true; }
       d3.cache.set(kf.id, emptyEntry(kf.id, I, d3.zero), d3.keep); return;
     }
-    const id = kf.id, top = kf.top != null ? kf.top : I.nz - 1;
-    d3.pending.add(id); const info = I, img = new Image();
-    img.onload = () => {
-      if (d3.info !== info) { d3.pending.delete(id); return; } // the data changed while loading
-      try {
-        const W = info.cols * info.w, H = info.rows * info.h; if (img.width !== W || img.height !== H) throw new Error('atlas size');
-        if (!d3Canvas || d3Canvas.width !== W || d3Canvas.height !== H) {
-          d3Canvas = document.createElement('canvas'); d3Canvas.width = W; d3Canvas.height = H;
-          d3Ctx = d3Canvas.getContext('2d', { willReadFrequently: true });
-        }
-        d3Ctx.drawImage(img, 0, 0);
-        const rgba = d3Ctx.getImageData(0, 0, W, H).data, px = new Uint8Array(W * H);
-        for (let i = 0, j = 0; i < px.length; i++, j += 4) px[i] = rgba[j];
-        const tex = new THREE.DataTexture(px, W, H, THREE.RedFormat, THREE.UnsignedByteType);
-        tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.generateMipmaps = false; tex.flipY = false; tex.needsUpdate = true;
-        // Fast 320m cell-level colMax: only needs to know if any column in each 4x4 cell has fog (stride 2 scan is 4x faster and dilated by r>=1 cell in updateOcc)
-        const w = info.w, h = info.h, nz = info.nz, cols = info.cols, cm = new Uint8Array(w * h);
-        for (let k = 0; k <= top && k < nz; k++) {
-          const ox = (k % cols) * w, oy = ((k / cols) | 0) * h;
-          for (let y = 0; y < h; y += 2) {
-            const src = (oy + y) * W + ox, dst = y * w;
-            for (let x = 0; x < w; x += 2) { if (px[src + x] >= 1) cm[dst + x] = 255; }
-          }
-        }
-        d3.cache.set(id, { k: id, tex, colMax: cm, topLayer: top }, d3.keep);
-        d3.pending.delete(id);
-      } catch (e) { d3Fail(id); }
-    };
+    const id = kf.id, top = kf.top != null ? kf.top : I.nz - 1, info = I, url = d3Url(kf);
+    d3.pending.add(id);
+    if (typeof createImageBitmap === 'function' && typeof fetch === 'function') {
+      fetch(url).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+        .then((blob) => createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }).catch(() => createImageBitmap(blob)))
+        .then((bmp) => d3Commit(id, info, top, bmp, bmp))
+        .catch(() => d3Fail(id));
+      return;
+    }
+    const img = new Image();
+    img.onload = () => d3Commit(id, info, top, img, null);
     img.onerror = () => d3Fail(id);
-    img.src = d3Url(kf);
+    img.src = url;
   }
   function d3State(kf) { // { e } loaded, { loading } coming, {} none for this key frame (no file, failed, or off)
     if (!d3.info) return {};
@@ -589,25 +604,39 @@ export function createFogVol({ THREE, scene, EX, isTouch, getMeta, getTerrainH, 
     if (!L) { L = buildLine({ n, files: d3.info ? d3.info.files : null, top_layer: d3.info ? d3.info.top_layer : null }, tv.parsed, tv.stride, v3); tv.lines.set(tv.stride, L); }
     return L;
   }
+  function tvCommit(name, pr, src, bmp) { // decodes one fog5 tile sheet using a reusable scratch canvas
+    tv.pending.delete(name);
+    if (tv.parsed !== pr && !(tv.parsed && tv.parsed.frames.some((f) => f.tile === name))) { if (bmp) bmp.close(); return; }
+    try {
+      const g = pr.info, W = src.width, H = src.height; if (W % g.w || H % g.h || W < g.w || H < g.h) throw new Error('sheet size');
+      if (!tvCanvas || tvCanvas.width !== W || tvCanvas.height !== H) {
+        tvCanvas = document.createElement('canvas'); tvCanvas.width = W; tvCanvas.height = H;
+        tvCtx = tvCanvas.getContext('2d', { willReadFrequently: true });
+      }
+      tvCtx.drawImage(src, 0, 0);
+      const rgba = tvCtx.getImageData(0, 0, W, H).data, px = new Uint8Array(W * H);
+      for (let i = 0, j = 0; i < px.length; i++, j += 4) px[i] = rgba[j];
+      if (bmp) bmp.close();
+      const tex = new THREE.DataTexture(px, W, H, THREE.RedFormat, THREE.UnsignedByteType);
+      tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.generateMipmaps = false; tex.flipY = false; tex.needsUpdate = true;
+      tv.sheets.set(name, { tex, px, W, H, cols: W / g.w, rows: H / g.h }, tv.keepSheets);
+    } catch (e) { if (bmp) bmp.close(); tv.failed.add(name); tv.bad = true; bakeVer++; } // a bad sheet: back to the hourly data for good (until a newer index)
+  }
   function tvSheet(kf) { // the decoded tile sheet of a fog5 frame, or null while it loads
     const e = tv.sheets.get(kf.tile); if (e) return e;
     if (tv.pending.has(kf.tile) || tv.failed.has(kf.tile)) return null;
-    tv.pending.add(kf.tile); const name = kf.tile, img = new Image(), pr = tv.parsed;
-    img.onload = () => {
-      tv.pending.delete(name); if (tv.parsed !== pr && !(tv.parsed && tv.parsed.frames.some((f) => f.tile === name))) return;
-      try {
-        const g = pr.info, W = img.width, H = img.height; if (W % g.w || H % g.h || W < g.w || H < g.h) throw new Error('sheet size');
-        const c = document.createElement('canvas'); c.width = W; c.height = H;
-        const cx = c.getContext('2d', { willReadFrequently: true }); cx.drawImage(img, 0, 0);
-        const rgba = cx.getImageData(0, 0, W, H).data, px = new Uint8Array(W * H);
-        for (let i = 0, j = 0; i < px.length; i++, j += 4) px[i] = rgba[j];
-        const tex = new THREE.DataTexture(px, W, H, THREE.RedFormat, THREE.UnsignedByteType);
-        tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.generateMipmaps = false; tex.flipY = false; tex.needsUpdate = true;
-        tv.sheets.set(name, { tex, px, W, H, cols: W / g.w, rows: H / g.h }, tv.keepSheets);
-      } catch (e) { tv.failed.add(name); tv.bad = true; bakeVer++; } // a bad sheet: back to the hourly data for good (until a newer index)
-    };
+    tv.pending.add(kf.tile); const name = kf.tile, pr = tv.parsed, url = tv.dir + name;
+    if (typeof createImageBitmap === 'function' && typeof fetch === 'function') {
+      fetch(url).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+        .then((blob) => createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }).catch(() => createImageBitmap(blob)))
+        .then((bmp) => tvCommit(name, pr, bmp, bmp))
+        .catch(() => { tv.pending.delete(name); tv.failed.add(name); tv.bad = true; bakeVer++; });
+      return null;
+    }
+    const img = new Image();
+    img.onload = () => tvCommit(name, pr, img, null);
     img.onerror = () => { tv.pending.delete(name); tv.failed.add(name); tv.bad = true; bakeVer++; };
-    img.src = tv.dir + name; return null;
+    img.src = url; return null;
   }
   function tvApply(parsed) { // make an index current
     tv.parsed = parsed; tv.lines.clear(); tv.lineSig = ''; tv.failed.clear(); tv.bad = false; tv.shown = null; bakeVer++; occKey = ''; lastVsig = null;
