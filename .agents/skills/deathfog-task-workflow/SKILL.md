@@ -5,7 +5,7 @@ description: "Use to scope major features into DAG tasks, run parallel worktrees
 
 # Self-Contained Parallel Task & Worktree Workflow
 
-All feature work that needs a plan and branch uses **`tools/task.py`** so plans, mockups, and verification proofs stay self-contained in `tasks/<id>-<slug>/` inside an isolated worktree (`_worktrees/wt_<id>-<slug>`).
+All feature work that needs a plan and branch uses **`tools/task.py`** so plans, mockups, and verification proofs stay self-contained in gitignored local-only `MAIN_ROOT/tasks/<id>-<slug>/` (never duplicated in worktrees `_worktrees/wt_<id>-<slug>`). Lifecycle guardrails H1–H5 are enforced automatically via `.agents/hooks.json` and `.claude/settings.json` (`tools/hooks/guard.py`). Do not add new tests to `tests/test_task_workflow.py` unless `PLAN.md` explicitly requires new testable behavior.
 
 ## 1. Stage-Gated Scoping (Brainstorm -> Plan -> Approved)
 1. Inspect affected modules first with `.\.venv\Scripts\python.exe tools/codemap.py <path>` (never read monoliths blindly).

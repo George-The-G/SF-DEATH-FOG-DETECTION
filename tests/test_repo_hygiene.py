@@ -136,7 +136,7 @@ class TestRepoHygiene(unittest.TestCase):
 
     def test_task_packets_have_valid_frontmatter(self):
         """Every `tasks/<id>-<slug>/TASK.md` must have valid YAML frontmatter matching tools/task.py schema."""
-        tdir = REPO_ROOT / "tasks"
+        tdir = task_cli.TASKS_DIR
         if not tdir.exists():
             return
         errors = []

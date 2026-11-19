@@ -266,7 +266,9 @@ def build_state() -> dict:
     for tid, (meta, tfile) in all_tasks.items():
         merged[tid] = (meta, tfile, main_root, False)
     for tid, (meta, wt_root) in wt_active.items():
-        tfile = wt_root / "tasks" / f"{meta['id']}-{meta['slug']}" / "TASK.md"
+        tfile = main_root / "tasks" / f"{meta['id']}-{meta['slug']}" / "TASK.md"
+        if not tfile.is_file():
+            tfile = wt_root / "tasks" / f"{meta['id']}-{meta['slug']}" / "TASK.md"
         merged[tid] = (meta, tfile, wt_root, True)
 
     waves_raw = task_cli.compute_waves({tid: (m, tf) for tid, (m, tf, _, _) in merged.items()})
@@ -277,7 +279,7 @@ def build_state() -> dict:
     for tid in sorted(merged):
         meta, tfile, checkout_root, is_wt = merged[tid]
         slug = meta.get("slug", "")
-        tdir = checkout_root / "tasks" / f"{tid}-{slug}"
+        tdir = tfile.parent
         verify_path = tdir / "evidence" / "verify.json"
         verify_data = None
         if verify_path.is_file():
