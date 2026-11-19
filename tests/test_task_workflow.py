@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 from tools import task
+from tools.hooks import guard
 from tools.task_viewer import install_antigravity_plugin, server as task_viewer_server
 
 
@@ -772,6 +773,107 @@ class TestTaskWorkflow(unittest.TestCase):
             self.assertIn("Batch independent `read_file` calls", res["prompt"])
             self.assertIn("avoid sequential single-command turns", res["prompt"])
             self.assertIn("tools/task.py pr 097", res["prompt"])
+
+    def test_guard_hooks_h1_to_h5_antigravity_and_claude(self):
+        """tools/hooks/guard.py enforces H1-H5 across Antigravity and Claude payloads and fails open."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            _, tdir_pre = self._make_sample_task(root, "010", status="brainstorm", owns=["site/v3/fog2.js"], fill_plan=False)
+            task.link_conversation(tdir_pre, "conv-prebuild-010", tool="antigravity")
+            self._make_sample_task(root, "011", status="in-progress", owns=["tools/task.py"], fill_plan=True)
+
+            def _agy(name: str, args: dict, conv: str = "") -> dict:
+                plat, resp = guard.evaluate_payload(
+                    {"hookEventName": "PreToolUse", "conversationId": conv, "cwd": str(root), "toolCall": {"name": name, "args": args}},
+                    main_root=root,
+                )
+                self.assertEqual(plat, "antigravity")
+                return resp
+
+            def _claude(name: str, tool_input: dict, sess: str = "") -> dict:
+                plat, resp = guard.evaluate_payload(
+                    {"hook_event_name": "PreToolUse", "session_id": sess, "cwd": str(root), "tool_name": name, "tool_input": tool_input},
+                    main_root=root,
+                )
+                self.assertEqual(plat, "claude")
+                return resp["hookSpecificOutput"]
+
+            # H1: git clean -fdx/-X blocked, -n allowed
+            self.assertEqual(_agy("run_command", {"CommandLine": "git clean -fdx"})["decision"], "deny")
+            self.assertEqual(_claude("Bash", {"command": "git clean -fdX"})["permissionDecision"], "deny")
+            self.assertEqual(_agy("run_command", {"CommandLine": "git clean -n"})["decision"], "allow")
+
+            # H2: force push to protected branches blocked, feature branch allowed
+            self.assertEqual(_agy("run_command", {"CommandLine": "git push --force origin v3-dev"})["decision"], "deny")
+            self.assertEqual(_claude("Bash", {"command": "git push -f origin HEAD:main"})["permissionDecision"], "deny")
+            self.assertEqual(_agy("run_command", {"CommandLine": "git push -f origin feat/016-sync-main"})["decision"], "allow")
+
+            # H3: git worktree add outside _worktrees/ blocked
+            self.assertEqual(_agy("run_command", {"CommandLine": "git worktree add ../wt_outside -b feat/x"})["decision"], "deny")
+            self.assertEqual(_claude("Bash", {"command": "git worktree add _worktrees/wt_011-plan-gate-test feat/011"})["permissionDecision"], "allow")
+
+            # H4: --approve-plan forces human confirmation
+            self.assertEqual(_agy("run_command", {"CommandLine": "python tools/task.py approve 010 --approve-plan"})["decision"], "force_ask")
+            self.assertEqual(_claude("Bash", {"command": "python tools/task.py approve 010 --approve-plan"})["permissionDecision"], "ask")
+
+            # H5: unowned worktree edit -> ask; pre-build main-checkout edit -> deny; tasks/ -> allow
+            wt_unowned = str(root / "_worktrees" / "wt_011-plan-gate-test" / "site" / "v3" / "app.js")
+            wt_owned = str(root / "_worktrees" / "wt_011-plan-gate-test" / "tools" / "task.py")
+            self.assertEqual(_agy("edit_file", {"Path": wt_unowned})["decision"], "ask")
+            self.assertEqual(_claude("Write", {"file_path": wt_owned})["permissionDecision"], "allow")
+            self.assertEqual(_agy("write_file", {"Path": str(root / "site" / "v3" / "app.js")}, conv="conv-prebuild-010")["decision"], "deny")
+            self.assertEqual(_claude("Edit", {"file_path": str(tdir_pre / "PLAN.md")}, sess="conv-prebuild-010")["permissionDecision"], "allow")
+
+            # Malformed stdin fails open
+            buf = io.StringIO()
+            with mock.patch("sys.stdin", io.StringIO("{bad json")), contextlib.redirect_stdout(buf):
+                self.assertEqual(guard.main(), 0)
+            self.assertEqual(json.loads(buf.getvalue())["decision"], "allow")
+
+    def test_resilient_plan_readiness_and_plan_gate_warning(self):
+        """check_plan_readiness supports numbered/custom headings while rejecting untouched TBD scaffolds."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "089", status="brainstorm", fill_plan=False)
+            tfile = tdir / "TASK.md"
+            with mock.patch.object(task, "find_task", return_value=(meta, tfile, root)):
+                res = task.approve_task_gate("089")
+            self.assertTrue(res["ok"])
+            self.assertIn("Warning: plan not yet ready", res["message"])
+
+            for heading in ("## 1. Implementation Plan", "## Implementation Plan", "## Architecture"):
+                (tdir / "PLAN.md").write_text(
+                    f"# Plan — Task 089: Hook Guard Implementation\n\n{heading}\n"
+                    "1. Implement hook guard in tools/hooks/guard.py and verify end-to-end across Antigravity and Claude payloads.\n",
+                    encoding="utf-8",
+                )
+                self.assertTrue(task.check_plan_readiness(tdir, meta)["ready"], f"Expected ready for {heading}")
+
+            (tdir / "PLAN.md").write_text(
+                "# Plan — Task 089\n\n## 1. Implementation Plan\n1. TBD\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(task.check_plan_readiness(tdir, meta)["ready"])
+
+    def test_main_root_tasks_resolution_for_worktrees(self):
+        """active_worktree_tasks() and find_task() resolve MAIN_ROOT/tasks without worktree packet copies."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "088", status="in-progress", owns=["tools/task.py"], fill_plan=True)
+            tfile = tdir / "TASK.md"
+            wt_dir = root / "_worktrees"
+            wt_path = wt_dir / "wt_088-plan-gate-test"
+            wt_path.mkdir(parents=True)
+            with mock.patch.object(task, "MAIN_ROOT", root), \
+                 mock.patch.object(task, "ROOT", root), \
+                 mock.patch.object(task, "WORKTREES_DIR", wt_dir):
+                active = task.active_worktree_tasks()
+                self.assertIn("088", active)
+                self.assertEqual(active["088"][1], wt_path)
+                found_meta, found_tfile, found_checkout = task.find_task("088")
+                self.assertEqual(found_meta["id"], "088")
+                self.assertEqual(found_tfile.resolve(), tfile.resolve())
+                self.assertEqual(found_checkout.resolve(), wt_path.resolve())
 
 
 if __name__ == "__main__":

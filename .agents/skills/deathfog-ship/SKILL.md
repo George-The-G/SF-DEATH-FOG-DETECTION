@@ -27,7 +27,8 @@ Sites: `https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/` (public) and 
 2. Merge the verified feature branch into `v3-dev` with one command:
    - Runtime/viewer feature: `.\.venv\Scripts\python.exe tools/task.py finish <id> --merge --deploy-beta`
    - Agent/tooling changes (`AGENTS.md`, `.agents/skills/*`, `tools/task.py`, `tools/task_viewer/`): `.\.venv\Scripts\python.exe tools/task.py finish <id> --merge --deploy-beta --sync-main`
-   - Standalone parity check/sync anytime: `.\.venv\Scripts\python.exe tools/task.py sync-main --check` (or `--push` to sync `SHARED_MAIN_PATHS` from `v3-dev` to `origin/main` in an isolated worktree after running isolated tests — never hand-copy or cherry-pick onto `main`).
+   - Standalone parity check/sync anytime: `.\.venv\Scripts\python.exe tools/task.py sync-main --check` (or `--push` to sync `SHARED_MAIN_PATHS` from `v3-dev` to `origin/main` in an isolated worktree after running isolated tests — never hand-copy or cherry-pick onto `main`). **Trust `sync-main --check`: if it exits 0, stop immediately — do not run exploratory `git log`/`ls-tree` loops.**
+   - `.agents/hooks.json` + `.claude/settings.json` enforce H1–H5 automatically; `tasks/` is gitignored local-only (`MAIN_ROOT/tasks`). Do not add new tests to `tests/test_task_workflow.py` unless `PLAN.md` explicitly requires new testable behavior.
    - Note: `finish --deploy-beta` automatically skips `collect.yml` for tooling/docs-only tasks (pass `--force-deploy` to override).
 3. If `collect.yml` was triggered, verify published status (append `?t=<timestamp>` to bust cache):
    - `v3/live_beta/status.json`: `ok: true`, `generated_iso` updated, beta switches listed.

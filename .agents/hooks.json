@@ -1,0 +1,16 @@
+{
+  "deathfog-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command|write_file|edit_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if exist ..\\.venv\\Scripts\\python.exe (..\\.venv\\Scripts\\python.exe ..\\tools\\hooks\\guard.py) else (if exist ..\\..\\..\\.venv\\Scripts\\python.exe (..\\..\\..\\.venv\\Scripts\\python.exe ..\\tools\\hooks\\guard.py) else (py -3 ..\\tools\\hooks\\guard.py))",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
