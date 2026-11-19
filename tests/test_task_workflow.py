@@ -875,6 +875,93 @@ class TestTaskWorkflow(unittest.TestCase):
                 self.assertEqual(found_tfile.resolve(), tfile.resolve())
                 self.assertEqual(found_checkout.resolve(), wt_path.resolve())
 
+    def test_merge_status_remote_refs_and_refresh_git_refs(self):
+        """merge_status checks origin/v3-dev and origin/main; refresh_git_refs handles success and timeouts."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta = {"branch": "feat/018-demo", "status": "review", "merged_into": []}
+            seen_targets: list[str] = []
+
+            def _fake_ancestor(_ref: str, target: str, _cwd: Path) -> bool:
+                seen_targets.append(target)
+                return target in ("origin/v3-dev", "origin/main")
+
+            with mock.patch.object(task, "_is_ancestor", side_effect=_fake_ancestor):
+                ms = task.merge_status(meta, root)
+            self.assertTrue(ms["in_beta"])
+            self.assertTrue(ms["in_public"])
+            self.assertEqual(ms["merged_into"], ["v3-dev", "main"])
+            self.assertIn("origin/v3-dev", seen_targets)
+            self.assertIn("origin/main", seen_targets)
+
+            ok_proc = argparse.Namespace(returncode=0, stdout="", stderr="")
+            with mock.patch.object(task.subprocess, "run", return_value=ok_proc) as m_run:
+                res_ok = task.refresh_git_refs(root)
+            self.assertEqual(res_ok, {"ok": True, "error": ""})
+            self.assertEqual(m_run.call_args[0][0], ["git", "fetch", "origin", "v3-dev", "main", "--quiet"])
+
+            with mock.patch.object(task.subprocess, "run", side_effect=task.subprocess.TimeoutExpired("git", 8)):
+                res_to = task.refresh_git_refs(root)
+            self.assertFalse(res_to["ok"])
+            self.assertIn("timed out", res_to["error"])
+
+    def test_cmd_finish_sync_main_records_main_in_task_md(self):
+        """cmd_finish --sync-main appends 'main' to merged_into in TASK.md when sync succeeds."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "095", status="in-progress", fill_plan=True)
+            tfile = tdir / "TASK.md"
+            ev_dir = tdir / "evidence"
+            ev_dir.mkdir(parents=True, exist_ok=True)
+            (ev_dir / "verify.json").write_text(
+                json.dumps({"ok": True, "git_sha": "deadbeef1234"}), encoding="utf-8"
+            )
+            fake_head = argparse.Namespace(returncode=0, stdout="deadbeef1234\n", stderr="")
+            empty_usage = {"totals": {"turns": 0}, "summary": ""}
+            buf = io.StringIO()
+            with mock.patch.object(task, "find_task", return_value=(meta, tfile, root)), \
+                 mock.patch.object(task, "_run", return_value=fake_head), \
+                 mock.patch.object(task, "collect_token_usage", return_value=empty_usage), \
+                 mock.patch.object(task, "sync_shared_to_main", return_value={"ok": True, "message": "Synced"}), \
+                 contextlib.redirect_stdout(buf):
+                rc = task.cmd_finish(argparse.Namespace(
+                    id="095", merge=False, allow_stale=False, deploy_beta=False, sync_main=True
+                ))
+            self.assertEqual(rc, 0)
+            updated, _ = task.parse_task_md(tfile)
+            self.assertIn("main", updated.get("merged_into") or [])
+
+    def test_api_state_refresh_calls_refresh_git_refs(self):
+        """GET /api/state?refresh=1 invokes refresh_git_refs before build_state() and attaches git_refresh."""
+        handler = object.__new__(task_viewer_server.TaskViewerHandler)
+        sent: list[dict] = []
+        handler._send_json = lambda obj, status=200: sent.append(obj)
+
+        call_order: list[str] = []
+
+        def _fake_refresh(_root):
+            call_order.append("refresh")
+            return {"ok": True, "error": ""}
+
+        def _fake_build():
+            call_order.append("build")
+            return {"tasks": {}, "waves": []}
+
+        with mock.patch.object(task_viewer_server.task_cli, "refresh_git_refs", side_effect=_fake_refresh) as m_ref, \
+             mock.patch.object(task_viewer_server, "build_state", side_effect=_fake_build):
+            handler.path = "/api/state"
+            handler.do_GET()
+            self.assertEqual(call_order, ["build"])
+            self.assertNotIn("git_refresh", sent[-1])
+            m_ref.assert_not_called()
+
+            call_order.clear()
+            handler.path = "/api/state?refresh=1"
+            handler.do_GET()
+            self.assertEqual(call_order, ["refresh", "build"])
+            self.assertEqual(sent[-1].get("git_refresh"), {"ok": True, "error": ""})
+            m_ref.assert_called_once_with(task_viewer_server.task_cli.MAIN_ROOT)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -524,8 +524,15 @@ function isUserInteracting() {
 
 async function refresh(manual = false) {
   if (!manual && isUserInteracting()) return;
+  const statusEl = document.getElementById('sync-status');
+  if (manual) {
+    if (statusEl) statusEl.textContent = 'Refreshing…';
+    FILE_CACHE = {};
+    LAST_STATE_JSON = '';
+  }
   try {
-    const r = await fetch('/api/state', { cache: 'no-store' });
+    const url = manual ? '/api/state?refresh=1' : '/api/state';
+    const r = await fetch(url, { cache: 'no-store' });
     const rawText = await r.text();
     if (!manual && rawText === LAST_STATE_JSON) {
       return;
@@ -540,13 +547,18 @@ async function refresh(manual = false) {
     if (SELECTED && !STATE.tasks[SELECTED]) SELECTED = STATE.active_task_id;
     const modeTag = hasSidecarChat() ? 'ag' : 'live';
     const count = Object.keys(STATE.tasks).length;
-    document.getElementById('sync-status').textContent = `${count} · ${modeTag}`;
+    if (statusEl) statusEl.textContent = `${count} · ${modeTag}`;
     renderParityBadge();
     renderSwitcher();
     renderSidebar();
     renderDetail();
+    if (manual && SELECTED && ACTIVE_FILE && !['PLAN.md', 'TASK.md', 'HANDOFF.md'].includes(ACTIVE_FILE) && !/\.(html?|png|jpe?g|webp|gif|svg)$/i.test(ACTIVE_FILE)) {
+      if (!FILE_CACHE[`${SELECTED}:${ACTIVE_FILE}`]?.loading) {
+        fetchTaskFile(SELECTED, ACTIVE_FILE);
+      }
+    }
   } catch (e) {
-    document.getElementById('sync-status').textContent = 'Offline';
+    if (statusEl) statusEl.textContent = 'Offline';
     if (manual) console.error(e);
   }
 }

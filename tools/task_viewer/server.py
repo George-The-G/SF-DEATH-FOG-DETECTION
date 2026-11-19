@@ -562,7 +562,14 @@ class TaskViewerHandler(BaseHTTPRequestHandler):
             self._send_bytes(html, "text/html; charset=utf-8")
             return
         if path == "/api/state":
-            self._send_json(build_state())
+            qs = parse_qs(parsed.query)
+            refresh_res = None
+            if (qs.get("refresh") or [""])[0] == "1":
+                refresh_res = task_cli.refresh_git_refs(task_cli.MAIN_ROOT)
+            state = build_state()
+            if refresh_res is not None:
+                state["git_refresh"] = refresh_res
+            self._send_json(state)
             return
         if path == "/api/file":
             qs = parse_qs(parsed.query)

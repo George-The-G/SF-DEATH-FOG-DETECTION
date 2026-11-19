@@ -937,6 +937,12 @@ def cmd_finish(args: argparse.Namespace) -> int:
         print(sync_res.get("message") or sync_res.get("error"))
         if not sync_res.get("ok"):
             return 1
+        merged_into = list(meta.get("merged_into") or [])
+        if "main" not in merged_into:
+            merged_into.append("main")
+            meta["merged_into"] = merged_into
+            _, body = parse_task_md(tfile)
+            tfile.write_text(dump_task_md(meta, body), encoding="utf-8")
     print("Reminder: If more tasks are queued, ask the user whether to /compact or start a fresh conversation before starting the next task.")
     return 0
 
@@ -1439,8 +1445,16 @@ def merge_status(meta: dict, main_root: Path = MAIN_ROOT) -> dict:
     recorded = [str(x) for x in (meta.get("merged_into") or []) if str(x)]
 
     check_ref = merged_sha or branch
-    in_beta = ("v3-dev" in recorded) or (status in ("beta", "done")) or _is_ancestor(check_ref, "v3-dev", main_root)
-    in_public = ("main" in recorded) or (status == "done") or _is_ancestor(check_ref, "main", main_root)
+    in_beta = (
+        ("v3-dev" in recorded)
+        or (status in ("beta", "done"))
+        or any(_is_ancestor(check_ref, ref, main_root) for ref in ("v3-dev", "origin/v3-dev"))
+    )
+    in_public = (
+        ("main" in recorded)
+        or (status == "done")
+        or any(_is_ancestor(check_ref, ref, main_root) for ref in ("main", "origin/main"))
+    )
     merged_into = list(dict.fromkeys(recorded + (["v3-dev"] if in_beta else []) + (["main"] if in_public else [])))
     return {
         "branch": branch,
@@ -1451,6 +1465,23 @@ def merge_status(meta: dict, main_root: Path = MAIN_ROOT) -> dict:
         "in_public": in_public,
         "merged_into": merged_into,
     }
+
+
+def refresh_git_refs(main_root: Path = MAIN_ROOT) -> dict:
+    """Fetch `origin/v3-dev` and `origin/main` with a short timeout; non-fatal if offline."""
+    try:
+        res = subprocess.run(
+            ["git", "fetch", "origin", "v3-dev", "main", "--quiet"],
+            cwd=main_root,
+            text=True,
+            capture_output=True,
+            timeout=8,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return {"ok": False, "error": str(exc)}
+    if res.returncode != 0:
+        return {"ok": False, "error": (res.stderr or res.stdout or "git fetch failed").strip()}
+    return {"ok": True, "error": ""}
 
 
 def update_handoff(
