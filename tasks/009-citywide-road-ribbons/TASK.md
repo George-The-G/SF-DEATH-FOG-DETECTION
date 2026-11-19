@@ -6,7 +6,7 @@ issue: null
 epic: null
 pr: null
 pr_url: ""
-status: "in-progress"
+status: "beta"
 branch: "feat/009-citywide-road-ribbons"
 switch: "city_roadnet"
 depends_on: []
@@ -27,6 +27,9 @@ deliverables:
   - "site/v3/skate.js"
   - "tests_mc/test_roadnet.py"
   - "tests_js/roadnet.test.mjs"
+merged_sha: "bd58a321c139"
+merged_into:
+  - "v3-dev"
 ---
 
 # Task 009: City-wide continuous SF road ribbon network & terrain-accurate mesh
