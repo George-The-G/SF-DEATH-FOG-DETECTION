@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Task 014 Mockup — Rendered Markdown Viewer & Right-Hand File Browser</title>
+<style>
+  :root {
+    --bg: #0f131a; --panel: #151b24; --panel2: #1b2230; --border: #263142;
+    --text: #e6edf7; --muted: #8b9bb4; --accent: #4ea1ff; --green: #38c172; --cyan: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #090c11; color: var(--text); font-size: 13px; line-height: 1.5; }
+  .demo-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: #101622; border-bottom: 1px solid #2b3a55; font-size: 11.5px; }
+  .demo-bar strong { color: var(--cyan); }
+  .demo-bar button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; font-size: 11.5px; cursor: pointer; }
+  .demo-bar button.on { background: #1d4e89; border-color: var(--accent); }
+  .stage { display: flex; justify-content: center; padding: 14px; }
+  .frame { width: 100%; max-width: 960px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: max-width .2s ease; position: relative; }
+  .frame.narrow { max-width: 470px; }
+
+  .toast { display: none; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: #12241b; border-bottom: 1px solid #1f5c3a; font-size: 12px; }
+  .toast.show { display: flex; }
+
+  .doc-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  .doc-title { font-family: ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 600; color: var(--text); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg button { background: var(--panel2); color: var(--muted); border: none; padding: 4px 9px; font-size: 11.5px; cursor: pointer; }
+  .seg button.active { background: #1d4e89; color: var(--text); font-weight: 600; }
+  button.btn { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; font-size: 11.5px; cursor: pointer; }
+  button.btn.primary { background: #1d4e89; border-color: #2f6db8; }
+
+  .workspace { display: grid; grid-template-columns: 1fr 210px; min-height: 460px; position: relative; }
+  .workspace.no-files { grid-template-columns: 1fr; }
+  .frame.narrow .workspace { grid-template-columns: 1fr; }
+
+  .doc-pane { padding: 14px 16px; overflow-y: auto; max-height: 520px; min-width: 0; }
+  .file-browser { background: var(--panel); border-left: 1px solid var(--border); padding: 10px 8px; overflow-y: auto; max-height: 520px; }
+  .workspace.no-files .file-browser { display: none; }
+  .frame.narrow .file-browser { display: none; position: absolute; top: 0; right: 0; bottom: 0; width: 220px; z-index: 20; box-shadow: -8px 0 24px rgba(0,0,0,.55); }
+  .frame.narrow .file-browser.open { display: block; }
+
+  .fb-grp { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 700; margin: 8px 6px 4px; }
+  .fb-grp:first-child { margin-top: 2px; }
+  .fb-item { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--muted); }
+  .fb-item:hover { background: var(--panel2); color: var(--text); }
+  .fb-item.active { background: #19263a; color: var(--text); font-weight: 600; border: 1px solid #2b456b; }
+  .fb-sz { font-size: 10px; font-family: ui-monospace, Consolas, monospace; opacity: .7; }
+
+  /* Rendered Markdown Styles */
+  .md-body h1 { font-size: 17px; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .md-body h2 { font-size: 14.5px; margin: 16px 0 6px; color: var(--cyan); }
+  .md-body h3 { font-size: 13px; margin: 12px 0 4px; }
+  .md-body ul { padding-left: 18px; margin: 6px 0; }
+  .md-body li { margin: 3px 0; }
+  .md-body code { background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
+  .md-body pre { background: #0b0e14; border: 1px solid var(--border); border-radius: 7px; padding: 10px; overflow-x: auto; font-size: 11.5px; }
+  .md-body pre code { background: none; border: none; padding: 0; }
+  .md-body blockquote { margin: 8px 0; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--panel); color: var(--muted); border-radius: 0 6px 6px 0; }
+  .md-body table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+  .md-body th, .md-body td { border: 1px solid var(--border); padding: 5px 8px; text-align: left; }
+  .md-body th { background: var(--panel); color: var(--muted); font-size: 11px; text-transform: uppercase; }
+  pre.raw { margin: 0; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; color: #c7d4e8; }
+</style>
+</head>
+<body>
+<div class="demo-bar">
+  <strong>Task 014 Mockup</strong>
+  <button id="b-wide" class="on" onclick="setNarrow(false)">Wide Split (960px)</button>
+  <button id="b-narrow" onclick="setNarrow(true)">Aux Pane (470px)</button>
+  <button onclick="document.getElementById('wt-toast').classList.toggle('show')">Toggle Post-Start Toast</button>
+</div>
+
+<div class="stage">
+  <div class="frame" id="frame">
+    <div class="toast show" id="wt-toast">
+      <span>✓ Worktree ready (<code>wt_014-viewer-md-file-browser</code>) — dispatch an agent to begin build.</span>
+      <span style="display:flex;gap:6px;align-items:center;">
+        <button class="btn primary" onclick="this.textContent='Sent ✓'">Send Worker Brief to Chat</button>
+        <button class="btn" onclick="document.getElementById('wt-toast').classList.remove('show')">×</button>
+      </span>
+    </div>
+
+    <div class="doc-toolbar">
+      <span class="doc-title" id="cur-file">PLAN.md</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="seg" id="md-seg">
+          <button id="m-ren" class="active" onclick="setMode('rendered')">Rendered</button>
+          <button id="m-raw" onclick="setMode('raw')">Raw</button>
+        </div>
+        <button class="btn" onclick="toggleFiles()" id="files-btn">Files (6)</button>
+      </div>
+    </div>
+
+    <div class="workspace" id="ws">
+      <div class="doc-pane" id="doc-pane"></div>
+      <aside class="file-browser" id="fb"></aside>
+    </div>
+  </div>
+</div>
+
+<script>
+const FILES = [
+  { path: 'PLAN.md', group: 'Task Docs', size: '3.4 KB', type: 'md', content: `# Plan — Task 014: Rendered Markdown & File Browser\n\n> **0 external deps, 0 LLM tokens.** Renders task docs cleanly while keeping all task packet files visible on the right.\n\n## Key Features\n- [x] Zero-dependency Markdown renderer (\`Rendered\` / \`Raw\` / \`Edit\`)\n- [x] Simultaneous right-hand **Task Files** browser\n- [ ] Post-Start Worktree 1-click **Send Worker Brief** toast\n\n| File Type | Preview Mode |\n|---|---|\n| \`.md\` | Formatted Markdown + Raw toggle |\n| \`.json\` | Pretty-printed JSON |\n| \`.html\` | Persistent no-flicker iframe |\n\n\`\`\`python\ndef _read_task_file_safe(task_dir: Path, rel_path: str) -> dict:\n    return {"ok": True, "path": rel_path}\n\`\`\`` },
+  { path: 'TASK.md', group: 'Task Docs', size: '1.1 KB', type: 'md', content: `# Task 014: Rendered Markdown Viewer & Right-Hand Task File Browser\n\n## Acceptance Criteria\n- [x] Technical plan written in \`PLAN.md\`\n- [ ] Implementation stays within \`owned_paths\`\n- [ ] \`python tools/task.py verify 014\` passes` },
+  { path: 'conversations.json', group: 'Task Docs', size: '0.4 KB', type: 'json', content: JSON.stringify({ primary_id: "833e5d95-bb3f-4a18-a7b7-0d33c9985261", items: [{ id: "833e5d95-bb3f-4a18-a7b7-0d33c9985261", tool: "antigravity", label: "Task 014 Brainstorm" }] }, null, 2) },
+  { path: 'mockups/md_browser_mockup.html', group: 'Mockups', size: '5.8 KB', type: 'html', content: '(Persistent HTML mockup iframe renders live here)' },
+  { path: 'evidence/verify.json', group: 'Evidence', size: '0.9 KB', type: 'json', content: JSON.stringify({ task_id: "014", ok: true, checks: { pytest: { ok: true }, node_test: { ok: true } } }, null, 2) },
+  { path: 'evidence/usage.json', group: 'Evidence', size: '0.5 KB', type: 'json', content: JSON.stringify({ summary: "in:42.1k · cache:28.0k · out:3.2k (1 convo)" }, null, 2) },
+];
+
+let CUR = 'PLAN.md';
+let MODE = 'rendered';
+let NARROW = false;
+let FILES_OPEN = true;
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function renderMd(md) {
+  let h = esc(md);
+  h = h.replace(/```(\w*)\n([\s\S]*?)```/g, (_, l, c) => `<pre><code>${c}</code></pre>`);
+  h = h.replace(/^### (.+)$/gm, '<h3>$1</h3>').replace(/^## (.+)$/gm, '<h2>$1</h2>').replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  h = h.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+  h = h.replace(/^- \[x\] (.+)$/gm, '<li>☑ $1</li>').replace(/^- \[ \] (.+)$/gm, '<li>☐ $1</li>').replace(/^- (.+)$/gm, '<li>$1</li>');
+  h = h.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
+  h = h.replace(/\|(.+)\|\n\|[-| ]+\|\n((?:\|.+\|\n?)+)/g, (_, hdr, rows) => {
+    const ths = hdr.split('|').map(c => `<th>${c.trim()}</th>`).join('');
+    const trs = rows.trim().split('\n').map(r => '<tr>' + r.slice(1,-1).split('|').map(c => `<td>${c.trim()}</td>`).join('') + '</tr>').join('');
+    return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+  });
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  return `<div class="md-body">${h}</div>`;
+}
+
+function setNarrow(n) {
+  NARROW = n;
+  FILES_OPEN = !n;
+  document.getElementById('frame').classList.toggle('narrow', n);
+  document.getElementById('b-narrow').classList.toggle('on', n);
+  document.getElementById('b-wide').classList.toggle('on', !n);
+  render();
+}
+function toggleFiles() { FILES_OPEN = !FILES_OPEN; render(); }
+function setMode(m) { MODE = m; render(); }
+function openFile(p) { CUR = p; if (NARROW) FILES_OPEN = false; render(); }
+
+function render() {
+  const f = FILES.find(x => x.path === CUR) || FILES[0];
+  document.getElementById('cur-file').textContent = f.path;
+  document.getElementById('md-seg').style.display = f.type === 'md' ? 'inline-flex' : 'none';
+  document.getElementById('m-ren').classList.toggle('active', MODE === 'rendered');
+  document.getElementById('m-raw').classList.toggle('active', MODE === 'raw');
+  document.getElementById('ws').classList.toggle('no-files', !NARROW && !FILES_OPEN);
+  document.getElementById('fb').classList.toggle('open', NARROW && FILES_OPEN);
+
+  const pane = document.getElementById('doc-pane');
+  if (f.type === 'md' && MODE === 'rendered') pane.innerHTML = renderMd(f.content);
+  else pane.innerHTML = `<pre class="raw">${esc(f.content)}</pre>`;
+
+  const groups = ['Task Docs', 'Mockups', 'Evidence'];
+  document.getElementById('fb').innerHTML = groups.map(g => {
+    const items = FILES.filter(x => x.group === g);
+    return `<div class="fb-grp">${g}</div>` + items.map(x =>
+      `<div class="fb-item ${x.path===CUR?'active':''}" onclick="openFile('${x.path}')">
+        <span>${x.path.split('/').pop()}</span><span class="fb-sz">${x.size}</span>
+      </div>`
+    ).join('');
+  }).join('');
+}
+render();
+</script>
+</body>
+</html>

@@ -55,6 +55,83 @@ def _list_dir_files(directory: Path) -> list[str]:
     )
 
 
+_ROOT_DOC_ORDER = ("PLAN.md", "TASK.md", "HANDOFF.md", "conversations.json")
+_TEXT_FILE_EXTS = {
+    ".md", ".json", ".txt", ".html", ".htm", ".css", ".js", ".mjs",
+    ".py", ".toml", ".yml", ".yaml", ".csv", ".log", ".svg",
+}
+
+
+def _list_task_files(task_dir: Path) -> list[dict]:
+    """Return sorted task packet files up to depth 2 (root docs, mockups, evidence)."""
+    if not task_dir.is_dir():
+        return []
+    entries: list[dict] = []
+
+    def _entry(p: Path, rel_path: str, group: str) -> dict:
+        try:
+            size = p.stat().st_size
+        except OSError:
+            size = 0
+        return {
+            "path": rel_path,
+            "group": group,
+            "name": p.name,
+            "ext": p.suffix.lower(),
+            "size": size,
+        }
+
+    root_files = [p for p in task_dir.iterdir() if p.is_file() and p.name != ".gitkeep"]
+    root_rank = {name: idx for idx, name in enumerate(_ROOT_DOC_ORDER)}
+    root_files.sort(key=lambda p: (root_rank.get(p.name, len(_ROOT_DOC_ORDER)), p.name.lower()))
+    for p in root_files:
+        entries.append(_entry(p, p.name, "root"))
+
+    for group in ("mockups", "evidence"):
+        sub = task_dir / group
+        if sub.is_dir():
+            for p in sorted((x for x in sub.iterdir() if x.is_file() and x.name != ".gitkeep"), key=lambda x: x.name.lower()):
+                entries.append(_entry(p, f"{group}/{p.name}", group))
+
+    return entries
+
+
+def _read_task_file_safe(task_dir: Path, rel_path: str, max_bytes: int = 256_000) -> dict:
+    """Safely read a UTF-8 text file or report binary metadata inside `task_dir`."""
+    if not isinstance(rel_path, str) or not rel_path or rel_path.startswith("/") or "\\" in rel_path:
+        return {"ok": False, "error": "Invalid file path."}
+    parts = rel_path.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        return {"ok": False, "error": "Path traversal is not allowed."}
+    base = task_dir.resolve()
+    candidate = (base / rel_path).resolve()
+    if base not in candidate.parents:
+        return {"ok": False, "error": "Resolved path escapes task directory."}
+    if not candidate.is_file():
+        return {"ok": False, "error": f"File not found: {rel_path}"}
+    ext = candidate.suffix.lower()
+    try:
+        size = candidate.stat().st_size
+    except OSError:
+        size = 0
+    if ext not in _TEXT_FILE_EXTS:
+        return {"ok": True, "path": rel_path, "ext": ext, "size": size, "binary": True}
+    try:
+        raw = candidate.read_bytes()
+        truncated = len(raw) > max_bytes
+        text = raw[:max_bytes].decode("utf-8", errors="replace")
+        return {
+            "ok": True,
+            "path": rel_path,
+            "ext": ext,
+            "size": size,
+            "truncated": truncated,
+            "content": text,
+        }
+    except OSError as exc:
+        return {"ok": False, "error": f"Could not read file: {exc}"}
+
+
 def detect_launchers() -> dict[str, str]:
     """Detect locally installed agent CLIs and terminal launchers on PATH."""
     return {
@@ -255,6 +332,7 @@ def build_state() -> dict:
             "plan_approved_sha": plan_readiness["plan_approved_sha"],
             "mockups": _list_dir_files(tdir / "mockups"),
             "evidence": _list_dir_files(tdir / "evidence"),
+            "task_files": _list_task_files(tdir),
             "verify": verify_data,
             "usage": usage_data,
             "token_usage": str(
@@ -419,6 +497,9 @@ def run_action(action_or_payload: str | dict, task_id: str = "") -> dict:
             "returncode": res.returncode,
             "output": (res.stdout + "\n" + res.stderr).strip(),
         }
+
+    if action == "read_task_file":
+        return _read_task_file_safe(tdir, str(payload.get("path", "")))
 
     if action == "verify":
         res = subprocess.run(

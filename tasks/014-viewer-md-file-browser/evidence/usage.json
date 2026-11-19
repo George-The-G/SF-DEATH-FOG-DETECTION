@@ -1,0 +1,41 @@
+{
+  "collected_at": "2026-11-19T11:29:09Z",
+  "convo_count": 2,
+  "summary": "in:943.9k cache:7.41M out:87.9k (2 convos)",
+  "totals": {
+    "input_tokens": 943905,
+    "cache_read_tokens": 7414578,
+    "output_tokens": 87883,
+    "turns": 80
+  },
+  "by_model": {
+    "gemini-4-hydrogen-medium": {
+      "input_tokens": 85608,
+      "cache_read_tokens": 763481,
+      "output_tokens": 22748,
+      "turns": 15
+    },
+    "gemini-4-neon-medium": {
+      "input_tokens": 858297,
+      "cache_read_tokens": 6651097,
+      "output_tokens": 65135,
+      "turns": 65
+    }
+  },
+  "conversations": {
+    "b3dd970f-5363-4df1-9273-0b6c9c796be5": {
+      "label": "Hydrogen Worker 014",
+      "input_tokens": 85608,
+      "cache_read_tokens": 763481,
+      "output_tokens": 22748,
+      "turns": 15
+    },
+    "833e5d95-bb3f-4a18-a7b7-0d33c9985261": {
+      "label": "Task 014 Brainstorm",
+      "input_tokens": 858297,
+      "cache_read_tokens": 6651097,
+      "output_tokens": 65135,
+      "turns": 65
+    }
+  }
+}
