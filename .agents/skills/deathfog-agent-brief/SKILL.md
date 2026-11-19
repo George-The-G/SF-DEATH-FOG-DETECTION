@@ -8,8 +8,10 @@ description: "Use when starting or delegating SF death-fog work: standing rules,
 Read [`AGENTS.md`](../../../AGENTS.md) and [`docs/STATUS.md`](../../../docs/STATUS.md) first. Put the standing rules below in any subagent prompt, then add only the task, approved scope, and report format.
 
 ## Standing rules
-- **Self-contained layout (Option 1):** Everything lives inside `<repo_root>/` (the repository root). Python: `.\.venv\Scripts\python.exe` (or `.venv/bin/python`). Data root: `data/` (via `microclimate.paths.data_dir()`, which auto-resolves from `_worktrees/wt_*`).
+- **Self-contained layout (Option 1):** Everything lives inside `<repo_root>/` (the repository root). Python: `.\.venv\Scripts\python.exe` (or `.venv/bin/python`). Data root: `data/` (via `microclimate.paths.data_dir()`, which auto-resolves from `_worktrees/wt_*`). `tasks/` is gitignored local-only (`MAIN_ROOT/tasks`, never duplicated in worktrees).
+- **Automated H1–H5 hooks:** `.agents/hooks.json` (Antigravity) and `.claude/settings.json` (Claude Code) run `tools/hooks/guard.py` automatically on tool calls to block `git clean -fdx`, force-pushes to protected branches, out-of-tree worktrees, unconfirmed `--approve-plan`, pre-build main edits, and prompt on unowned worktree edits.
 - **Never run `git clean -fdx` or `git clean -fdX`** at the repo root (`data\` and `_archive\` are gitignored inside the repo root).
+- **Single-command `main` sync & test restraint:** Trust `tools/task.py sync-main --check` — if exit 0, stop immediately (no exploratory `git log`/`ls-tree` loops). Do not add new tests to `tests/test_task_workflow.py` unless `PLAN.md` explicitly requires new testable behavior.
 - **Token-efficient navigation first:** Before reading large files (`site/v3/app.js`, `site/v3/fog2.js`, `microclimate/wetness.py`, `microclimate/live/forcing.py`), run:
   - `python tools/codemap.py <file_or_dir>` to get exact live `[Lstart-Lend]` line numbers for every `@sec:` section and function.
   - `python tools/codemap.py --contracts` to inspect `PROMOTED` vs `BETA` feature switches and `.npz` array schemas without writing probe scripts.

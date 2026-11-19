@@ -45,16 +45,20 @@ except ImportError:
 from tools import codemap  # noqa: E402
 
 MAIN_ROOT = main_repo_root()
-TASKS_DIR = ROOT / "tasks"
+_DEFAULT_TASKS_DIR = MAIN_ROOT / "tasks"
+TASKS_DIR = _DEFAULT_TASKS_DIR
 WORKTREES_DIR = MAIN_ROOT / "_worktrees"
 
 SHARED_MAIN_PATHS = (
     "AGENTS.md",
     "CLAUDE.md",
+    ".agents/hooks.json",
     ".agents/skills/deathfog-agent-brief/SKILL.md",
     ".agents/skills/deathfog-task-workflow/SKILL.md",
     ".agents/skills/deathfog-ship/SKILL.md",
+    ".claude/settings.json",
     "tools/codemap.py",
+    "tools/hooks",
     "tools/task.py",
     "tools/task_viewer",
     "tests/test_task_workflow.py",
@@ -213,10 +217,15 @@ def _run(cmd: list[str], cwd: Path | None = None, check: bool = False) -> subpro
     return subprocess.run(cmd, cwd=cwd or ROOT, text=True, capture_output=True, check=check)
 
 
-def load_all_tasks(root: Path = ROOT) -> dict[str, tuple[dict, Path]]:
-    """Load all `tasks/*/TASK.md` files under `root`, keyed by normalized task ID."""
+def _tasks_dir() -> Path:
+    """Return the active `tasks/` root, respecting test overrides on `MAIN_ROOT` or `TASKS_DIR`."""
+    return MAIN_ROOT / "tasks" if TASKS_DIR == _DEFAULT_TASKS_DIR else TASKS_DIR
+
+
+def load_all_tasks(root: Path | None = None) -> dict[str, tuple[dict, Path]]:
+    """Load all `tasks/*/TASK.md` files under `root` (defaults to `MAIN_ROOT`), keyed by normalized task ID."""
     tasks: dict[str, tuple[dict, Path]] = {}
-    tdir = root / "tasks"
+    tdir = (root if root is not None else MAIN_ROOT) / "tasks"
     if not tdir.exists():
         return tasks
     for child in sorted(tdir.iterdir()):
@@ -232,11 +241,14 @@ def active_worktree_tasks() -> dict[str, tuple[dict, Path]]:
     found: dict[str, tuple[dict, Path]] = {}
     if not WORKTREES_DIR.exists():
         return found
+    tasks_dir = _tasks_dir()
     for wt in sorted(WORKTREES_DIR.iterdir()):
         if not wt.is_dir() or not wt.name.startswith("wt_"):
             continue
         suffix = wt.name[3:]
-        tfile = wt / "tasks" / suffix / "TASK.md"
+        tfile = tasks_dir / suffix / "TASK.md"
+        if not tfile.is_file():
+            tfile = wt / "tasks" / suffix / "TASK.md"
         if tfile.is_file():
             try:
                 meta, _ = parse_task_md(tfile)
@@ -249,20 +261,22 @@ def active_worktree_tasks() -> dict[str, tuple[dict, Path]]:
 def find_task(task_id: str) -> tuple[dict, Path, Path]:
     """Locate a task by ID (or numeric shorthand) and return `(meta, task_md_path, checkout_root)`."""
     norm = str(task_id).zfill(3) if str(task_id).isdigit() else str(task_id)
+    tasks_dir = _tasks_dir()
     # Prefer active worktree if one exists for this task
     for tid, (meta, wt_root) in active_worktree_tasks().items():
         if tid == norm or str(meta.get("issue", "")) == str(task_id):
-            tfile = wt_root / "tasks" / f"{meta['id']}-{meta['slug']}" / "TASK.md"
+            tfile = tasks_dir / f"{meta['id']}-{meta['slug']}" / "TASK.md"
+            if not tfile.is_file():
+                tfile = wt_root / "tasks" / f"{meta['id']}-{meta['slug']}" / "TASK.md"
             return meta, tfile, wt_root
-    # Fall back to current checkout
-    for tid, (meta, tfile) in load_all_tasks(ROOT).items():
+    # Fall back to main repo tasks/ (then current checkout if different)
+    for tid, (meta, tfile) in load_all_tasks(MAIN_ROOT).items():
         if tid == norm or str(meta.get("issue", "")) == str(task_id):
-            return meta, tfile, ROOT
-    # Fall back to main repo root if invoked from another worktree
-    if MAIN_ROOT != ROOT:
-        for tid, (meta, tfile) in load_all_tasks(MAIN_ROOT).items():
+            return meta, tfile, MAIN_ROOT
+    if ROOT != MAIN_ROOT:
+        for tid, (meta, tfile) in load_all_tasks(ROOT).items():
             if tid == norm or str(meta.get("issue", "")) == str(task_id):
-                return meta, tfile, MAIN_ROOT
+                return meta, tfile, ROOT
     raise SystemExit(f"Task '{task_id}' not found in tasks/ or _worktrees/.")
 
 
@@ -529,8 +543,8 @@ def cmd_new(args: argparse.Namespace) -> int:
         "gpu_required": bool(args.gpu),
         "deliverables": deliverables,
     }
-    tdir = scaffold_task_dir(ROOT, meta, problem=args.problem or "")
-    print(f"Created task {tid}: {tdir.relative_to(ROOT).as_posix()}")
+    tdir = scaffold_task_dir(MAIN_ROOT, meta, problem=args.problem or "")
+    print(f"Created task {tid}: {tdir.relative_to(MAIN_ROOT).as_posix()}")
     if issue_num:
         print(f"GitHub Issue: #{issue_num}")
     return 0
@@ -625,23 +639,10 @@ def cmd_start(args: argparse.Namespace) -> int:
             print(res.stderr or res.stdout)
             return res.returncode
 
-    # Ensure task packet exists inside the worktree, carrying over pre-build plan/convo/mockups
+    # Update status directly in MAIN_ROOT/tasks/<id>-<slug>/TASK.md (no worktree packet duplication)
     meta["status"] = "in-progress"
-    wt_tdir = scaffold_task_dir(wt_path, meta)
-    src_tdir = tfile.parent
-    if src_tdir.resolve() != wt_tdir.resolve():
-        for fname in ("PLAN.md", "HANDOFF.md", "conversations.json"):
-            src_f = src_tdir / fname
-            if src_f.is_file():
-                shutil.copy2(src_f, wt_tdir / fname)
-        src_mockups = src_tdir / "mockups"
-        if src_mockups.is_dir():
-            for mf in src_mockups.iterdir():
-                if mf.is_file() and mf.name != ".gitkeep":
-                    shutil.copy2(mf, wt_tdir / "mockups" / mf.name)
-    wt_task_md = wt_tdir / "TASK.md"
     _, body = parse_task_md(tfile) if tfile.exists() else (meta, "")
-    wt_task_md.write_text(dump_task_md(meta, body), encoding="utf-8")
+    tfile.write_text(dump_task_md(meta, body), encoding="utf-8")
 
     # Update GitHub issue label if linked and online
     if meta.get("issue"):
@@ -659,6 +660,7 @@ def cmd_start(args: argparse.Namespace) -> int:
 def _check_scope(wt_root: Path, tid: str, slug: str, owned_paths: list[str], base_ref: str) -> list[str]:
     """Return any modified or untracked files outside `owned_paths` and `tasks/<id>-<slug>/`."""
     allowed_prefix = f"tasks/{tid}-{slug}/"
+    tasks_ignored = _run(["git", "check-ignore", "-q", "tasks/"], cwd=wt_root).returncode == 0
     changed: set[str] = set()
     diff = _run(["git", "diff", "--name-only", f"{base_ref}...HEAD"], cwd=wt_root)
     if diff.returncode == 0:
@@ -671,7 +673,7 @@ def _check_scope(wt_root: Path, tid: str, slug: str, owned_paths: list[str], bas
                 changed.add(path_part)
     out_of_scope = []
     for rel in sorted(changed):
-        if rel.startswith(allowed_prefix):
+        if rel.startswith(allowed_prefix) or (tasks_ignored and rel.startswith("tasks/")):
             continue
         if not any(
             rel == o.rstrip("/") or rel.startswith(o.rstrip("/") + "/") or fnmatch.fnmatch(rel, o)
@@ -685,7 +687,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     """Run all hard verification gates for a task and write `evidence/verify.json`."""
     meta, tfile, wt_root = find_task(args.id)
     tid, slug = str(meta["id"]), meta["slug"]
-    ev_dir = wt_root / "tasks" / f"{tid}-{slug}" / "evidence"
+    ev_dir = tfile.parent / "evidence"
     ev_dir.mkdir(parents=True, exist_ok=True)
 
     checks: dict[str, dict] = {}
@@ -716,10 +718,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     # 2. Deliverables check (verify.json is written at the end)
     missing_deliv = []
+    tasks_base = tfile.parent.parent.parent
     for rel in meta.get("deliverables", []):
         if rel.endswith("evidence/verify.json"):
             continue
-        p = wt_root / rel
+        p = (tasks_base / rel) if str(rel).startswith("tasks/") else (wt_root / rel)
         if not p.exists() or (p.is_file() and p.stat().st_size == 0):
             missing_deliv.append(rel)
     checks["deliverables"] = {"ok": len(missing_deliv) == 0, "missing": missing_deliv}
@@ -787,7 +790,7 @@ def cmd_pr(args: argparse.Namespace) -> int:
     """Push task branch, create/find GitHub PR against `--base`, and record `pr` & `pr_url` in `TASK.md`."""
     meta, tfile, wt_root = find_task(args.id)
     tid, slug, branch = str(meta["id"]), meta["slug"], meta["branch"]
-    vfile = wt_root / "tasks" / f"{tid}-{slug}" / "evidence" / "verify.json"
+    vfile = tfile.parent / "evidence" / "verify.json"
 
     if not args.draft:
         if not vfile.is_file():
@@ -839,24 +842,18 @@ def cmd_pr(args: argparse.Namespace) -> int:
         m = re.search(r"/pull/(\d+)", pr_url)
         pr_num = int(m.group(1)) if m else None
 
-    # Record PR correlation back into TASK.md and push
+    # Record PR correlation directly into MAIN_ROOT/tasks/<id>-<slug>/TASK.md
     meta["pr"] = pr_num
     meta["pr_url"] = pr_url
     meta["status"] = "review"
     _, body_md = parse_task_md(tfile)
     tfile.write_text(dump_task_md(meta, body_md), encoding="utf-8")
 
-    rel_task = str(tfile.relative_to(wt_root).as_posix())
-    _run(["git", "add", rel_task], cwd=wt_root)
-    commit = _run(["git", "commit", "-m", f"task({tid}): link PR #{pr_num} in TASK.md"], cwd=wt_root)
-    if commit.returncode == 0:
-        _run(["git", "push", "origin", branch], cwd=wt_root)
-
     if meta.get("issue") and pr_num:
         _run(["gh", "issue", "comment", str(meta["issue"]), "--body", f"Opened PR #{pr_num}: {pr_url}"], cwd=MAIN_ROOT)
         _run(["gh", "issue", "edit", str(meta["issue"]), "--add-label", "status:review", "--remove-label", "status:in-progress"], cwd=MAIN_ROOT)
 
-    print(f"PR #{pr_num}: {pr_url} (recorded in {rel_task})")
+    print(f"PR #{pr_num}: {pr_url} (recorded in tasks/{tid}-{slug}/TASK.md)")
     return 0
 
 
@@ -865,7 +862,8 @@ def cmd_finish(args: argparse.Namespace) -> int:
     """Validate passing `verify.json`, optionally merge into `v3-dev`, clean worktree, and sync GitHub."""
     meta, tfile, wt_root = find_task(args.id)
     tid, slug, branch = str(meta["id"]), meta["slug"], meta["branch"]
-    vfile = wt_root / "tasks" / f"{tid}-{slug}" / "evidence" / "verify.json"
+    tdir = tfile.parent
+    vfile = tdir / "evidence" / "verify.json"
     if not vfile.is_file():
         print(f"Cannot finish task {tid}: missing {vfile}. Run `python tools/task.py verify {tid}` first.")
         return 1
@@ -878,8 +876,7 @@ def cmd_finish(args: argparse.Namespace) -> int:
         print(f"Cannot finish task {tid}: verify.json SHA ({report.get('git_sha')}) != HEAD ({head_sha}). Re-run verify after committing.")
         return 1
 
-    # Collect zero-token local Antigravity transcript usage before staging TASK.md & evidence
-    tdir = wt_root / "tasks" / f"{tid}-{slug}"
+    # Collect zero-token local Antigravity transcript usage before updating TASK.md & evidence
     usage = collect_token_usage(tdir)
     if usage["totals"]["turns"] > 0:
         ev_dir = tdir / "evidence"
@@ -900,18 +897,6 @@ def cmd_finish(args: argparse.Namespace) -> int:
     tfile.write_text(dump_task_md(meta, body), encoding="utf-8")
 
     if args.merge:
-        if wt_root != MAIN_ROOT:
-            dirty = _run(["git", "status", "--porcelain"], cwd=wt_root).stdout.strip()
-            if dirty:
-                rel_packet = f"tasks/{tid}-{slug}"
-                _run(["git", "add", rel_packet], cwd=wt_root, check=True)
-                _run(["git", "commit", "-m", f"task({tid}): mark {slug} status={new_status} and stage evidence"], cwd=wt_root)
-        # Clean any stale untracked duplicate task packet in MAIN_ROOT before merge
-        main_tdir = MAIN_ROOT / "tasks" / f"{tid}-{slug}"
-        if wt_root != MAIN_ROOT and main_tdir.is_dir():
-            tracked = _run(["git", "ls-files", f"tasks/{tid}-{slug}"], cwd=MAIN_ROOT).stdout.strip()
-            if not tracked:
-                shutil.rmtree(main_tdir)
         res = _run(["git", "merge", "--no-ff", branch, "-m", f"Merge {branch} (task {tid})"], cwd=MAIN_ROOT)
         if res.returncode != 0:
             print(res.stderr or res.stdout)
@@ -1094,13 +1079,17 @@ def compute_plan_sha(task_dir: Path) -> str:
 def _is_plan_template_line(line: str) -> bool:
     """Return True if a `PLAN.md` line is an untouched scaffold placeholder."""
     s = line.strip()
-    if not s or s.startswith("<!--"):
+    if not s or s.startswith("<!--") or s.startswith("#") or re.match(r"^[-*_]{3,}$", s):
         return True
-    if s in ("TBD", "TODO", "*(To be finalized...)*"):
+    if s in ("TBD", "TODO", "*(To be finalized...)*", "None yet"):
         return True
     if re.match(r"^-\s+\*\*(Switch|Gate):\*\*", s, re.I):
         return True
-    if re.match(r"^-\s+\*\*(Implementation Steps|Architecture|Owned Paths):\*\*\s*(TBD|TODO|\*\(To be finalized.*\)\*)?$", s, re.I):
+    if re.match(
+        r"^-\s+\*\*(Implementation Steps|Architecture|Owned Paths|Goals|Decisions|Rejected / Dead Ends|Open Questions):\*\*\s*(TBD|TODO|None yet|\*\(To be finalized.*\)\*)?$",
+        s,
+        re.I,
+    ):
         return True
     if re.match(r"^-\s+\*\*Affected Symbols.*:\*\*\s*(TBD|TODO)?$", s, re.I):
         return True
@@ -1115,12 +1104,29 @@ def check_plan_readiness(task_dir: Path, meta: dict) -> dict:
     text = plan_path.read_text(encoding="utf-8", errors="replace") if plan_path.is_file() else ""
     plan_exists = plan_path.is_file() and len(text.strip()) >= 120
 
-    sec_match = re.search(r"^##\s+Plan\b[^\n]*\n(.*)$", text, flags=re.M | re.S)
     plan_has_spec = False
+    sec_match = re.search(
+        r"^#{2,3}\s+(?:\d+[\.\)]\s*)?(?:(?:Implementation|Technical|Action|Architecture(?:\s*&\s*Implementation)?)\s+)?Plan\b[^\n]*\n(.*)$",
+        text,
+        flags=re.M | re.S | re.I,
+    )
     if sec_match:
         sec_body = re.split(r"^##\s+", sec_match.group(1), maxsplit=1, flags=re.M)[0]
         meaningful = [ln.strip() for ln in sec_body.splitlines() if not _is_plan_template_line(ln)]
         plan_has_spec = len("\n".join(meaningful)) >= 20
+    if not plan_has_spec and text.strip():
+        no_brainstorm = re.sub(
+            r"^##\s+Brainstorm\b.*?(?=^##\s+|\Z)",
+            "",
+            text,
+            flags=re.M | re.S | re.I,
+        )
+        has_untouched_placeholder = bool(
+            re.search(r"^\s*(?:1\.|-)\s*(?:TBD|TODO)\s*$|\*\(To be finalized\.\.\.\)\*", no_brainstorm, flags=re.M | re.I)
+        )
+        if not has_untouched_placeholder:
+            meaningful = [ln.strip() for ln in no_brainstorm.splitlines() if not _is_plan_template_line(ln)]
+            plan_has_spec = len("\n".join(meaningful)) >= 20
 
     owns = meta.get("owned_paths") or []
     owned_paths_set = bool(owns)
@@ -1196,6 +1202,12 @@ def approve_task_gate(
 
     meta["status"] = nxt
     tfile.write_text(dump_task_md(meta, body), encoding="utf-8")
+    msg = f"Task {meta['id']} advanced: {prev} -> {nxt}"
+    if nxt == "plan":
+        readiness = check_plan_readiness(tfile.parent, meta)
+        failing = [c["label"] for c in readiness["checks"] if c["id"] != "human_approved" and not c["ok"]]
+        if failing:
+            msg += f" (Warning: plan not yet ready for approval — missing: {', '.join(failing)})"
     return {
         "ok": True,
         "id": str(meta["id"]),
@@ -1203,7 +1215,7 @@ def approve_task_gate(
         "status": nxt,
         "plan_approved": bool(meta.get("plan_approved", False)),
         "plan_approved_sha": str(meta.get("plan_approved_sha") or ""),
-        "message": f"Task {meta['id']} advanced: {prev} -> {nxt}",
+        "message": msg,
     }
 
 
