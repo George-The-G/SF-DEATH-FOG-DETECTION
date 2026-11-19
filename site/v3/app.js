@@ -5,6 +5,7 @@ import { createFog } from './fog.js';
 import { createFogVol } from './fog2.js'; // beta volumetric fog, used only with ?beta=1&fog=vol (falls back to fog.js sheets by itself)
 import { createRibbons as createRibbonsPublic } from './ribbons.js';
 import { createRibbons as createRibbonsBeta } from './ribbons2.js'; // smoothed, joined, capped, tile-culled streets: beta only (?beta=1)
+import { createRoadnet } from './roadnet.js'; // pre-baked city-wide continuous SF road ribbons (?beta=1&feat=city_roadnet)
 import { createSkater } from './skater.js';
 import { ICON_SKATE_PLAY, ICON_FOG_PLAY, ICON_FOG_PAUSE } from './icons.js';
 
@@ -612,7 +613,7 @@ async function takeControl() {
   try {
     const m = await (SKP || (SKP = import('./skate.js')));
     if (!fly) return;
-    if (!SK) SK = m.createSkate({ THREE, camera, controls, renderer, terrainH, EX, getG: () => G, getCol: () => buildingsMesh && buildingsMesh.userData.col, skater, isTouch, toast, readout: skateReadout });
+    if (!SK) SK = m.createSkate({ THREE, camera, controls, renderer, terrainH, EX, getG: () => G, getCol: () => buildingsMesh && buildingsMesh.userData.col, getRoad: () => roadnet && roadnet.worldRoad, skater, isTouch, toast, readout: skateReadout });
     if (!SK.start(skater.group.position, _sf, null)) { toast('Skating needs street data: try again in a moment'); tk.disabled = false; delete tk.dataset.busy; return; }
     fly.control = true; fly.paused = true; skRead = ''; $('flyfill').style.width = '0%'; flyUI();
     $('fpnm').textContent = 'Free skate'; fly.nm = 'Free skate';
@@ -839,7 +840,7 @@ function applyTime(force) {
   curF = f;
   skyTime(f);
   if (BX) BX.frame(f);
-  if (useRib) { rib.setFrame(f); if (rib2) rib2.setFrame(f); } // three uniform writes, nothing else
+  if (useRib) { rib.setFrame(f); if (rib2) rib2.setFrame(f); if (roadnet) roadnet.setFrame(f); } // three uniform writes, nothing else
   if (force || key !== lastFrameKey) {
     lastFrameKey = key;
     if (useRib) wetDirty = true;
@@ -1105,6 +1106,7 @@ function frame(ts) {
   if (useRib) {
     rib.setLod(dist);
     if (rib2) { rib2.setLod(dist); rib2.uniforms.uDistFade.value = 1; } // live: city streets stay drawn in the whole-city view
+    if (roadnet) { roadnet.setLod(dist); roadnet.uniforms.uDistFade.value = 1; }
   }
   const bs = clamp(dist / 450, 1, 80); beacons.forEach((b) => b.scale.set(bs * 1.5, 1, bs * 1.5));
   const showLbl = dist < 3500;
@@ -1127,11 +1129,12 @@ function frame(ts) {
    live/index.json + day0..2.u8 (frame-major, columns = data/ribbons.bin samples then live/ribbons_city.bin samples, hourly frames),
    fog0..2.png, status.json. Day 0 is shown first; days 1-2 load in the background and the bar grows when they arrive. */
 let rib2 = null; // city ribbons (live only)
+let roadnet = null; // pre-baked city-wide continuous SF road ribbons (?beta=1&feat=city_roadnet)
 const loadImg = (u) => new Promise((res, rej) => { const i = new Image(); i.onload = () => { invalidate(3); res(i); }; i.onerror = () => rej(new Error('image ' + u)); i.src = u; });
 const ptFmt = (iso, o) => new Date(iso).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour12: false, ...o });
 let LV = null; // { idx, st, ST, S1, el }
 const LQ = new URLSearchParams(location.search).get('livetest'); // preview testing: 'delayed' | 'forecast'
-function liveSetData(u8, nf) { LV.u8 = u8; LV.nf = nf; rib.setNight(u8, nf, 0, LV.ST); rib2.setNight(u8, nf, LV.S1, LV.ST); wetDirty = true; }
+function liveSetData(u8, nf) { LV.u8 = u8; LV.nf = nf; rib.setNight(u8, nf, 0, LV.ST); rib2.setNight(u8, nf, LV.S1, LV.ST); if (roadnet) roadnet.setNight(u8, nf, 0, LV.ST, LV.ST); wetDirty = true; }
 function liveExtendG() { // picking / tooltips / route bins see the city samples too (appended after the district+route samples)
   const a = rib.samples, b = rib2.samples, n = a.S + b.S, off = ribMeta.streets.length;
   const cat = (T, p, q) => { const o = new T(n); o.set(p); o.set(q, a.S); return o; };
@@ -1168,7 +1171,7 @@ function liveBar(idx, st) { // ui2 only: status inputs, data notices in the dock
   // City streets layer switch (next to District streets), default on
   const lab = document.createElement('label'); lab.innerHTML = '<input type="checkbox" id="citytoggle" checked><span>City streets</span>';
   $('disttoggle').closest('label').before(lab);
-  $('citytoggle').addEventListener('change', (e) => { LV.cityOn = e.target.checked; rib2.setVisible(e.target.checked); hideTip(); });
+  $('citytoggle').addEventListener('change', (e) => { LV.cityOn = e.target.checked; if (roadnet) roadnet.setVisible(e.target.checked); else rib2.setVisible(e.target.checked); hideTip(); });
   // weather: rain row (kept for the hidden grid) and the source line
   const rain = document.createElement('div'); rain.className = 'wx'; rain.innerHTML = '<span class="k">Rain</span><span class="v" id="wx-rain">--</span>';
   $('wxgrid').insertBefore(rain, $('wx-note'));
@@ -1244,6 +1247,20 @@ async function bootLive() {
   if (rib.samples.S !== S1) throw new Error(`live index expects ${S1} district samples, ribbons.bin has ${rib.samples.S}`);
   const [cb, cm] = await Promise.all([withTimeout(getBuf(base + idx.ribbons_city), 60000, 'city ribbons'), getJSON(base + idx.ribbons_city_meta)]);
   rib2 = createRibbons({ THREE, scene, EX, terrainH, glslRamp, isTouch, alt: UIX }); rib2.build(cb, cm); rib2.mesh.renderOrder = 9; rib2Meta = cm; // under the district/route ribbons
+  if (featOn('city_roadnet')) {
+    try {
+      const rUrl = await getBuf(base + 'roadnet_city.bin').then((b) => [b, base]).catch(() => getBuf('data/roadnet_city.bin').then((b) => [b, 'data/']));
+      const rm = await getJSON(rUrl[1] + 'roadnet_meta.json').catch(() => null);
+      roadnet = createRoadnet({ THREE, scene, EX, glslRamp, alt: UIX });
+      roadnet.build(rUrl[0], rm);
+      rib2.setVisible(false);
+      rib.setDistrictVisible(false);
+      // Forward beta_ui alt layer (sunshine / road temp) calls onto roadnet so smooth coloring matches
+      const origAlt = rib.setAlt, origMode = rib.setMode;
+      rib.setAlt = (d, nf, col0, stride, kind) => { origAlt(d, nf, col0, stride, kind); roadnet.setAlt(d, nf, 0, stride, kind, stride); };
+      rib.setMode = (m) => { origMode(m); roadnet.setMode(m); };
+    } catch (e) { console.warn('city_roadnet unavailable, falling back to ribbons2:', e); roadnet = null; }
+  }
   setStatus('Loading live street wetness…');
   const [d0, wx] = await Promise.all([withTimeout(getBuf(base + idx.frame_files[0] + V), 60000, 'day 0'), getJSON(base + idx.weather + V).catch(() => null)]);
   if (d0.byteLength !== f0 * ST) throw new Error(`${idx.frame_files[0]} has ${d0.byteLength} bytes, expected ${f0 * ST}`);
@@ -1476,4 +1493,4 @@ async function initBeta() {
   }
 })();
 
-window.__dbg = { renderer, PERF, LODS, get buses() { return BUSES; }, get simEpoch() { return night ? simEpoch() : null; }, get skater() { return skater; }, skate: () => (SK && SK.sim ? { x: +SK.sim.x.toFixed(1), z: +SK.sim.z.toFixed(1), y: +SK.sim.y.toFixed(1), speed: +SK.sim.speed.toFixed(1), onRoad: SK.sim.onRoad, wall: SK.sim.wall, k: SK.sim.k, active: SK.active, buildMs: SK.world && SK.world.buildMs } : null), stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get rib2() { return rib2; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
+window.__dbg = { renderer, PERF, LODS, get buses() { return BUSES; }, get simEpoch() { return night ? simEpoch() : null; }, get skater() { return skater; }, skate: () => (SK && SK.sim ? { x: +SK.sim.x.toFixed(1), z: +SK.sim.z.toFixed(1), y: +SK.sim.y.toFixed(1), speed: +SK.sim.speed.toFixed(1), onRoad: SK.sim.onRoad, wall: SK.sim.wall, k: SK.sim.k, active: SK.active, buildMs: SK.world && SK.world.buildMs } : null), stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), get rib() { return rib; }, get rib2() { return rib2; }, get roadnet() { return roadnet; }, get mode() { return useRib ? 'ribbons' : 'quads'; }, camera, controls, flyTo, get tNow() { return tNow; }, set tNow(v) { tNow = v; applyTime(true); }, setPlaying, pick, selectRoute, startFly, stopFly, get fly() { return fly; }, get routes() { return ROUTES; } };
