@@ -6,7 +6,7 @@ issue: null
 epic: null
 pr: null
 pr_url: ""
-status: "in-progress"
+status: "beta"
 branch: "feat/007-macro-shader-lod-perf"
 switch: "macro_lod_opt"
 depends_on: []
