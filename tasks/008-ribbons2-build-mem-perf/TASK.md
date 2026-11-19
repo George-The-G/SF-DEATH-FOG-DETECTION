@@ -6,7 +6,7 @@ issue: null
 epic: null
 pr: null
 pr_url: ""
-status: "ready"
+status: "done"
 branch: "feat/008-ribbons2-build-mem-perf"
 switch: "ribbons_mem_opt"
 depends_on: []
@@ -22,6 +22,8 @@ deliverables:
 # Task 008: Reduce ribbons2.js boot CPU spike & peak memory with pre-sized typed arrays
 
 ## Problem & Goal
+> **Closed / skipped:** Superseded by upcoming larger roads rewrite (2026-11-18).
+
 ribbons2.js builds both full-city and per-tile index buffers using growable JS arrays during bootLive (ribbons.bin + ribbons_city.bin), causing startup CPU spikes and GC pressure on phones. Pre-size typed buffers, cut per-strip allocations, and tune tile culling thresholds while keeping street rendering bit-identical.
 
 ## Scope
