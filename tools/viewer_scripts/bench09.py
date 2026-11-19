@@ -28,7 +28,7 @@ with sync_playwright() as p:
     b = p.chromium.launch(channel="msedge", args=["--ignore-gpu-blocklist"])
     for kind, vp in (("desktop", {"width": 1280, "height": 800}), ("phone", {"width": 390, "height": 844})):
         pg = b.new_page(viewport=vp); pg.on("pageerror", lambda e: print("ERR", str(e)[:200]))
-        pg.goto("http://127.0.0.1:8136/?beta=1&lab=1&tier=3"); pg.wait_for_function("window.__ready", timeout=240000); pg.wait_for_timeout(4000)
+        pg.goto("http://127.0.0.1:8136/?beta=1&tier=3"); pg.wait_for_function("window.__ready", timeout=240000); pg.wait_for_timeout(4000)
         print(kind, pg.evaluate("() => { const gl = window.__fogLab.renderer.getContext(); const e = gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : 'n/a'; }"))
         for macro in (0, 1):
             pg.evaluate(f"() => window.__fogLab.fog.setParams({{ macro: {macro}, travel: 0 }})")

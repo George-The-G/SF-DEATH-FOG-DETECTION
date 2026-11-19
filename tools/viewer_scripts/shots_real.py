@@ -1,4 +1,4 @@
-"""Before/after pictures on the REAL beta data: ?beta=1&lab=1, data3d 0 (flat map + guessed top) versus 1 (3D files; an hour without a file has no fog).
+"""Before/after pictures on the REAL beta data: ?beta=1, data3d 0 (flat map + guessed top) versus 1 (3D files; an hour without a file has no fog).
 usage: shots_real.py <repo site/v3 folder with live_beta> <outdir> <phone|desktop> <frame,frame,...>   (Edge + SwiftShader: software GL, the look is right, timings are not)"""
 import sys
 import threading
@@ -32,7 +32,7 @@ with sync_playwright() as p:
                         has_touch=KIND == "phone", is_mobile=KIND == "phone")
     pg = ctx.new_page()
     pg.on("pageerror", lambda e: errs.append(str(e)[:300]))
-    pg.goto("http://127.0.0.1:8161/?beta=1&lab=1&tier=3", wait_until="load")
+    pg.goto("http://127.0.0.1:8161/?beta=1&tier=3", wait_until="load")
     pg.wait_for_function("window.__ready", timeout=240000)
     pg.wait_for_timeout(3000)
     pg.evaluate("() => { window.__dbg.setPlaying && window.__dbg.setPlaying(false); }")

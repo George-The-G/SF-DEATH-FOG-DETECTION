@@ -31,7 +31,7 @@ Why it looks like a mystery setting: it does not depend on any setting. Every Pe
 ## Reproduce headless (done on the PC)
 
 - Playwright (Python, from the repo `.venv`) with Edge, `--use-angle=swiftshader`, served from a worktree of `origin/v3-dev`, three@0.160.0 unpacked from `npm pack` and routed in for the CDN URL.
-- URL `?beta=1&night=2026-10-01&lab=1`, iPhone user agent, 390x844 at dsf 2, `__dbg.tNow = 12.4` (20:04 Thu Oct 1), default camera (3900, 8800, 7600) looking at (8300, 0, -8000). Wait about 9 s for the still-frame reuse to settle.
+- URL `?beta=1&night=2026-10-01`, iPhone user agent, 390x844 at dsf 2, `__dbg.tNow = 12.4` (20:04 Thu Oct 1), default camera (3900, 8800, 7600) looking at (8300, 0, -8000). Wait about 9 s for the still-frame reuse to settle.
 - Top-down view for the clearest picture: camera (8300, 36000, -7999), target (8300, 0, -8000).
 - Scripts: [gridfog_repro.py](../../spikes/grid_artifact/gridfog_repro.py) (single shot) and the multi-shot driver with a JSON plan are at `C:\Users\George\AppData\Local\Temp\gridfog_work\` on the PC (`repro2.py`, `plan*.json`). The driver sets `window.__fogLab.fog.setParams(...)` and `__dbg.tNow`, so it can toggle any setting between shots.
 - Software GL: the look is valid, timings are not.

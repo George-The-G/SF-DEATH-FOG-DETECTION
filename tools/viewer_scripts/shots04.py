@@ -1,4 +1,4 @@
-"""Guide 04 shots: ?beta=1&lab=1 on the fixture live folder, data3d 0 vs 1; software GL (Edge + SwiftShader). Usage: shots04.py <outdir> [phone|desktop]"""
+"""Guide 04 shots: ?beta=1 on the fixture live folder, data3d 0 vs 1; software GL (Edge + SwiftShader). Usage: shots04.py <outdir> [phone|desktop]"""
 import json
 import sys
 import threading
@@ -30,7 +30,7 @@ with sync_playwright() as p:
     pg = ctx.new_page()
     pg.on("console", lambda m: msgs.append((m.type, m.text[:220])) if m.type in ("error", "warning") else None)
     pg.on("pageerror", lambda e: msgs.append(("pageerror", str(e)[:300])))
-    pg.goto("http://127.0.0.1:8131/?beta=1&lab=1&tier=3", wait_until="load")
+    pg.goto("http://127.0.0.1:8131/?beta=1&tier=3", wait_until="load")
     pg.wait_for_function("window.__ready", timeout=240000)
     pg.wait_for_timeout(3000)
     pg.evaluate(f"() => {{ window.__dbg.setPlaying && window.__dbg.setPlaying(false); window.__dbg.tNow = {FRAME}; }}")

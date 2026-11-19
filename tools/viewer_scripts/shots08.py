@@ -1,4 +1,4 @@
-"""Guide 08 B checks: ?beta=1&lab=1 on the fog5 fixture (make_fixture5.py), software GL (Edge + SwiftShader; no GPU). Usage: shots08.py <outdir> [phone|desktop]
+"""Guide 08 B checks: ?beta=1 on the fog5 fixture (make_fixture5.py), software GL (Edge + SwiftShader; no GPU). Usage: shots08.py <outdir> [phone|desktop]
 Checks: travel 0 and 1 render, the key frames at several times (info line), label text, no console errors, volumes load, a refresh of the index."""
 import json
 import sys
@@ -29,7 +29,7 @@ with sync_playwright() as p:
     pg = ctx.new_page()
     pg.on("console", lambda m: msgs.append((m.type, m.text[:220])) if m.type in ("error", "warning") else None)
     pg.on("pageerror", lambda e: msgs.append(("pageerror", str(e)[:300])))
-    pg.goto("http://127.0.0.1:8132/?beta=1&lab=1&tier=3", wait_until="load")
+    pg.goto("http://127.0.0.1:8132/?beta=1&tier=3", wait_until="load")
     pg.wait_for_function("window.__ready", timeout=240000)
     pg.wait_for_timeout(3000)
     pg.evaluate("() => { window.__dbg.setPlaying && window.__dbg.setPlaying(false); const D = window.__dbg; D.camera.position.set(%s,%s,%s); D.controls.target.set(%s,%s,%s); D.controls.update(); }" % tuple(CAM))

@@ -52,9 +52,9 @@ def diff(a, b):
 
 
 with sync_playwright() as p:
-    a, e1 = shot(p, "http://127.0.0.1:8141/?beta=1&lab=1&live=0", "() => window.__fogLab.fog.setParams({ data3d: 0 })")
-    b, e2 = shot(p, "http://127.0.0.1:8141/?beta=1&lab=1&live=0", "() => window.__fogLab.fog.setParams({ data3d: 1 })")
-    c, e3 = shot(p, "http://127.0.0.1:8141/?beta=1&lab=1&live=0", "() => window.__fogLab.fog.setParams({ data3d: 0 })")
+    a, e1 = shot(p, "http://127.0.0.1:8141/?beta=1&live=0", "() => window.__fogLab.fog.setParams({ data3d: 0 })")
+    b, e2 = shot(p, "http://127.0.0.1:8141/?beta=1&live=0", "() => window.__fogLab.fog.setParams({ data3d: 1 })")
+    c, e3 = shot(p, "http://127.0.0.1:8141/?beta=1&live=0", "() => window.__fogLab.fog.setParams({ data3d: 0 })")
     print("replay night, beta lab: data3d 1 vs 0 differing pixels / max channel diff:", diff(a, b), "| two data3d=0 runs of the same page:", diff(a, c), "errors", e1 + e2)
     x, e4 = shot(p, "http://127.0.0.1:8141/?live=0")
     y, e5 = shot(p, "http://127.0.0.1:8142/?live=0")

@@ -10,7 +10,7 @@
      accum  - when the camera and time stand still, a few jittered full-quality passes are averaged, then the fog pass stops
               entirely and the averaged image is reused (cost close to zero, and no dither grain).
    Same public interface as fog.js (build, clear, ready, setVisible, setDensity, setFrame, update) plus renderFrame() which app.js calls instead of
-   renderer.render, setParams()/params for the fog lab (?beta=1&lab=1, foglab.js), setWeather() for the fog top series, bench() for the lab benchmark.
+   renderer.render, setParams()/params for the fog menu (foglab.js), setWeather() for the fog top series, bench() for the fog benchmark.
    Pipeline per frame: scene -> render target with depth texture; fog pass at 50-100% resolution reading that depth; composite to the canvas.
    A frame-time governor steps down tiers 3 -> 2 -> 1 -> 0; tier 0 is the old sheets (fog.js). */
 import { createFog as createSheets } from './fog.js';

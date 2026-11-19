@@ -434,7 +434,7 @@ stages.append(stage("B11", "Sky layers and publishing", "live/skylayers.py; buil
 
 # ====== C: viewer
 stages.append(stage("C1", "Viewer: voxel fog and the cloud menu", "site/v3/fog2.js, foglab.js, fog3dview.js", "in the browser",
-    "<p>The 3D atlas becomes a WebGL 3D texture that is ray-marched over the terrain. The fog top shape, softness, detail, billows and light are drawn here, not computed in the build. The cloud menu opens with <code>?lab=1</code>.</p>",
+    "<p>The 3D atlas becomes a WebGL 3D texture that is ray-marched over the terrain. The fog top shape, softness, detail, billows and light are drawn here, not computed in the build. The cloud menu opens from the cloud button.</p>",
     [], [img("shot_beta_now", "Beta viewer at 21:31 PT", "The beta viewer (18 Nov run, 21:31 PT forecast frame)."),
          img("shot_foglab", "The cloud menu", "The cloud menu (foglab.js): Fog top, Shape, Wind, Light, Advanced.")],
     [("follow", "fog2.js", "0.3", "how much the top follows the terrain", "Shape"),

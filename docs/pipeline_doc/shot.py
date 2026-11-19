@@ -3,7 +3,7 @@ import sys, time
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 OUT = Path(__file__).resolve().parent / "out"
-URL = "https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/?beta=1&lab=1"
+URL = "https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/?beta=1"
 with sync_playwright() as p:
     b = p.chromium.launch(channel="msedge", headless=True, args=["--enable-gpu", "--use-angle=d3d11", "--ignore-gpu-blocklist"])
     pg = b.new_page(viewport={"width": 1280, "height": 800})
