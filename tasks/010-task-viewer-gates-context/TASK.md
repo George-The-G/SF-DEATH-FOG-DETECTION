@@ -6,7 +6,7 @@ issue: null
 epic: null
 pr: null
 pr_url: ""
-status: "in-progress"
+status: "beta"
 branch: "feat/010-task-viewer-gates-context"
 switch: "task_viewer_gates_context"
 depends_on: []
