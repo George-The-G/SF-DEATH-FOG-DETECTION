@@ -1110,6 +1110,62 @@ class TestTaskWorkflow(unittest.TestCase):
             self.assertEqual(out["permissionDecision"], "deny")
             self.assertIn("scope", out["permissionDecisionReason"])
 
+    def test_server_cli_state_json_refresh(self):
+        """server.py --state-json --refresh invokes refresh_git_refs before build_state and attaches git_refresh."""
+        call_order: list[str] = []
+
+        def _fake_refresh(_root):
+            call_order.append("refresh")
+            return {"ok": True, "error": ""}
+
+        def _fake_build():
+            call_order.append("build")
+            return {"tasks": {}, "waves": []}
+
+        with mock.patch.object(task_viewer_server.task_cli, "refresh_git_refs", side_effect=_fake_refresh) as m_ref, \
+             mock.patch.object(task_viewer_server, "build_state", side_effect=_fake_build):
+            buf1 = io.StringIO()
+            with contextlib.redirect_stdout(buf1):
+                rc1 = task_viewer_server.main(["--state-json"])
+            self.assertEqual(rc1, 0)
+            out1 = json.loads(buf1.getvalue())
+            self.assertEqual(call_order, ["build"])
+            self.assertNotIn("git_refresh", out1)
+            m_ref.assert_not_called()
+
+            call_order.clear()
+            buf2 = io.StringIO()
+            with contextlib.redirect_stdout(buf2):
+                rc2 = task_viewer_server.main(["--state-json", "--refresh"])
+            self.assertEqual(rc2, 0)
+            out2 = json.loads(buf2.getvalue())
+            self.assertEqual(call_order, ["refresh", "build"])
+            self.assertEqual(out2.get("git_refresh"), {"ok": True, "error": ""})
+            m_ref.assert_called_once_with(task_viewer_server.task_cli.MAIN_ROOT)
+
+    def test_install_antigravity_plugin_manifest_and_sidecar_schema(self):
+        """install_antigravity_plugin.py emits valid plugin.json and sidecar.json pointing to antigravity_sidecar.mjs."""
+        from tools.task_viewer import install_antigravity_plugin
+
+        with tempfile.TemporaryDirectory() as td:
+            target = install_antigravity_plugin.install_plugin(plugin_root=Path(td))
+            plugin_data = json.loads((target / "plugin.json").read_text(encoding="utf-8"))
+            self.assertEqual(plugin_data["name"], "deathfog-tasks")
+            self.assertTrue(plugin_data["description"])
+
+            sidecar_path = target / "sidecars" / "task_viewer" / "sidecar.json"
+            self.assertTrue(sidecar_path.is_file())
+            sidecar_data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            self.assertEqual(sidecar_data["command"], "node")
+            self.assertTrue(Path(sidecar_data["args"][0]).is_file())
+            self.assertEqual(Path(sidecar_data["args"][0]).name, "antigravity_sidecar.mjs")
+            self.assertIn("DEATHFOG_REPO", sidecar_data["env"])
+            self.assertIn("DEATHFOG_PYTHON", sidecar_data["env"])
+            self.assertTrue(sidecar_data["has_web_ui"])
+            views = sidecar_data["ui_config"]["views"]
+            self.assertEqual(views[0]["path"], "/")
+            self.assertEqual(views[0]["entrypoint"], "SIDECAR_UI_ENTRYPOINT_AUX_PANE")
+
 
 if __name__ == "__main__":
     unittest.main()
