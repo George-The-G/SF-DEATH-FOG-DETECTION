@@ -45,7 +45,7 @@ export function pyJson(args, stdinText = undefined, opts = {}) {
       {
         cwd: repoRoot,
         encoding: 'utf-8',
-        timeout: 60000,
+        timeout: 180000,
         maxBuffer: 8 * 1024 * 1024,
       },
       (err, stdout, stderr) => {
@@ -65,6 +65,24 @@ export function pyJson(args, stdinText = undefined, opts = {}) {
       child.stdin.end(stdinText);
     }
   });
+}
+
+/// Normalize POST action input from raw JSON string, `{ body: ... }`, or plain object.
+export function normalizeActionPayload(data) {
+  let val = data;
+  if (val && typeof val === 'object' && !Array.isArray(val) && 'body' in val && !('action' in val)) {
+    val = val.body;
+  }
+  for (let i = 0; i < 2 && typeof val === 'string'; i++) {
+    const trimmed = val.trim();
+    if (!trimmed) return {};
+    try {
+      val = JSON.parse(trimmed);
+    } catch (_) {
+      return { raw: val };
+    }
+  }
+  return val && typeof val === 'object' && !Array.isArray(val) ? val : {};
 }
 
 /// Register Task Viewer routes on a `SidecarApp` (or test mock) using async `server.py` calls.
@@ -106,7 +124,8 @@ export function registerSidecarRoutes(app, ResponseClass, options = {}) {
 
   app.api('/api/action', async (data) => {
     try {
-      return await runPy(['--action-stdin'], JSON.stringify(data || {}));
+      const payload = normalizeActionPayload(data);
+      return await runPy(['--action-stdin'], JSON.stringify(payload));
     } catch (err) {
       return { ok: false, error: String(err?.message || err) };
     }

@@ -893,6 +893,14 @@ def cmd_finish(args: argparse.Namespace) -> int:
         print(f"Cannot finish task {tid}: verify.json SHA ({report.get('git_sha')}) != HEAD ({head_sha}). Re-run verify after committing.")
         return 1
 
+    # Guard --merge: MAIN_ROOT must be on v3-dev before mutating TASK.md or merging
+    if args.merge:
+        cur_branch_res = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=MAIN_ROOT)
+        cur_branch = cur_branch_res.stdout.strip() if cur_branch_res.returncode == 0 else ""
+        if cur_branch != "v3-dev":
+            print(f"Cannot merge task {tid}: {MAIN_ROOT} is on '{cur_branch or 'unknown'}', expected 'v3-dev'.")
+            return 1
+
     # Collect zero-token local Antigravity transcript usage before updating TASK.md & evidence
     usage = collect_token_usage(tdir)
     if usage["totals"]["turns"] > 0:
@@ -1023,6 +1031,16 @@ def sync_shared_to_main(*, push: bool = False, check_only: bool = False, main_ro
     if not drift.get("ok"):
         return drift
     if drift["in_sync"]:
+        if push:
+            stamped = _stamp_shared_main_tasks(main_root)
+            stamp_msg = f" Marked task(s) {', '.join(stamped)} done." if stamped else ""
+            return {
+                "ok": True,
+                "in_sync": True,
+                "drifted": [],
+                "stamped_tasks": stamped,
+                "message": f"Shared agent/tooling files are already in sync between v3-dev and main.{stamp_msg}",
+            }
         return {"ok": True, "in_sync": True, "drifted": [], "message": "Shared agent/tooling files are already in sync between v3-dev and main."}
     if check_only:
         return {
@@ -1064,7 +1082,15 @@ def sync_shared_to_main(*, push: bool = False, check_only: bool = False, main_ro
 
         status = _run(["git", "status", "--porcelain"], cwd=wt_sync).stdout.strip()
         if not status:
-            return {"ok": True, "in_sync": True, "drifted": [], "message": "Nothing to commit; main already matches v3-dev."}
+            stamped = _stamp_shared_main_tasks(main_root) if push else []
+            stamp_msg = f" Marked task(s) {', '.join(stamped)} done." if stamped else ""
+            return {
+                "ok": True,
+                "in_sync": True,
+                "drifted": [],
+                "stamped_tasks": stamped,
+                "message": f"Nothing to commit; main already matches v3-dev.{stamp_msg}",
+            }
 
         cm_res = _run(["git", "commit", "-m", "Sync shared agent & task-viewer tooling from v3-dev"], cwd=wt_sync)
         if cm_res.returncode != 0:
@@ -1156,8 +1182,86 @@ def _is_plan_template_line(line: str) -> bool:
     return False
 
 
+_CLEAR_OPEN_QUESTION_RE = re.compile(r"^(?:none(?:\s*(?:\([^)]*\)|[—–-].*))?\.?|n/?a)$", re.I)
+
+
+def _is_clear_open_question(text: str) -> bool:
+    """Return True if an open-questions entry explicitly indicates no ambiguities remain."""
+    cleaned = re.sub(r"^(?:[-*]|\d+\.)\s+", "", text.strip())
+    cleaned = re.sub(r"^\[[ xX]\]\s+", "", cleaned).strip()
+    cleaned = cleaned.strip("*_`").strip()
+    if not cleaned:
+        return True
+    return bool(_CLEAR_OPEN_QUESTION_RE.match(cleaned))
+
+
+def _parse_open_questions(plan_text: str) -> list[str]:
+    """Extract unresolved ambiguity items from `Open Questions` / `Ambiguities` in `PLAN.md`."""
+    if not plan_text:
+        return []
+    lines = plan_text.replace("\r\n", "\n").splitlines()
+    questions: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        bullet_m = re.match(
+            r"^(\s*)(?:[-*]|\d+\.)\s+\*\*(?:Open Questions|Ambiguities)\s*:?\*\*\s*:?\s*(.*)$",
+            line,
+            re.I,
+        )
+        if bullet_m:
+            base_indent = len(bullet_m.group(1))
+            rest = bullet_m.group(2).strip()
+            if rest and not _is_clear_open_question(rest):
+                questions.append(rest)
+            i += 1
+            while i < len(lines):
+                nxt = lines[i]
+                stripped = nxt.strip()
+                if not stripped:
+                    i += 1
+                    continue
+                if stripped.startswith("#"):
+                    break
+                cur_indent = len(nxt) - len(nxt.lstrip(" "))
+                if cur_indent <= base_indent:
+                    break
+                item = re.sub(r"^(?:[-*]|\d+\.)\s+", "", stripped)
+                item = re.sub(r"^\[[ xX]\]\s+", "", item).strip()
+                if item and not item.startswith("<!--") and not _is_clear_open_question(item):
+                    questions.append(item)
+                i += 1
+            continue
+
+        hdr_m = re.match(
+            r"^(#{2,4})\s+(?:\d+[\.\)]\s*)?(?:Open Questions|Ambiguities)\b[^\n]*$",
+            line.strip(),
+            re.I,
+        )
+        if hdr_m:
+            lvl = len(hdr_m.group(1))
+            i += 1
+            while i < len(lines):
+                nxt = lines[i]
+                stripped = nxt.strip()
+                sub_hdr = re.match(r"^(#{1,6})\s+", stripped)
+                if sub_hdr and len(sub_hdr.group(1)) <= lvl:
+                    break
+                if not stripped or stripped.startswith("<!--") or re.match(r"^[-*_]{3,}$", stripped):
+                    i += 1
+                    continue
+                item = re.sub(r"^(?:[-*]|\d+\.)\s+", "", stripped)
+                item = re.sub(r"^\[[ xX]\]\s+", "", item).strip()
+                if item and not _is_clear_open_question(item):
+                    questions.append(item)
+                i += 1
+            continue
+        i += 1
+    return questions
+
+
 def check_plan_readiness(task_dir: Path, meta: dict) -> dict:
-    """Validate `PLAN.md` readiness, owned_paths, and post-approval drift against `plan_approved_sha`."""
+    """Validate `PLAN.md` readiness, open ambiguities, owned_paths, and drift against `plan_approved_sha`."""
     plan_path = task_dir / "PLAN.md"
     text = plan_path.read_text(encoding="utf-8", errors="replace") if plan_path.is_file() else ""
     plan_exists = plan_path.is_file() and len(text.strip()) >= 120
@@ -1188,6 +1292,8 @@ def check_plan_readiness(task_dir: Path, meta: dict) -> dict:
 
     owns = meta.get("owned_paths") or []
     owned_paths_set = bool(owns)
+    open_questions = _parse_open_questions(text)
+    no_open_questions = len(open_questions) == 0
     plan_sha = compute_plan_sha(task_dir)
     plan_approved = bool(meta.get("plan_approved", False))
     approved_sha = str(meta.get("plan_approved_sha") or "")
@@ -1197,12 +1303,14 @@ def check_plan_readiness(task_dir: Path, meta: dict) -> dict:
         {"id": "plan_exists", "label": "PLAN.md written", "ok": plan_exists},
         {"id": "plan_has_spec", "label": "Plan spec filled", "ok": plan_has_spec},
         {"id": "owned_paths_set", "label": f"Owned paths ({len(owns)})", "ok": owned_paths_set},
+        {"id": "no_open_questions", "label": "No open ambiguities", "ok": no_open_questions},
         {"id": "human_approved", "label": "Human approval", "ok": plan_approved and not plan_drifted},
     ]
-    ready = plan_exists and plan_has_spec and owned_paths_set
+    ready = plan_exists and plan_has_spec and owned_paths_set and no_open_questions
     return {
         "ready": ready,
         "checks": checks,
+        "open_questions": open_questions,
         "plan_sha": plan_sha,
         "plan_approved": plan_approved,
         "plan_drifted": plan_drifted,
@@ -1226,21 +1334,41 @@ def approve_task_gate(
 ) -> dict:
     """Advance a task's stage gate in `TASK.md` and return a result summary dict."""
     meta, tfile, _ = find_task(task_id)
+    tid = str(meta["id"])
     prev = normalize_status(meta.get("status", ""))
     nxt = normalize_status(target_status) if target_status else next_gate_status(prev)
     if not nxt:
-        return {"ok": False, "error": f"Task {meta['id']} is already at '{prev}'; specify --to <status> explicitly."}
+        return {"ok": False, "error": f"Task {tid} is already at '{prev}'; specify --to <status> explicitly."}
     if nxt not in VALID_STATUSES:
         return {"ok": False, "error": f"Invalid target status '{nxt}'. Valid: {', '.join(VALID_STATUSES)}"}
 
     _, body = parse_task_md(tfile)
+    readiness = check_plan_readiness(tfile.parent, meta)
+    open_qs = readiness.get("open_questions") or []
+
+    if nxt == "approved" and not approve_plan:
+        return {
+            "ok": False,
+            "error": "Formal plan approval required: pass --approve-plan (or click 'Approve Plan & Unlock Build' in Task Viewer).",
+        }
+
+    # Block forward gate advancement (scope -> plan and plan -> approved) if ambiguities remain
+    if open_qs and ((nxt == "plan" and prev in ("backlog", "scope")) or nxt == "approved"):
+        items = "; ".join(open_qs[:4]) + (" ..." if len(open_qs) > 4 else "")
+        chat_msg = (
+            f"[Task {tid}] Gate blocked ({prev} \u2192 {nxt}): unresolved ambiguities in PLAN.md: {items}. "
+            f"Resolve these with the user and set Open Questions: None before advancing."
+        )
+        return {
+            "ok": False,
+            "blocked_by_ambiguities": True,
+            "open_questions": open_qs,
+            "error": f"Gate blocked ({prev} -> {nxt}): resolve Open Questions in PLAN.md first ({items}).",
+            "chat_message": chat_msg,
+            "plan_readiness": readiness,
+        }
+
     if nxt == "approved":
-        if not approve_plan:
-            return {
-                "ok": False,
-                "error": "Formal plan approval required: pass --approve-plan (or click 'Approve Plan & Unlock Build' in Task Viewer).",
-            }
-        readiness = check_plan_readiness(tfile.parent, meta)
         if not readiness["ready"]:
             missing = [c["label"] for c in readiness["checks"] if c["id"] != "human_approved" and not c["ok"]]
             return {
@@ -1260,20 +1388,32 @@ def approve_task_gate(
 
     meta["status"] = nxt
     tfile.write_text(dump_task_md(meta, body), encoding="utf-8")
-    msg = f"Task {meta['id']} advanced: {prev} -> {nxt}"
-    if nxt == "plan":
-        readiness = check_plan_readiness(tfile.parent, meta)
+    msg = f"Task {tid} advanced: {prev} -> {nxt}"
+    chat_message = ""
+    if nxt == "plan" and prev in ("backlog", "scope"):
         failing = [c["label"] for c in readiness["checks"] if c["id"] != "human_approved" and not c["ok"]]
         if failing:
             msg += f" (Warning: plan not yet ready for approval — missing: {', '.join(failing)})"
+        chat_message = (
+            f"[Task {tid}] Advanced {prev} \u2192 plan via Task Viewer. "
+            f"Finalize PLAN.md (exact codemap ranges, steps, Open Questions: None) and ask user for Plan Approval."
+        )
+    elif nxt == "approved":
+        exec_tier = str(meta.get("exec_tier") or "hydrogen")
+        sha = str(meta.get("plan_approved_sha") or "")
+        chat_message = (
+            f"[Task {tid}] Plan approved (sha {sha}) & build unlocked via Task Viewer. "
+            f"Run `tools/task.py start {tid}` and delegate to {exec_tier} worker."
+        )
     return {
         "ok": True,
-        "id": str(meta["id"]),
+        "id": tid,
         "previous_status": prev,
         "status": nxt,
         "plan_approved": bool(meta.get("plan_approved", False)),
         "plan_approved_sha": str(meta.get("plan_approved_sha") or ""),
         "message": msg,
+        "chat_message": chat_message,
     }
 
 
@@ -1526,6 +1666,118 @@ def merge_status(meta: dict, main_root: Path = MAIN_ROOT) -> dict:
         "in_public": in_public,
         "merged_into": merged_into,
         "stage_bucket": stage_bucket,
+    }
+
+
+def _is_unpromoted_switch(switch: str) -> bool:
+    """Return True if `switch` is enabled in `microclimate.live.config.BETA` without being promoted."""
+    sw = str(switch or "").strip()
+    if not sw:
+        return False
+    try:
+        from microclimate.live import config as live_cfg
+    except ImportError:
+        return False
+    beta_map = getattr(live_cfg, "BETA", {}) or {}
+    promoted_map = getattr(live_cfg, "PROMOTED", {}) or {}
+    return bool(beta_map.get(sw)) and not bool(promoted_map.get(sw))
+
+
+def task_land_info(meta: dict, main_root: Path = MAIN_ROOT) -> dict:
+    """Classify how a task lands on `main` (`sync_main` | `deploy_main` | `stamp_only`) and check switch promotion."""
+    _ = main_root
+    owned = [str(p).strip().replace("\\", "/").lstrip("./") for p in (meta.get("owned_paths") or []) if str(p).strip()]
+    all_shared = bool(owned) and all(_is_shared_main_path(p) for p in owned)
+    triggers_site_deploy = any(p.startswith(DEPLOY_TRIGGER_PREFIXES) for p in owned)
+    if all_shared:
+        mode = "sync_main"
+    elif triggers_site_deploy:
+        mode = "deploy_main"
+    else:
+        mode = "stamp_only"
+    switch = str(meta.get("switch") or "").strip()
+    return {
+        "mode": mode,
+        "all_shared": all_shared,
+        "triggers_site_deploy": triggers_site_deploy,
+        "switch": switch,
+        "unpromoted_switch": _is_unpromoted_switch(switch),
+    }
+
+
+def _stamp_task_main(tfile: Path) -> None:
+    """Record `main` in `merged_into` and set `status: done` in `TASK.md`."""
+    cur_meta, body = parse_task_md(tfile)
+    merged_into = list(cur_meta.get("merged_into") or [])
+    if "main" not in merged_into:
+        merged_into.append("main")
+    cur_meta["merged_into"] = merged_into
+    cur_meta["status"] = "done"
+    tfile.write_text(dump_task_md(cur_meta, body), encoding="utf-8")
+
+
+def land_task_to_main(task_id: str, *, force: bool = False, main_root: Path = MAIN_ROOT) -> dict:
+    """Land a Beta task onto `main` (`sync_main`, `deploy_main` via `collect.yml`, or `stamp_only`)."""
+    norm = _norm_id(task_id)
+    tasks_map = load_all_tasks(main_root)
+    if norm not in tasks_map:
+        return {"ok": False, "error": f"Unknown task id: {task_id}"}
+    meta, tfile = tasks_map[norm]
+    ms = merge_status(meta, main_root)
+    if ms.get("in_public"):
+        return {"ok": True, "already_in_main": True, "id": norm, "message": f"Task {norm} is already landed on main."}
+    if not ms.get("in_beta"):
+        return {"ok": False, "error": f"Task {norm} must land on Beta (v3-dev) before landing on Main."}
+
+    info = task_land_info(meta, main_root)
+    mode = info["mode"]
+
+    if mode == "sync_main":
+        sync_res = sync_shared_to_main(push=True, main_root=main_root)
+        if not sync_res.get("ok"):
+            return {**sync_res, "mode": mode}
+        if norm not in (sync_res.get("stamped_tasks") or []):
+            _stamp_task_main(tfile)
+        return {
+            **sync_res,
+            "mode": mode,
+            "id": norm,
+            "message": sync_res.get("message") or f"Synced shared files to origin/main and marked task {norm} done.",
+        }
+
+    if mode == "deploy_main":
+        if info["unpromoted_switch"] and not force:
+            return {
+                "ok": False,
+                "needs_confirm": True,
+                "mode": mode,
+                "switch": info["switch"],
+                "error": (
+                    f"Switch '{info['switch']}' is enabled in BETA but not yet in PROMOTED (microclimate/live/config.py). "
+                    "Confirm to trigger `collect.yml` on `main` anyway?"
+                ),
+            }
+        wf = _run(["gh", "workflow", "run", "collect.yml", "--ref", "main"], cwd=main_root)
+        if wf.returncode != 0:
+            return {
+                "ok": False,
+                "mode": mode,
+                "error": f"Failed to trigger collect.yml on main: {(wf.stderr or wf.stdout).strip() or 'gh workflow run failed'}",
+            }
+        _stamp_task_main(tfile)
+        return {
+            "ok": True,
+            "mode": mode,
+            "id": norm,
+            "message": f"Triggered collect.yml on main and marked task {norm} done.",
+        }
+
+    _stamp_task_main(tfile)
+    return {
+        "ok": True,
+        "mode": mode,
+        "id": norm,
+        "message": f"Marked task {norm} as landed on main (done).",
     }
 
 
