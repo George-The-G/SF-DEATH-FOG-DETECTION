@@ -150,13 +150,22 @@ class TestTaskWorkflow(unittest.TestCase):
                 return m, tfile, root
 
             with mock.patch.object(task, "find_task", side_effect=_find_live):
+                r_ambig = task.approve_task_gate("099")
+                self.assertFalse(r_ambig["ok"])
+                self.assertTrue(r_ambig["blocked_by_ambiguities"])
+                self.assertIn("chat_message", r_ambig)
+                plan_path = tdir / "PLAN.md"
+                plan_path.write_text(
+                    plan_path.read_text(encoding="utf-8").replace("- **Open Questions:** TBD", "- **Open Questions:** None"),
+                    encoding="utf-8",
+                )
                 r1 = task.approve_task_gate("099")
                 self.assertTrue(r1["ok"])
                 self.assertEqual(r1["status"], "plan")
                 r_blocked = task.approve_task_gate("099")
                 self.assertFalse(r_blocked["ok"])
-                (tdir / "PLAN.md").write_text(
-                    "# Plan — Task 099\n\n## Brainstorm — Goals, Decisions & Dead Ends\n- **Goals:** Test gating\n\n"
+                plan_path.write_text(
+                    "# Plan — Task 099\n\n## Brainstorm — Goals, Decisions & Dead Ends\n- **Goals:** Test gating\n- **Open Questions:** None\n\n"
                     "## Plan — Architecture, Owned Paths & Verification\n- **Affected Symbols:** `tools/task.py:cmd_start`\n"
                     "- **Implementation Steps:**\n  1. Enforce formal plan gate and verify SHA.\n",
                     encoding="utf-8",
@@ -838,6 +847,11 @@ class TestTaskWorkflow(unittest.TestCase):
             root = Path(td)
             meta, tdir = self._make_sample_task(root, "089", status="brainstorm", fill_plan=False)
             tfile = tdir / "TASK.md"
+            pfile = tdir / "PLAN.md"
+            pfile.write_text(
+                pfile.read_text(encoding="utf-8").replace("- **Open Questions:** TBD", "- **Open Questions:** None"),
+                encoding="utf-8",
+            )
             with mock.patch.object(task, "find_task", return_value=(meta, tfile, root)):
                 res = task.approve_task_gate("089")
             self.assertTrue(res["ok"])
@@ -1165,6 +1179,210 @@ class TestTaskWorkflow(unittest.TestCase):
             views = sidecar_data["ui_config"]["views"]
             self.assertEqual(views[0]["path"], "/")
             self.assertEqual(views[0]["entrypoint"], "SIDECAR_UI_ENTRYPOINT_AUX_PANE")
+
+    def test_ambiguity_gate_blocks_scope_and_plan_and_emits_chat_messages(self):
+        """_parse_open_questions + check_plan_readiness block scope->plan and plan->approved when ambiguities exist."""
+        self.assertEqual(task._parse_open_questions("- **Open Questions:** None\n"), [])
+        self.assertEqual(task._parse_open_questions("- **Open Questions:** None (settled)\n"), [])
+        self.assertEqual(task._parse_open_questions("## Open Questions\n- None\n## Plan\n"), [])
+        self.assertEqual(task._parse_open_questions("- **Open Questions:** TBD\n"), ["TBD"])
+        self.assertEqual(
+            task._parse_open_questions("- **Open Questions:**\n  1. Pick color?\n  - Pick timeout?\n- **Switch:** x\n"),
+            ["Pick color?", "Pick timeout?"],
+        )
+        self.assertEqual(
+            task._parse_open_questions("## Ambiguities\n- Clarify API schema\n## Plan\n1. Do work\n"),
+            ["Clarify API schema"],
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _, tdir = self._make_sample_task(root, "087", status="scope", fill_plan=True)
+            tfile = tdir / "TASK.md"
+            pfile = tdir / "PLAN.md"
+
+            def _find_live(_tid):
+                m, _ = task.parse_task_md(tfile)
+                return m, tfile, root
+
+            pfile.write_text(
+                "# Plan — Task 087\n\n## Brainstorm — Goals, Decisions & Dead Ends\n"
+                "- **Open Questions:**\n  - Should Land on Main confirm?\n\n"
+                "## Plan — Architecture, Owned Paths & Verification\n"
+                "- **Implementation Steps:**\n  1. Implement Land buttons cleanly.\n",
+                encoding="utf-8",
+            )
+            rd_ambig = task.check_plan_readiness(tdir, {"owned_paths": ["tools/task.py"]})
+            self.assertFalse(rd_ambig["ready"])
+            self.assertEqual(rd_ambig["open_questions"], ["Should Land on Main confirm?"])
+            no_oq_chk = next(c for c in rd_ambig["checks"] if c["id"] == "no_open_questions")
+            self.assertFalse(no_oq_chk["ok"])
+
+            with mock.patch.object(task, "find_task", side_effect=_find_live):
+                blk_scope = task.approve_task_gate("087")
+                self.assertFalse(blk_scope["ok"])
+                self.assertTrue(blk_scope["blocked_by_ambiguities"])
+                self.assertIn("Should Land on Main confirm?", blk_scope["chat_message"])
+
+                # Clear open questions -> scope -> plan succeeds with compact chat_message
+                pfile.write_text(
+                    pfile.read_text(encoding="utf-8").replace(
+                        "- **Open Questions:**\n  - Should Land on Main confirm?", "- **Open Questions:** None"
+                    ),
+                    encoding="utf-8",
+                )
+                adv_plan = task.approve_task_gate("087")
+                self.assertTrue(adv_plan["ok"])
+                self.assertEqual(adv_plan["status"], "plan")
+                self.assertIn("Advanced scope", adv_plan["chat_message"])
+
+                # Re-introduce TODO -> plan -> approved blocked even with approve_plan=True
+                pfile.write_text(
+                    pfile.read_text(encoding="utf-8").replace("- **Open Questions:** None", "- **Open Questions:** TODO"),
+                    encoding="utf-8",
+                )
+                blk_plan = task.approve_task_gate("087", approve_plan=True)
+                self.assertFalse(blk_plan["ok"])
+                self.assertTrue(blk_plan["blocked_by_ambiguities"])
+                self.assertIn("TODO", blk_plan["chat_message"])
+
+                # Clear again -> plan -> approved succeeds with build chat_message
+                pfile.write_text(
+                    pfile.read_text(encoding="utf-8").replace("- **Open Questions:** TODO", "- **Open Questions:** None"),
+                    encoding="utf-8",
+                )
+                adv_appr = task.approve_task_gate("087", approve_plan=True, approved_by="human-ui")
+                self.assertTrue(adv_appr["ok"])
+                self.assertEqual(adv_appr["status"], "approved")
+                self.assertIn("Plan approved", adv_appr["chat_message"])
+                self.assertIn("tools/task.py start 087", adv_appr["chat_message"])
+
+    def test_cmd_finish_merge_guards_main_branch_and_in_sync_stamps(self):
+        """cmd_finish --merge fails cleanly off v3-dev; sync_shared_to_main(push=True) stamps even when in_sync."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "086", status="beta", owns=["tools/task.py"], fill_plan=True)
+            tfile = tdir / "TASK.md"
+            (tdir / "evidence" / "verify.json").write_text(json.dumps({"ok": True, "git_sha": "abc12345"}), encoding="utf-8")
+
+            def _fake_run_off_v3dev(cmd, cwd=None, check=False):
+                if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
+                    return argparse.Namespace(returncode=0, stdout="main\n", stderr="")
+                return argparse.Namespace(returncode=0, stdout="abc12345\n", stderr="")
+
+            buf = io.StringIO()
+            with mock.patch.object(task, "find_task", return_value=(dict(meta), tfile, root)), \
+                 mock.patch.object(task, "_run", side_effect=_fake_run_off_v3dev), \
+                 contextlib.redirect_stdout(buf):
+                rc = task.cmd_finish(argparse.Namespace(
+                    id="086", merge=True, allow_stale=False, deploy_beta=False, sync_main=False
+                ))
+            self.assertEqual(rc, 1)
+            self.assertIn("expected 'v3-dev'", buf.getvalue())
+
+            with mock.patch.object(task, "_run", return_value=argparse.Namespace(returncode=0, stdout="", stderr="")), \
+                 mock.patch.object(task, "shared_main_drift", return_value={"ok": True, "in_sync": True, "drifted": [], "main_ref": "origin/main"}):
+                sync_res = task.sync_shared_to_main(push=True, main_root=root)
+            self.assertTrue(sync_res["ok"])
+            self.assertEqual(sync_res.get("stamped_tasks"), ["086"])
+            updated, _ = task.parse_task_md(tfile)
+            self.assertEqual(updated["status"], "done")
+
+    def test_task_land_info_and_land_task_to_main(self):
+        """task_land_info and land_task_to_main handle sync_main, deploy_main unpromoted guard, and stamp_only."""
+        import types
+
+        fake_cfg = types.SimpleNamespace(BETA={"fog3d": True}, PROMOTED={"nudge_anchors": True})
+        fake_mc = types.ModuleType("microclimate")
+        fake_mc_live = types.ModuleType("microclimate.live")
+        fake_mc_live.config = fake_cfg
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._make_sample_task(root, "081", status="beta", owns=["tools/task.py"], fill_plan=True)
+            self._make_sample_task(root, "082", status="beta", owns=["site/v3/fog2.js"], fill_plan=True)
+            _, tdir_doc = self._make_sample_task(root, "083", status="beta", owns=["docs/STATUS.md"], fill_plan=True)
+
+            # Force switch='fog3d' on task 082
+            t82 = root / "tasks" / "082-plan-gate-test" / "TASK.md"
+            m82, b82 = task.parse_task_md(t82)
+            m82["switch"] = "fog3d"
+            t82.write_text(task.dump_task_md(m82, b82), encoding="utf-8")
+
+            with mock.patch.dict("sys.modules", {"microclimate": fake_mc, "microclimate.live": fake_mc_live, "microclimate.live.config": fake_cfg}):
+                info_sync = task.task_land_info({"owned_paths": ["tools/task.py"], "switch": "x"}, root)
+                info_dep = task.task_land_info({"owned_paths": ["site/v3/fog2.js"], "switch": "fog3d"}, root)
+                info_doc = task.task_land_info({"owned_paths": ["docs/STATUS.md"], "switch": "x"}, root)
+                self.assertEqual(info_sync["mode"], "sync_main")
+                self.assertEqual(info_dep["mode"], "deploy_main")
+                self.assertTrue(info_dep["unpromoted_switch"])
+                self.assertEqual(info_doc["mode"], "stamp_only")
+
+                with mock.patch.object(task, "_is_ancestor", return_value=False):
+                    # Unpromoted switch requires confirm unless force=True
+                    r_need = task.land_task_to_main("082", force=False, main_root=root)
+                    self.assertFalse(r_need["ok"])
+                    self.assertTrue(r_need.get("needs_confirm"))
+
+                    with mock.patch.object(task, "_run", return_value=argparse.Namespace(returncode=0, stdout="", stderr="")) as m_wf:
+                        r_force = task.land_task_to_main("082", force=True, main_root=root)
+                    self.assertTrue(r_force["ok"])
+                    self.assertEqual(r_force["mode"], "deploy_main")
+                    self.assertEqual(m_wf.call_args[0][0], ["gh", "workflow", "run", "collect.yml", "--ref", "main"])
+                    m82_after, _ = task.parse_task_md(t82)
+                    self.assertEqual(m82_after["status"], "done")
+                    self.assertIn("main", m82_after["merged_into"])
+
+                    # stamp_only updates TASK.md without triggering gh workflow
+                    r_doc = task.land_task_to_main("083", main_root=root)
+                    self.assertTrue(r_doc["ok"])
+                    self.assertEqual(r_doc["mode"], "stamp_only")
+                    m83_after, _ = task.parse_task_md(tdir_doc / "TASK.md")
+                    self.assertEqual(m83_after["status"], "done")
+
+                    # sync_main delegates to sync_shared_to_main(push=True)
+                    with mock.patch.object(task, "sync_shared_to_main", return_value={"ok": True, "stamped_tasks": ["081"], "message": "Synced"}) as m_sync:
+                        r_sync = task.land_task_to_main("081", main_root=root)
+                    self.assertTrue(r_sync["ok"])
+                    self.assertEqual(r_sync["mode"], "sync_main")
+                    m_sync.assert_called_once_with(push=True, main_root=root)
+
+    def test_viewer_server_land_actions_payload_unwrap_and_ui_markers(self):
+        """server.py unwraps double-encoded payloads, exposes land_info, handles land_beta/land_main, and UI has controls."""
+        self.assertEqual(
+            task_viewer_server._parse_action_payload(json.dumps(json.dumps({"action": "approve_gate", "task_id": "019"}))),
+            {"action": "approve_gate", "task_id": "019"},
+        )
+        self.assertEqual(
+            task_viewer_server._parse_action_payload(json.dumps({"body": json.dumps({"action": "approve_plan", "task_id": "019"})})),
+            {"action": "approve_plan", "task_id": "019"},
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            meta, tdir = self._make_sample_task(root, "084", status="beta", owns=["docs/STATUS.md"], fill_plan=True)
+            fake_state = {"tasks": {"084": {**meta, "task_dir": str(tdir), "worktree_path": ""}}}
+            with mock.patch.object(task_viewer_server, "build_state", return_value=fake_state), \
+                 mock.patch.object(task_viewer_server.subprocess, "run", return_value=argparse.Namespace(returncode=0, stdout="Merged\n", stderr="")) as m_sub, \
+                 mock.patch.object(task_viewer_server.task_cli, "land_task_to_main", return_value={"ok": True, "mode": "stamp_only"}) as m_land:
+                r_beta = task_viewer_server.run_action({"action": "land_beta", "task_id": "084"})
+                self.assertTrue(r_beta["ok"])
+                self.assertIn("finish", m_sub.call_args[0][0])
+                self.assertIn("--deploy-beta", m_sub.call_args[0][0])
+
+                r_main = task_viewer_server.run_action({"action": "land_main", "task_id": "084", "force": True})
+                self.assertTrue(r_main["ok"])
+                m_land.assert_called_once_with("084", force=True, main_root=task_viewer_server.task_cli.MAIN_ROOT)
+
+        state = task_viewer_server.build_state()
+        if state["tasks"]:
+            sample = next(iter(state["tasks"].values()))
+            self.assertIn("land_info", sample)
+            self.assertIn("open_questions", sample["plan_readiness"])
+
+        html = (Path(task_viewer_server.VIEWER_DIR) / "index.html").read_text(encoding="utf-8")
+        for marker in ("Land on Beta", "Land on Main", "Resolve Ambiguities in Chat", "Copy for Chat", "ACTION_IN_FLIGHT", "needs_confirm"):
+            self.assertIn(marker, html)
 
 
 if __name__ == "__main__":

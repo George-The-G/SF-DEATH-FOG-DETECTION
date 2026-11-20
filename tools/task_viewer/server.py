@@ -330,6 +330,7 @@ def build_state() -> dict:
             "handoff_meta": handoff_meta,
             "conversations": task_cli.load_conversations(tdir),
             "merge_status": ms,
+            "land_info": task_cli.task_land_info(meta, main_root),
             "exec_tier": str(meta.get("exec_tier") or "hydrogen"),
             "git_summary": task_cli.git_summary(checkout_root) if is_wt else {},
             "next_gate": task_cli.next_gate_status(status_str),
@@ -524,6 +525,29 @@ def run_action(action_or_payload: str | dict, task_id: str = "") -> dict:
             "output": (res.stdout + "\n" + res.stderr).strip(),
         }
 
+    if action == "land_beta":
+        res = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "task.py"), "finish", task_id, "--merge", "--deploy-beta"],
+            cwd=task_cli.MAIN_ROOT,
+            text=True,
+            capture_output=True,
+        )
+        out = (res.stdout + "\n" + res.stderr).strip()
+        return {
+            "ok": res.returncode == 0,
+            "returncode": res.returncode,
+            "output": out,
+            "message": out.splitlines()[0] if res.returncode == 0 and out else "",
+            "error": "" if res.returncode == 0 else (out or f"finish exited with {res.returncode}"),
+        }
+
+    if action == "land_main":
+        return task_cli.land_task_to_main(
+            task_id,
+            force=bool(payload.get("force", False)),
+            main_root=task_cli.MAIN_ROOT,
+        )
+
     return {"ok": False, "error": f"Unsupported action: {action}"}
 
 
@@ -551,6 +575,27 @@ def _build_state_response(refresh: bool = False) -> dict:
     if refresh_res is not None:
         state["git_refresh"] = refresh_res
     return state
+
+
+def _parse_action_payload(raw_text: str | bytes) -> dict:
+    """Parse and unwrap single- or double-encoded JSON action payloads into a dict."""
+    if isinstance(raw_text, bytes):
+        raw_text = raw_text.decode("utf-8", errors="replace")
+    data: object = json.loads(raw_text or "{}")
+    for _ in range(2):
+        if isinstance(data, str):
+            data = json.loads(data or "{}")
+        else:
+            break
+    if isinstance(data, dict) and "body" in data and "action" not in data:
+        inner = data["body"]
+        if isinstance(inner, str):
+            inner = json.loads(inner or "{}")
+        if isinstance(inner, dict):
+            data = inner
+    if not isinstance(data, dict):
+        raise ValueError("Action payload must decode to a JSON object.")
+    return data
 
 
 # @sec: http — Standalone HTTP server handler and CLI entry point
@@ -614,9 +659,9 @@ class TaskViewerHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0") or "0")
         raw = self.rfile.read(length) if length > 0 else b"{}"
         try:
-            payload = json.loads(raw.decode("utf-8"))
-        except json.JSONDecodeError:
-            self._send_json({"ok": False, "error": "Invalid JSON"}, status=400)
+            payload = _parse_action_payload(raw)
+        except (json.JSONDecodeError, ValueError) as exc:
+            self._send_json({"ok": False, "error": f"Invalid JSON payload: {exc}"}, status=400)
             return
         res = run_action(payload)
         self._send_json(res, status=200 if res.get("ok") else 400)
@@ -638,11 +683,19 @@ def main(argv: list[str]) -> int:
         return 0
     if args.action_stdin:
         raw = sys.stdin.read() or "{}"
-        payload = json.loads(raw)
+        try:
+            payload = _parse_action_payload(raw)
+        except (json.JSONDecodeError, ValueError) as exc:
+            print(json.dumps({"ok": False, "error": f"Invalid JSON payload: {exc}"}))
+            return 0
         print(json.dumps(run_action(payload)))
         return 0
     if args.action_json:
-        payload = json.loads(args.action_json)
+        try:
+            payload = _parse_action_payload(args.action_json)
+        except (json.JSONDecodeError, ValueError) as exc:
+            print(json.dumps({"ok": False, "error": f"Invalid JSON payload: {exc}"}))
+            return 0
         print(json.dumps(run_action(payload)))
         return 0
 
