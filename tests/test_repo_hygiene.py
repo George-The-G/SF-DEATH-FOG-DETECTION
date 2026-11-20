@@ -17,6 +17,7 @@ ALLOWED_ROOT_FILES = {
     ".git",  # git worktrees store .git as a file pointing to the main repo
     ".gitattributes",
     ".gitignore",
+    ".taskflow.toml",
     "AGENTS.md",
     "CLAUDE.md",
     "README.md",
