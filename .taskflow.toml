@@ -16,7 +16,15 @@ preview_base_url = "https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/"
 preview_query_template = "?beta=1&feat={switch}"
 deploy_workflow = "collect.yml"
 deploy_trigger_prefixes = ["site/v3/", "microclimate/", "live_ci/", "deathfog/", "run.py"]
-shared_paths = ["AGENTS.md", "CLAUDE.md", ".taskflow.toml"]
+shared_paths = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".taskflow.toml",
+  ".agents/skills/deathfog-agent-brief/SKILL.md",
+  ".agents/skills/deathfog-ship/SKILL.md",
+  ".claude/settings.json",
+  "tools/contracts.py",
+]
 
 [[verify.checks]]
 name = "pytest"

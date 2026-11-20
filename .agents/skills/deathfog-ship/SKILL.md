@@ -13,7 +13,7 @@ Sites: `https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/` (public) and 
 - **Public channel (`/v3/` or `main`):** Anything that changes the public page, `PROMOTED` live settings, or `main` requires the user's explicit go-ahead in chat. Subagent reports are not approval.
 
 ## 1. Local Preview & Verification
-1. For tracked tasks, run the full gate: `.\.venv\Scripts\python.exe tools/task.py verify <id>`.
+1. For tracked tasks, run the full gate: `mytaskflow verify <id>`.
 2. Standalone checks:
    - Python + hygiene tests: `.\.venv\Scripts\python.exe -m pytest`
    - JS tests: `node --test tests_js/*.mjs`
@@ -25,10 +25,10 @@ Sites: `https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/` (public) and 
    - Upload them to the `live-static-v1` GitHub Release (`gh release upload live-static-v1 <files> --clobber`).
    - Register them in `live_ci/refresh.sh` (download loop + copy into `$NEWB/` in `beta_build()`, or `microclimate/live/outputs.py` if public) and `live_ci/fetch_previous.py` (carry across `reuse` runs).
 2. Merge the verified feature branch into `v3-dev` with one command:
-   - Runtime/viewer feature: `.\.venv\Scripts\python.exe tools/task.py finish <id> --merge --deploy-beta`
-   - Agent/tooling changes (`AGENTS.md`, `.agents/skills/*`, `tools/task.py`, `tools/task_viewer/`): `.\.venv\Scripts\python.exe tools/task.py finish <id> --merge --deploy-beta --sync-main`
-   - Standalone parity check/sync anytime: `.\.venv\Scripts\python.exe tools/task.py sync-main --check` (or `--push` to sync `SHARED_MAIN_PATHS` from `v3-dev` to `origin/main` in an isolated worktree after running isolated tests — never hand-copy or cherry-pick onto `main`). **Trust `sync-main --check`: if it exits 0, stop immediately — do not run exploratory `git log`/`ls-tree` loops.**
-   - `.agents/hooks.json` + `.claude/settings.json` enforce H1–H5 automatically; `tasks/` is gitignored local-only (`MAIN_ROOT/tasks`). Do not add new tests to `tests/test_task_workflow.py` unless `PLAN.md` explicitly requires new testable behavior.
+   - Runtime/viewer feature: `mytaskflow finish <id> --merge --deploy-beta`
+   - Agent/tooling changes (`AGENTS.md`, `.agents/skills/*`, `.taskflow.toml`): `mytaskflow finish <id> --merge --deploy-beta --sync-main`
+   - Standalone parity check/sync anytime: `mytaskflow sync-main --check` (or `--push` to sync `shared_paths` from `v3-dev` to `origin/main` in an isolated worktree after running isolated tests — never hand-copy or cherry-pick onto `main`). **Trust `sync-main --check`: if it exits 0, stop immediately — do not run exploratory `git log`/`ls-tree` loops.**
+   - `MyTaskFlow` `hooks.json` + `.claude/settings.json` enforce H1–H5 automatically; `tasks/` is gitignored local-only (`MAIN_ROOT/tasks`).
    - Note: `finish --deploy-beta` automatically skips `collect.yml` for tooling/docs-only tasks (pass `--force-deploy` to override).
 3. If `collect.yml` was triggered, verify published status (append `?t=<timestamp>` to bust cache):
    - `v3/live_beta/status.json`: `ok: true`, `generated_iso` updated, beta switches listed.
