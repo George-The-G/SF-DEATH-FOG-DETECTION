@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/hooks/guard.py"
+            "command": "py -3 ~/.gemini/config/plugins/mytaskflow/mytaskflow/hooks/guard.py",
+            "timeout": 10
           }
         ]
       }

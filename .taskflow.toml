@@ -1,0 +1,50 @@
+[project]
+name = "SF-DEATH-FOG-DETECTION"
+trunk = "v3-dev"
+tasks_dir = "tasks"
+worktrees_dir = "_worktrees"
+
+[git]
+protected_branches = ["v3-dev", "main", "data", "live-archive"]
+block_git_clean_ignored = true
+clean_guard_note = "data/ and _archive/ live in repo root"
+
+[promotion]
+enabled = true
+target_branch = "main"
+preview_base_url = "https://george-the-g.github.io/SF-DEATH-FOG-DETECTION/v3/"
+preview_query_template = "?beta=1&feat={switch}"
+deploy_workflow = "collect.yml"
+deploy_trigger_prefixes = ["site/v3/", "microclimate/", "live_ci/", "deathfog/", "run.py"]
+shared_paths = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".taskflow.toml",
+  ".agents/skills/deathfog-agent-brief/SKILL.md",
+  ".agents/skills/deathfog-ship/SKILL.md",
+  ".claude/settings.json",
+  "tools/contracts.py",
+]
+
+[[verify.checks]]
+name = "pytest"
+cmd = [".venv/Scripts/python.exe", "-m", "pytest"]
+
+[[verify.checks]]
+name = "node_test"
+cmd = ["node", "--test", "tests_js/*.mjs"]
+when_exists = "tests_js"
+
+[[verify.checks]]
+name = "preview_desktop"
+cmd = [".venv/Scripts/python.exe", "tools/preview.py", "--check", "?beta=1&feat={switch}&night=2026-10-01", "--out", "{evidence_dir}"]
+when_owned_prefix = "site/v3/"
+
+[[verify.checks]]
+name = "preview_phone"
+cmd = [".venv/Scripts/python.exe", "tools/preview.py", "--check", "?beta=1&feat={switch}&night=2026-10-01", "--phone", "--out", "{evidence_dir}"]
+when_owned_prefix = "site/v3/"
+
+[codemap]
+scan_dirs = ["microclimate", "deathfog", "site/v3", "edge", "live_ci", "tools"]
+contracts_cmd = [".venv/Scripts/python.exe", "tools/contracts.py"]

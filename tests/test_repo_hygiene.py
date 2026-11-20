@@ -7,16 +7,28 @@ codebase into fixed module names.
 from __future__ import annotations
 
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
 from microclimate.paths import REPO_ROOT, data_dir
-from tools import codemap, task as task_cli
+
+try:
+    from mytaskflow import codemap, task as task_cli
+except ImportError:
+    _plugin_root = Path.home() / ".gemini" / "config" / "plugins" / "mytaskflow"
+    if _plugin_root.is_dir():
+        sys.path.insert(0, str(_plugin_root))
+        from mytaskflow import codemap, task as task_cli
+    else:
+        codemap = None
+        task_cli = None
 
 ALLOWED_ROOT_FILES = {
     ".git",  # git worktrees store .git as a file pointing to the main repo
     ".gitattributes",
     ".gitignore",
+    ".taskflow.toml",
     "AGENTS.md",
     "CLAUDE.md",
     "README.md",
@@ -55,8 +67,10 @@ class TestRepoHygiene(unittest.TestCase):
 
     def test_large_files_have_section_markers(self):
         """Any Python or JS source file over 350 lines must have at least one `@sec:` or `---` section marker for codemap.py."""
+        if codemap is None:
+            self.skipTest("mytaskflow plugin not installed")
         missing = []
-        for p in codemap.iter_source_files():
+        for p in codemap.iter_source_files(repo_root=REPO_ROOT):
             info = codemap.parse_python(p) if p.suffix == ".py" else codemap.parse_js(p)
             if info["lines"] > 350 and not info["sections"]:
                 missing.append(f"{p.relative_to(REPO_ROOT).as_posix()} ({info['lines']}L)")
@@ -135,7 +149,10 @@ class TestRepoHygiene(unittest.TestCase):
         )
 
     def test_task_packets_have_valid_frontmatter(self):
-        """Every `tasks/<id>-<slug>/TASK.md` must have valid YAML frontmatter matching tools/task.py schema."""
+        """Every `tasks/<id>-<slug>/TASK.md` must have valid YAML frontmatter matching mytaskflow schema."""
+        if task_cli is None:
+            self.skipTest("mytaskflow plugin not installed")
+        task_cli.set_repo_root(REPO_ROOT)
         tdir = task_cli.TASKS_DIR
         if not tdir.exists():
             return
