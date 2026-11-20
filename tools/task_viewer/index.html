@@ -613,7 +613,21 @@ async function postAction(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  return await r.json();
+  const raw = await r.text();
+  let parsed = null;
+  try {
+    parsed = raw ? JSON.parse(raw) : {};
+  } catch (_) {
+    return {
+      ok: false,
+      status: r.status,
+      error: `HTTP ${r.status}: ${(raw || 'Invalid non-JSON response').slice(0, 300)}`,
+    };
+  }
+  if (!r.ok && parsed && typeof parsed === 'object' && parsed.ok === undefined) {
+    return { ok: false, status: r.status, error: parsed.error || `HTTP ${r.status}`, ...parsed };
+  }
+  return parsed || { ok: r.ok };
 }
 
 function isUserInteracting() {
@@ -998,11 +1012,56 @@ async function saveDoc(kind) {
   }
 }
 
+let ACTION_IN_FLIGHT = false;
+let LAST_CHAT_MSG = '';
+
+/// Copy the most recent gate/ambiguity chat trigger message to clipboard.
+async function copyLastChatMsg() {
+  if (!LAST_CHAT_MSG) return;
+  const ok = await copyText(LAST_CHAT_MSG);
+  showToast(ok ? 'Copied chat message to clipboard.' : 'Clipboard unavailable — ' + LAST_CHAT_MSG, !ok);
+}
+
+/// Send or copy an ambiguity-resolution prompt for the selected task's open questions.
+async function resolveAmbiguitiesInChat() {
+  const t = STATE && SELECTED ? STATE.tasks[SELECTED] : null;
+  if (!t) return;
+  const rd = t.plan_readiness || {};
+  const qs = Array.isArray(rd.open_questions) ? rd.open_questions : [];
+  const items = qs.length ? qs.slice(0, 4).join('; ') : 'Open Questions in PLAN.md';
+  const msg = `[Task ${t.id}] Resolve ambiguities in PLAN.md before advancing gate: ${items}. Ask clarifying questions and set Open Questions: None once settled.`;
+  LAST_CHAT_MSG = msg;
+  if (hasSidecarChat()) {
+    try {
+      await getSidecarBridge().agent.sendMessage(msg);
+      showToast('Sent ambiguity resolution prompt to active chat.');
+      return;
+    } catch (_) {}
+  }
+  const ok = await copyText(msg);
+  showToast(ok ? 'Copied ambiguity prompt for chat.' : msg, !ok);
+}
+
 async function runAction(action, extra = {}) {
   if (!SELECTED) return;
+  if (ACTION_IN_FLIGHT) {
+    showToast(`Action '${ACTION_IN_FLIGHT}' is already running — please wait...`);
+    return;
+  }
+  ACTION_IN_FLIGHT = action;
   showToast(`Running '${action}' for task ${SELECTED}...`);
   try {
-    const res = await postAction({ action, task_id: SELECTED, ...extra });
+    let res = await postAction({ action, task_id: SELECTED, ...extra });
+    if (!res.ok && res.needs_confirm && !extra.force) {
+      const msg = res.error || 'Confirm landing unpromoted switch to Main?';
+      if (typeof window.confirm === 'function' && window.confirm(msg)) {
+        showToast(`Confirming '${action}' for task ${SELECTED}...`);
+        res = await postAction({ action, task_id: SELECTED, ...extra, force: true });
+      } else {
+        showToast('Cancelled: ' + msg, true);
+        return;
+      }
+    }
     if (res.ok && action === 'approve_plan') {
       REVIEWED_CHK = false;
     }
@@ -1011,12 +1070,34 @@ async function runAction(action, extra = {}) {
         ? `<button class="btn primary" style="padding:3px 8px;font-size:11.5px;" onclick="sendWorkerBriefToChat()">Send Worker Brief to Active Chat</button>`
         : `<button class="btn primary" style="padding:3px 8px;font-size:11.5px;" onclick="copyResumePrompt(true)">Copy Worker Brief</button>`;
       showToast('Worktree ready — send brief to agent to begin implementation', false, ctaBtn);
+    } else if (res.chat_message && (action === 'approve_gate' || action === 'approve_plan' || res.blocked_by_ambiguities)) {
+      LAST_CHAT_MSG = res.chat_message;
+      let sentToChat = false;
+      if (hasSidecarChat()) {
+        try {
+          await getSidecarBridge().agent.sendMessage(res.chat_message);
+          sentToChat = true;
+        } catch (_) {
+          sentToChat = false;
+        }
+      }
+      const copyBtn = `<button class="btn primary" style="padding:3px 8px;font-size:11.5px;" onclick="copyLastChatMsg()">Copy for Chat</button>`;
+      const baseMsg = res.ok
+        ? (res.message || 'Gate updated')
+        : ('BLOCKED: ' + (res.error || 'Gate blocked'));
+      if (sentToChat) {
+        showToast(`${baseMsg} — sent update to active chat`, !res.ok);
+      } else {
+        showToast(baseMsg, !res.ok, copyBtn);
+      }
     } else {
       showToast((res.ok ? 'OK: ' : 'FAILED: ') + (res.message || res.output || res.error || JSON.stringify(res)), !res.ok);
     }
     await refresh(true);
   } catch (e) {
     showToast('Error: ' + e.message, true);
+  } finally {
+    ACTION_IN_FLIGHT = false;
   }
 }
 
@@ -1210,6 +1291,18 @@ function renderGateCallout(t) {
   const st = normalizeStatus(t.status);
   const rd = t.plan_readiness || {};
   const drifted = Boolean(t.plan_drifted);
+  const openQs = Array.isArray(rd.open_questions) ? rd.open_questions : [];
+  const ambigHtml = openQs.length
+    ? `<div style="background:#261e0f;border:1px solid #6b5218;border-radius:6px;padding:7px 9px;margin:6px 0 8px;font-size:11.5px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
+          <strong style="color:var(--amber);">⚠ Unresolved Ambiguities (${openQs.length})</strong>
+          <button class="btn" style="padding:2px 8px;font-size:11px;" onclick="resolveAmbiguitiesInChat()">Resolve Ambiguities in Chat</button>
+        </div>
+        <ul style="margin:0;padding-left:18px;color:var(--text);">
+          ${openQs.map(q => `<li>${esc(q)}</li>`).join('')}
+        </ul>
+      </div>`
+    : '';
 
   if (st === 'backlog' || st === 'scope') {
     const nextLbl = st === 'backlog' ? 'Scope' : 'Plan Stage';
@@ -1218,7 +1311,8 @@ function renderGateCallout(t) {
         <span class="gate-title">Gate 1 · ${st === 'backlog' ? 'Backlog' : 'Scope'}</span>
         <span class="pill info">Code Locked</span>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Capture goals &amp; decisions in PLAN.md before advancing to the formal Plan stage.</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Capture goals &amp; decisions in PLAN.md and clear Open Questions before advancing to the formal Plan stage.</div>
+      ${ambigHtml}
       <div class="gate-foot">
         <button class="btn gate" onclick="runAction('approve_gate')">Advance → ${nextLbl}</button>
         <button class="btn" onclick="openTaskFile('PLAN.md');startEdit('plan')">Edit PLAN.md</button>
@@ -1236,12 +1330,13 @@ function renderGateCallout(t) {
         <span class="pill warn">Build Locked</span>
       </div>
       <div class="checklist">${chkHtml}</div>
+      ${ambigHtml}
       <div class="gate-foot">
         <label style="font-size:11.5px;display:flex;align-items:center;gap:5px;cursor:pointer;">
           <input type="checkbox" ${REVIEWED_CHK ? 'checked' : ''} onchange="REVIEWED_CHK=this.checked;renderDetail()" />
           I have reviewed PLAN.md and approve build
         </label>
-        <button class="btn gate" ${canApprove ? '' : 'disabled'} onclick="runAction('approve_plan')" title="${rd.ready ? 'Approve PLAN.md and unlock worktree build' : 'Complete PLAN.md spec and owned_paths first'}">✓ Approve Plan &amp; Unlock Build</button>
+        <button class="btn gate" ${canApprove ? '' : 'disabled'} onclick="runAction('approve_plan')" title="${rd.ready ? 'Approve PLAN.md and unlock worktree build' : 'Complete PLAN.md spec, owned_paths, and resolve ambiguities first'}">✓ Approve Plan &amp; Unlock Build</button>
       </div>
     </div>`;
   }
@@ -1436,6 +1531,32 @@ function renderDetail() {
     ? `<button class="btn" onclick="runAction('open_beta')">Beta Preview ↗</button>`
     : '';
 
+  const verifyOk = Boolean(t.verify && t.verify.ok);
+  const headSha = String(t.git_summary?.head_sha || '').trim();
+  const verifySha = String(t.verify?.git_sha || '').trim();
+  const shaMatches = !headSha || Boolean(verifySha && (verifySha.startsWith(headSha) || headSha.startsWith(verifySha)));
+  const canLandBeta = verifyOk && shaMatches;
+  const landBetaTip = !verifyOk
+    ? 'Run Verify first before landing on Beta'
+    : (!shaMatches
+        ? `Verify SHA (${verifySha.slice(0, 8)}) != HEAD (${headSha}) — re-run Verify`
+        : 'Merge into v3-dev, remove worktree, and deploy Beta');
+  const landBetaBtn = (!ms.in_beta && (st === 'build' || st === 'review'))
+    ? `<button class="btn gate" ${canLandBeta ? '' : 'disabled'} onclick="runAction('land_beta')" title="${esc(landBetaTip)}">🚀 Land on Beta</button>`
+    : '';
+
+  const li = t.land_info || {};
+  const landMainTip = li.mode === 'sync_main'
+    ? 'Sync shared agent/tooling files to origin/main (isolated tests, no collect.yml)'
+    : (li.mode === 'deploy_main'
+        ? (li.unpromoted_switch
+            ? `Switch '${li.switch || ''}' is not yet in PROMOTED — will confirm before triggering collect.yml on main`
+            : 'Trigger collect.yml on main and mark done')
+        : 'Mark task landed on main (done)');
+  const landMainBtn = (ms.in_beta && !ms.in_public)
+    ? `<button class="btn gate" onclick="runAction('land_main')" title="${esc(landMainTip)}">🌍 Land on Main</button>`
+    : '';
+
   const taskFiles = Array.isArray(t.task_files) && t.task_files.length
     ? t.task_files
     : [
@@ -1574,6 +1695,8 @@ function renderDetail() {
     ${renderGateCallout(t)}
     <div class="action-row">
       ${primaryBtn}
+      ${landBetaBtn}
+      ${landMainBtn}
       <div class="menu-wrap">
         <button class="btn" onclick="toggleMenu('brief-menu', event)">Agent Brief ▾</button>
         <div class="menu-pop" id="brief-menu">
