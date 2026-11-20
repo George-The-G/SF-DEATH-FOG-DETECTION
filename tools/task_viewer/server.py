@@ -544,6 +544,15 @@ def _resolve_task_file(task_id: str, kind: str, filename: str) -> Path | None:
     return candidate
 
 
+def _build_state_response(refresh: bool = False) -> dict:
+    """Build state JSON, optionally refreshing remote git refs first."""
+    refresh_res = task_cli.refresh_git_refs(task_cli.MAIN_ROOT) if refresh else None
+    state = build_state()
+    if refresh_res is not None:
+        state["git_refresh"] = refresh_res
+    return state
+
+
 # @sec: http — Standalone HTTP server handler and CLI entry point
 class TaskViewerHandler(BaseHTTPRequestHandler):
     """HTTP request handler serving the Task Viewer UI, state API, files, and safe actions."""
@@ -571,13 +580,7 @@ class TaskViewerHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/state":
             qs = parse_qs(parsed.query)
-            refresh_res = None
-            if (qs.get("refresh") or [""])[0] == "1":
-                refresh_res = task_cli.refresh_git_refs(task_cli.MAIN_ROOT)
-            state = build_state()
-            if refresh_res is not None:
-                state["git_refresh"] = refresh_res
-            self._send_json(state)
+            self._send_json(_build_state_response(refresh=(qs.get("refresh") or [""])[0] == "1"))
             return
         if path == "/api/file":
             qs = parse_qs(parsed.query)
@@ -625,12 +628,13 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1).")
     parser.add_argument("--port", type=int, default=8135, help="Bind port (default: 8135).")
     parser.add_argument("--state-json", action="store_true", help="Print current state JSON and exit.")
+    parser.add_argument("--refresh", action="store_true", help="Refresh remote git refs before building state JSON.")
     parser.add_argument("--action-json", default="", help="Run JSON action payload and exit.")
     parser.add_argument("--action-stdin", action="store_true", help="Read JSON action payload from stdin and exit.")
     args = parser.parse_args(argv)
 
     if args.state_json:
-        print(json.dumps(build_state()))
+        print(json.dumps(_build_state_response(refresh=args.refresh)))
         return 0
     if args.action_stdin:
         raw = sys.stdin.read() or "{}"

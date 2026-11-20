@@ -624,6 +624,8 @@ function isUserInteracting() {
   return false;
 }
 
+let LAST_ERROR_MSG = '';
+
 async function refresh(manual = false) {
   if (!manual && isUserInteracting()) return;
   const statusEl = document.getElementById('sync-status');
@@ -635,12 +637,24 @@ async function refresh(manual = false) {
   try {
     const url = manual ? '/api/state?refresh=1' : '/api/state';
     const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) {
+      const err = new Error(`HTTP ${r.status}`);
+      err.isBackendError = true;
+      throw err;
+    }
     const rawText = await r.text();
     if (!manual && rawText === LAST_STATE_JSON) {
       return;
     }
+    const parsed = JSON.parse(rawText);
+    if (parsed && parsed.error) {
+      const err = new Error(String(parsed.error));
+      err.isBackendError = true;
+      throw err;
+    }
     LAST_STATE_JSON = rawText;
-    STATE = JSON.parse(rawText);
+    STATE = parsed;
+    LAST_ERROR_MSG = '';
 
     if (!SELECTED || (STATE.active_task_id && STATE.active_task_id !== LAST_ACTIVE_WT && STATE.tasks[STATE.active_task_id]?.active_worktree)) {
       SELECTED = STATE.active_task_id;
@@ -660,7 +674,15 @@ async function refresh(manual = false) {
       }
     }
   } catch (e) {
-    if (statusEl) statusEl.textContent = 'Offline';
+    const msg = String(e?.message || e || 'Unknown error');
+    const isBackendErr = Boolean(e && (e.isBackendError || e instanceof SyntaxError));
+    if (statusEl) {
+      statusEl.textContent = isBackendErr ? 'Error' : 'Offline';
+    }
+    if (manual || msg !== LAST_ERROR_MSG) {
+      LAST_ERROR_MSG = msg;
+      showToast((isBackendErr ? 'Task Viewer error: ' : 'Offline: ') + msg, true);
+    }
     if (manual) console.error(e);
   }
 }
@@ -1597,7 +1619,7 @@ function renderDetail() {
   }
 }
 
-refresh(true);
+refresh(false);
 setInterval(() => refresh(false), 4000);
 </script>
 </body>
